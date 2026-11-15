@@ -1,0 +1,27 @@
+{
+  "op": 0,
+  "t": "MESSAGE_CREATE",
+  "s": 14,
+  "d": {
+    "id": "5000000000000000330",
+    "channel_id": "3000000000000000011",
+    "guild_id": "2000000000000000001",
+    "author": { "id": "1000000000000000003", "username": "bob_fictif", "global_name": null, "discriminator": "0", "avatar": null, "public_flags": 0 },
+    "member": { "roles": [], "joined_at": "2024-03-02T12:00:00.000000+00:00", "nick": null, "deaf": false, "mute": false, "flags": 0, "pending": false, "premium_since": null },
+    "content": "# Notes de version\nDu **gras**, de l'*italique*, du __souligné__, du ~~barré~~ et ***tout __à la fois__***.\n> Une citation avec `du code` et un [lien masqué](https://exemple.invalid/notes)\n- Mention <@1000000000000000001>, rôle <@&2000000000000001009>, salon <#3000000000000000011>\n  - Spoiler : ||la fin du film|| et @here\n1. Rendez-vous <t:1736935200:F> (<t:1736935200:R>)\n2. Emoji <:ferris:4000000000000000001> et <https://exemple.invalid/sans-apercu>\n```rust\nfn main() {\n    // Bonjour\n    println!(\"{}\", 42);\n}\n```\n-# Petit texte en bas, \\*pas en italique\\*",
+    "timestamp": "2025-01-15T10:30:00.000000+00:00",
+    "edited_timestamp": null,
+    "tts": false,
+    "mention_everyone": false,
+    "mentions": [
+      { "id": "1000000000000000001", "username": "moi_fictif", "global_name": "Moi Fictif", "discriminator": "0", "avatar": null, "public_flags": 0 }
+    ],
+    "mention_roles": ["2000000000000001009"],
+    "attachments": [],
+    "embeds": [],
+    "components": [],
+    "pinned": false,
+    "type": 0,
+    "flags": 0
+  }
+}

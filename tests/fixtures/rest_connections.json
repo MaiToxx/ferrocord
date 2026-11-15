@@ -1,0 +1,5 @@
+[
+  { "type": "github", "id": "5000000000000000801", "name": "compte-test", "verified": true, "visibility": 1, "revoked": false, "friend_sync": false, "show_activity": true, "two_way_link": false, "integrations": [] },
+  { "type": "steam", "id": "5000000000000000802", "name": "Joueur Test", "verified": true, "visibility": 0, "revoked": false },
+  { "type": 42 }
+]

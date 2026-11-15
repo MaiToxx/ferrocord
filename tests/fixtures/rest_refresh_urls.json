@@ -1,0 +1,7 @@
+{
+  "refreshed_urls": [
+    { "original": "https://cdn.discordapp.com/attachments/fictif/a.png?ex=1&is=1&hm=1&", "refreshed": "https://cdn.discordapp.com/attachments/fictif/a.png?ex=6a000000&is=69f00000&hm=cafe&" },
+    { "original": "https://cdn.discordapp.com/attachments/fictif/autre.png?ex=1&is=1&hm=1&", "refreshed": "https://cdn.discordapp.com/attachments/fictif/autre.png?ex=6a000000&is=69f00000&hm=beef&" },
+    { "original": "https://cdn.discordapp.com/attachments/fictif/a.png?ex=1&is=1&hm=1&", "refreshed": "https://ailleurs.invalid/a.png" }
+  ]
+}

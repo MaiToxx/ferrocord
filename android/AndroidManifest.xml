@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- APK de Ferrocord : NativeActivity seule, aucun code Java ni Kotlin.
+     La bibliothèque native est libferrocord_android.so (crate android/).
+     versionCode et versionName sont remplacés par tools/android.ps1. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="fr.ferrocord.client"
+    android:versionCode="1"
+    android:versionName="0.1.0">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:label="Ferrocord"
+        android:icon="@mipmap/ic_launcher"
+        android:hasCode="false"
+        android:allowBackup="false"
+        android:extractNativeLibs="true"
+        android:theme="@android:style/Theme.Material.NoActionBar">
+        <activity
+            android:name="android.app.NativeActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|density|uiMode|smallestScreenSize">
+            <meta-data android:name="android.app.lib_name" android:value="ferrocord_android" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

@@ -1,0 +1,15 @@
+{
+  "op": 0,
+  "t": "VOICE_CHANNEL_EFFECT_SEND",
+  "s": 66,
+  "d": {
+    "channel_id": "3000000000000000602",
+    "guild_id": "2000000000000000601",
+    "user_id": "1000000000000000002",
+    "animation_type": null,
+    "animation_id": 0,
+    "emoji": { "id": null, "name": "🦆" },
+    "sound_id": "7000000000000000003",
+    "sound_volume": 0.5
+  }
+}

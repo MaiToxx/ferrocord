@@ -1,0 +1,74 @@
+{
+  "user": {
+    "id": "1000000000000000002",
+    "username": "alice_fictive",
+    "global_name": "Alice",
+    "discriminator": "0",
+    "avatar": "a11ce0000000000000000000000000a1",
+    "banner": "ba11e0000000000000000000000000b1",
+    "accent_color": 6000111,
+    "public_flags": 4194432,
+    "bio": "Bio **fictive** pour les tests, avec <@1000000000000000003>."
+  },
+  "user_profile": {
+    "bio": "Bio **fictive** pour les tests, avec <@1000000000000000003>.",
+    "pronouns": "elle",
+    "banner": "ba11e0000000000000000000000000b1",
+    "accent_color": 6000111,
+    "theme_colors": [5992431, 2829099],
+    "popout_animation_particle_type": null,
+    "emoji": null,
+    "profile_effect": null
+  },
+  "badges": [
+    { "id": "premium", "description": "Abonné depuis le 1 févr. 2024", "icon": "2ba85e8026a8614b640c2837bcdfe21b", "link": "https://exemple.invalid/fictif/premium" },
+    { "id": "hypesquad_house_2", "description": "HypeSquad Brilliance", "icon": "011940fd013da3f7fb926e4a1cd2e618", "link": "javascript:alert(1)" },
+    { "id": "active_developer", "description": "Développeur actif", "icon": "pas-une-empreinte" },
+    7,
+    { "id": "sans_description" }
+  ],
+  "guild_member": {
+    "user": { "id": "1000000000000000002", "username": "alice_fictive" },
+    "nick": "Ali",
+    "avatar": null,
+    "roles": ["2000000000000001001"],
+    "joined_at": "2024-03-01T12:00:00.000000+00:00",
+    "premium_since": null,
+    "deaf": false,
+    "mute": false,
+    "pending": false
+  },
+  "guild_member_profile": {
+    "guild_id": "2000000000000000001",
+    "pronouns": "",
+    "bio": "Bio de serveur fictive.",
+    "banner": null,
+    "accent_color": null,
+    "theme_colors": null
+  },
+  "guild_badges": [
+    { "id": "premium", "description": "Doublon ignoré", "icon": "2ba85e8026a8614b640c2837bcdfe21b" }
+  ],
+  "legacy_username": "alice#1234",
+  "mutual_guilds": [
+    { "id": "2000000000000000001", "nick": "Ali" },
+    { "id": "2000000000000000003", "nick": null },
+    { "id": "pas un identifiant" }
+  ],
+  "mutual_friends": [
+    { "id": "1000000000000000003", "username": "bob_fictif", "global_name": "Bob", "avatar": null, "discriminator": "0" },
+    { "id": "1000000000000000004", "username": "eve_fictive", "global_name": null, "avatar": null, "discriminator": "0" }
+  ],
+  "mutual_friends_count": 2,
+  "connected_accounts": [
+    { "type": "github", "id": "7000000000000000101", "name": "alice-fictive", "verified": true, "metadata": {} },
+    { "type": "steam", "id": "7000000000000000102", "name": "Alice", "verified": false },
+    { "type": "battlenet", "id": "7000000000000000103", "name": "Alice#1234", "verified": true },
+    { "type": "github" }
+  ],
+  "application_role_connections": [],
+  "premium_type": 2,
+  "premium_since": "2024-02-01T10:00:00+00:00",
+  "premium_guild_since": "2024-06-01T12:00:00+00:00",
+  "widgets": []
+}

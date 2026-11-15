@@ -1,0 +1,21 @@
+/target/
+/target-agents/
+# Résultats de tools/mesures.ps1 (propres à chaque machine)
+/mesures/
+*.db
+*.db-journal
+# Jetons : ne jamais les versionner
+token
+*.token
+.env
+# Clé privée de signature des mises à jour : jamais dans le dépôt (README)
+*.pk8
+*.pkcs8
+*.pem
+/cles/
+/tools/signer/target/
+# Versions fabriquées par tools/publier.ps1 (exécutable, manifeste signé)
+/dist/
+# Clés de signature Android (débogage comprise) : jamais dans le dépôt
+*.keystore
+*.jks

@@ -1,0 +1,39 @@
+[
+  {
+    "id": "7100000000000000001",
+    "updated_at": "2026-11-01T12:04:11.252336+00:00",
+    "data": {
+      "type": "favorite_games",
+      "games": [
+        { "game_id": "7000000000000000001", "comment": "Le meilleur jeu fictif.", "tags": ["expert", "open_to_teach"] }
+      ]
+    }
+  },
+  {
+    "id": "7100000000000000002",
+    "updated_at": "2026-11-02T08:00:00+00:00",
+    "data": {
+      "type": "current_games",
+      "games": [
+        { "game_id": "7000000000000000001", "comment": null, "tags": [] },
+        { "comment": "sans identifiant" },
+        { "game_id": "7000000000000000002" }
+      ]
+    }
+  },
+  {
+    "id": "7100000000000000003",
+    "updated_at": "2026-11-03T08:00:00+00:00",
+    "data": { "type": "played_games", "games": [{ "game_id": "7000000000000000002", "tags": ["love_it"] }] }
+  },
+  {
+    "id": "7100000000000000004",
+    "updated_at": "2026-11-04T08:00:00+00:00",
+    "data": { "type": "application", "application_id": "7000000000000000009" }
+  },
+  {
+    "id": "7100000000000000005",
+    "updated_at": "2026-11-05T08:00:00+00:00",
+    "data": { "type": "type_fictif_inconnu", "games": [] }
+  }
+]

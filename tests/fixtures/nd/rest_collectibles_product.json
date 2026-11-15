@@ -1,0 +1,52 @@
+{
+  "sku_id": "6000000000000000001",
+  "store_listing_id": "6000000000000000101",
+  "type": 1,
+  "name": "Pluie fictive",
+  "summary": "Produit synthétique : aucune donnée réelle.",
+  "category_sku_id": "6000000000000000900",
+  "premium_type": 0,
+  "styles": { "background_colors": [1118481, 2236962], "button_colors": [5793266, 5793266], "confetti_colors": [16777215] },
+  "unpublished_at": null,
+  "prices": {},
+  "items": [
+    {
+      "type": 1,
+      "id": "6000000000000000001",
+      "sku_id": "6000000000000000001",
+      "title": "Pluie fictive",
+      "description": "Effet de profil synthétique.",
+      "accessibilityLabel": "Des gouttes synthétiques tombent sur le profil",
+      "animationType": 1,
+      "thumbnailPreviewSrc": "https://cdn.discordapp.com/assets/profile_effects/effects/fictif/pluie/apercu.png",
+      "reducedMotionSrc": "https://cdn.discordapp.com/assets/profile_effects/effects/fictif/pluie/reduit.png",
+      "staticFrameSrc": "https://cdn.discordapp.com/assets/profile_effects/effects/fictif/pluie/statique.png",
+      "effects": [
+        {
+          "src": "https://cdn.discordapp.com/assets/profile_effects/effects/fictif/pluie/intro.png",
+          "loop": false,
+          "height": 880,
+          "width": 450,
+          "duration": 800,
+          "start": 0,
+          "loopDelay": 0,
+          "position": { "x": 0, "y": 0 },
+          "zIndex": 2
+        },
+        {
+          "src": "https://cdn.discordapp.com/assets/profile_effects/effects/fictif/pluie/boucle.png",
+          "loop": true,
+          "height": 880,
+          "width": 450,
+          "duration": 1200,
+          "start": 800,
+          "loopDelay": 300,
+          "position": { "x": 0, "y": 0 },
+          "zIndex": 1
+        },
+        { "loop": true, "height": 880, "width": 450, "duration": 100, "start": 0, "loopDelay": 0, "position": { "x": 0, "y": 0 }, "zIndex": 3 },
+        { "src": "http://exemple.invalid/piege.png", "loop": true, "height": 880, "width": 450, "duration": 100, "start": 0, "loopDelay": 0, "position": { "x": 0, "y": 0 }, "zIndex": 4 }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "user_sessions": [
+    { "id_hash": "hachage-synthetique-1", "approx_last_used_time": "2026-11-12T10:00:00.000000+00:00", "client_info": { "os": "Windows", "platform": "Chrome", "location": "Paris, France" } },
+    { "id_hash": "hachage-synthetique-2", "approx_last_used_time": "2026-11-01T08:30:00+00:00", "client_info": { "os": null, "platform": null, "location": null } }
+  ]
+}

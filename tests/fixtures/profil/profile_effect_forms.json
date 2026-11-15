@@ -1,0 +1,15 @@
+{
+  "documentee": { "bio": "Synthétique.", "profile_effect": { "id": "6000000000000000301", "expires_at": null } },
+  "avec_sku": { "profile_effect": { "id": "6000000000000000301", "sku_id": "6000000000000000302", "expires_at": null } },
+  "sku_seul": { "profile_effect": { "sku_id": "6000000000000000302" } },
+  "identifiant_nu": { "profile_effect": "6000000000000000301" },
+  "identifiant_nombre": { "profile_effect": 301 },
+  "ancien_champ": { "profile_effect_id": "6000000000000000301" },
+  "expire_plus_tard": { "profile_effect": { "id": "6000000000000000301", "expires_at": 32503680000 } },
+  "expire": { "profile_effect": { "id": "6000000000000000301", "expires_at": 1600000000 } },
+  "expire_iso": { "profile_effect": { "id": "6000000000000000301", "expires_at": "2020-01-01T00:00:00+00:00" } },
+  "nul": { "profile_effect": null, "profile_effect_id": null },
+  "illisible": { "profile_effect": { "id": { "x": 1 } } },
+  "absent": { "bio": "Sans effet." },
+  "les_deux": { "profile_effect": { "id": "6000000000000000301", "sku_id": "6000000000000000302" }, "profile_effect_id": "6000000000000000999" }
+}

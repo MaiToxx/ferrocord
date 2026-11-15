@@ -1,0 +1,6 @@
+{
+  "op": 0,
+  "t": "CHANNEL_RECIPIENT_REMOVE",
+  "s": 16,
+  "d": { "channel_id": "4000000000000000002", "user": { "id": "1000000000000000004", "username": "eve_fictive", "global_name": "Ève", "discriminator": "0", "avatar": null } }
+}

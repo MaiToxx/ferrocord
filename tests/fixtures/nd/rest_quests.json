@@ -1,0 +1,130 @@
+{
+  "quests": [
+    {
+      "id": "8000000000000000001",
+      "config": {
+        "id": "8000000000000000001",
+        "config_version": 2,
+        "starts_at": "2026-11-01T18:00:00+00:00",
+        "expires_at": "2099-11-30T01:00:00+00:00",
+        "features": [3, 9, 12, 14, 15, 16],
+        "application": { "link": "https://exemple.invalid/jeu", "id": "9000000000000000001", "name": "Jeu Synthétique 3000" },
+        "assets": {
+          "hero": "hero.jpg",
+          "hero_video": "hero.mp4",
+          "quest_bar_hero": "questbar.jpg",
+          "quest_bar_hero_video": "questbar.mp4",
+          "game_tile": "gametile.jpg",
+          "logotype": "wordmark.png"
+        },
+        "colors": { "primary": "#E944D4", "secondary": "#5318A7" },
+        "messages": { "quest_name": "Chasse aux données fictives", "game_title": "Jeu Synthétique 3000", "game_publisher": "Studio Fictif" },
+        "task_config_v2": {
+          "join_operator": "or",
+          "tasks": {
+            "PLAY_ON_DESKTOP": { "type": "PLAY_ON_DESKTOP", "target": 900, "applications": [{ "id": "9000000000000000001" }] },
+            "PLAY_ON_XBOX": { "type": "PLAY_ON_XBOX", "target": 900, "external_ids": ["000000000"], "applications": [{ "id": "9000000000000000001" }] },
+            "PLAY_ON_PLAYSTATION": { "type": "PLAY_ON_PLAYSTATION", "target": 900, "external_ids": ["FICT00000_00"], "applications": [{ "id": "9000000000000000001" }] }
+          }
+        },
+        "rewards_config": {
+          "assignment_method": 1,
+          "rewards": [
+            {
+              "type": 1,
+              "sku_id": "9100000000000000001",
+              "asset": "recompense.png",
+              "asset_video": null,
+              "messages": {
+                "name": "Casque fictif",
+                "name_with_article": "un Casque fictif",
+                "redemption_instructions_by_platform": { "0": "Instructions synthétiques : saisir le code sur le site de l'éditeur." }
+              },
+              "approximate_count": null,
+              "redemption_link": "https://exemple.invalid/code"
+            }
+          ],
+          "rewards_expire_at": "2099-12-28T00:00:00+00:00",
+          "platforms": [0]
+        },
+        "share_policy": "shareable_everywhere",
+        "cta_config": { "link": "https://exemple.invalid/jeu", "button_label": "Jouer" }
+      },
+      "user_status": null,
+      "targeted_content": [],
+      "preview": false
+    },
+    {
+      "id": "8000000000000000002",
+      "config": {
+        "id": "8000000000000000002",
+        "config_version": 2,
+        "starts_at": "2026-11-05T18:00:00+00:00",
+        "expires_at": "2099-11-20T01:00:00+00:00",
+        "features": [],
+        "application": { "id": "9000000000000000002", "name": "Film Synthétique" },
+        "assets": { "hero": "hero.png", "quest_bar_hero": "questbar.png", "game_tile": "gametile.png", "logotype": "wordmark.png" },
+        "colors": { "primary": "#2F6FED", "secondary": "pas une couleur" },
+        "messages": { "quest_name": "Bande-annonce fictive", "game_title": "Film Synthétique", "game_publisher": "Productions Fictives" },
+        "task_config_v2": {
+          "join_operator": "and",
+          "tasks": { "WATCH_VIDEO": { "type": "WATCH_VIDEO", "target": 30 }, "TÂCHE PIÉGÉE": { "type": "../x", "target": 5 } }
+        },
+        "rewards_config": {
+          "assignment_method": 1,
+          "rewards": [{ "type": 4, "sku_id": "9100000000000000002", "asset": "orbes.png", "messages": { "name": "700 Orbes", "name_with_article": "700 Orbes" }, "orb_quantity": 700 }],
+          "platforms": [0]
+        }
+      },
+      "user_status": {
+        "user_id": "1000000000000000001",
+        "quest_id": "8000000000000000002",
+        "enrolled_at": "2026-11-06T10:00:00+00:00",
+        "completed_at": null,
+        "claimed_at": null,
+        "claimed_tier": null,
+        "dismissed_quest_content": 0,
+        "progress": { "WATCH_VIDEO": { "value": 15, "event_name": "WATCH_VIDEO", "updated_at": "2026-11-06T10:00:15+00:00", "completed_at": null } }
+      },
+      "preview": false
+    },
+    {
+      "id": "8000000000000000003",
+      "config": {
+        "id": "8000000000000000003",
+        "config_version": 2,
+        "starts_at": "2026-10-01T18:00:00+00:00",
+        "expires_at": "2026-10-20T01:00:00+00:00",
+        "application": { "id": "9000000000000000003", "name": "Course Synthétique" },
+        "assets": { "hero": "hero.webp", "game_tile": "gametile.webp" },
+        "messages": { "quest_name": "Tour de piste fictif", "game_title": "Course Synthétique", "game_publisher": "Éditions Fictives" },
+        "task_config_v2": { "join_operator": "or", "tasks": { "PLAY_ON_XBOX": { "type": "PLAY_ON_XBOX", "target": 600 } } },
+        "rewards_config": {
+          "assignment_method": 1,
+          "rewards": [{ "type": 2, "sku_id": "9100000000000000003", "asset": "voiture.png", "messages": { "name": "Voiture fictive" } }],
+          "platforms": [1, 2]
+        }
+      },
+      "user_status": {
+        "user_id": "1000000000000000001",
+        "quest_id": "8000000000000000003",
+        "enrolled_at": "2026-10-02T10:00:00+00:00",
+        "completed_at": "2026-10-03T10:00:00+00:00",
+        "claimed_at": null,
+        "progress": { "PLAY_ON_XBOX": { "value": 600, "event_name": "PLAY_ON_XBOX", "completed_at": "2026-10-03T10:00:00+00:00" } }
+      },
+      "preview": false
+    },
+    {
+      "id": "8000000000000000004",
+      "config": { "messages": { "quest_name": "Quête d'essai interne", "game_title": "Essai" } },
+      "user_status": null,
+      "preview": true
+    },
+    { "id": "8000000000000000005", "config": { "messages": { "quest_name": "", "game_title": null } }, "preview": false },
+    "entrée illisible",
+    { "id": null, "config": {} }
+  ],
+  "excluded_quests": [{ "id": "8000000000000000099", "replacement_id": null }],
+  "quest_enrollment_blocked_until": null
+}

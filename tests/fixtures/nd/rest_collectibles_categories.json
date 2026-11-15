@@ -1,0 +1,80 @@
+[
+  {
+    "sku_id": "6000000000000000900",
+    "store_listing_id": "6000000000000000901",
+    "name": "Collection fictive",
+    "summary": "Catégorie synthétique : aucune donnée réelle.",
+    "mobile_summary": "Catégorie synthétique.",
+    "logo_url": "https://cdn.discordapp.com/app-assets/fictif/logo.png",
+    "pdp_bg_url": "https://cdn.discordapp.com/app-assets/fictif/fond.png",
+    "hero_ranking": null,
+    "styles": { "background_colors": [1118481, 2236962], "button_colors": [5793266, 5793266], "confetti_colors": [16777215] },
+    "unpublished_at": null,
+    "products": [
+      {
+        "sku_id": "6000000000000000010",
+        "store_listing_id": "6000000000000000110",
+        "type": 0,
+        "category_sku_id": "6000000000000000900",
+        "name": "Décoration fictive",
+        "summary": "Une couronne de perles synthétiques.",
+        "premium_type": 0,
+        "prices": {
+          "0": { "country_prices": { "country_code": "FR", "prices": [{ "currency": "eur", "amount": 499, "exponent": 2 }, { "currency": "discord_orb", "amount": 1400, "exponent": 0 }, { "currency": "EUR €", "amount": 1 }] }, "payment_source_prices": {} },
+          "4": { "country_prices": { "country_code": "FR", "prices": [{ "currency": "eur", "amount": 349, "exponent": 2 }] } }
+        },
+        "styles": { "background_colors": [], "button_colors": [], "confetti_colors": [] },
+        "unpublished_at": null,
+        "items": [
+          {
+            "type": 0,
+            "sku_id": "6000000000000000010",
+            "asset": "a_dec0000000000000000000000000d1",
+            "label": "Décoration synthétique",
+            "assets": {
+              "static_image_url": "https://cdn.discordapp.com/avatar-decoration-presets/a_dec0000000000000000000000000d1.png",
+              "animated_image_url": "https://cdn.discordapp.com/avatar-decoration-presets/a_dec0000000000000000000000000d1.png?passthrough=true"
+            }
+          }
+        ]
+      },
+      {
+        "sku_id": "6000000000000000001",
+        "type": 1,
+        "category_sku_id": "6000000000000000900",
+        "name": "Pluie fictive",
+        "summary": "Des gouttes synthétiques.",
+        "premium_type": 2,
+        "items": [
+          {
+            "type": 1,
+            "sku_id": "6000000000000000001",
+            "title": "Pluie fictive",
+            "thumbnailPreviewSrc": "https://cdn.discordapp.com/assets/profile_effects/effects/fictif/pluie/apercu.png",
+            "effects": []
+          }
+        ]
+      },
+      {
+        "sku_id": "6000000000000000020",
+        "type": 2,
+        "name": "Plaque fictive",
+        "summary": "",
+        "items": [{ "type": 2, "sku_id": "6000000000000000020", "asset": "nameplates/nameplates/fictive/", "palette": "cobalt", "label": "Plaque", "assets": { "static_image_url": "http://exemple.invalid/piege.png" } }]
+      },
+      { "sku_id": "6000000000000000030", "type": 0, "name": "   ", "items": [] },
+      { "type": 0, "name": "Sans identifiant" },
+      "pas un produit"
+    ]
+  },
+  {
+    "sku_id": "6000000000000000910",
+    "name": "Orbes fictives",
+    "summary": "Réservé aux Orbes.",
+    "is_orbs_exclusive": true,
+    "products": [{ "sku_id": "6000000000000000040", "type": 1000, "name": "Lot fictif", "summary": "Deux objets synthétiques.", "items": [], "bundled_products": [] }]
+  },
+  { "sku_id": "6000000000000000920", "name": "", "products": [{ "sku_id": "6000000000000000050", "type": 0, "name": "Orphelin" }] },
+  { "sku_id": "6000000000000000930", "name": "Catégorie vide", "products": [] },
+  null
+]

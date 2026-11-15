@@ -1,0 +1,23 @@
+{
+  "summaries": [
+    {
+      "id": "1000000000000000911", "topic": "Arrosage des semis fictifs",
+      "summ_short": "Conversation synthétique sur la fréquence d'arrosage des semis.",
+      "message_ids": ["1000000000000000901", "1000000000000000902"],
+      "people": ["1000000000000000002", "1000000000000000003"],
+      "unsafe": false, "start_id": "1000000000000000901", "end_id": "1000000000000000902",
+      "count": 2, "source": 2, "type": 3
+    },
+    {
+      "id": "1000000000000000912", "topic": "Choix du terreau",
+      "summ_short": "Discussion synthétique : quel terreau pour des plantes imaginaires.",
+      "message_ids": [], "people": ["1000000000000000002", "1000000000000000003", "1000000000000000004"],
+      "unsafe": false, "start_id": "1000000000000000903", "end_id": "1000000000000000909",
+      "count": 14, "source": 2, "type": 3
+    },
+    { "id": "1000000000000000913", "topic": "Sujet écarté", "summ_short": "Marqué sensible.", "unsafe": true, "count": 3 },
+    { "id": "1000000000000000914", "topic": "", "summ_short": "  " },
+    { "topic": "Sans identifiant", "summ_short": "x" },
+    null
+  ]
+}

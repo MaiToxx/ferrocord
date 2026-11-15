@@ -1,0 +1,25 @@
+{
+  "op": 0,
+  "t": "MESSAGE_CREATE",
+  "s": 14,
+  "d": {
+    "id": "5000000000000000304",
+    "channel_id": "3000000000000000011",
+    "guild_id": "2000000000000000001",
+    "author": { "id": "1000000000000000004", "username": "eve_fictive", "global_name": "Ève", "discriminator": "0", "avatar": null, "public_flags": 0 },
+    "member": { "roles": [], "joined_at": "2024-03-03T12:00:00.000000+00:00", "nick": "Ève du serveur", "deaf": false, "mute": false, "flags": 0, "pending": false, "premium_since": null },
+    "content": "Message avec un pseudo de serveur",
+    "timestamp": "2025-01-15T10:04:00.000000+00:00",
+    "edited_timestamp": null,
+    "tts": false,
+    "mention_everyone": false,
+    "mentions": [],
+    "mention_roles": [],
+    "attachments": [],
+    "embeds": [],
+    "components": [],
+    "pinned": false,
+    "type": 0,
+    "flags": 0
+  }
+}

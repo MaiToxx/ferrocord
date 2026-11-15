@@ -1,0 +1,8 @@
+{
+  "description": "Bienvenue sur le club fictif !",
+  "welcome_channels": [
+    { "channel_id": "3000000000000000502", "description": "Lisez les règles", "emoji_id": null, "emoji_name": "📜" },
+    { "channel_id": "3000000000000000501", "description": "Venez discuter", "emoji_id": "4000000000000000501", "emoji_name": "salut" },
+    { "description": "sans salon" }
+  ]
+}

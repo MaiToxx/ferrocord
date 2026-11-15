@@ -1,0 +1,5 @@
+[
+  { "reason": "spam", "user": { "id": "1000000000000000003", "username": "bob", "global_name": "Bob", "discriminator": "0", "avatar": null } },
+  { "reason": null, "user": { "id": "1000000000000000004", "username": "vieux", "discriminator": "1234", "avatar": null, "public_flags": 0 } },
+  { "reason": "sans utilisateur" }
+]

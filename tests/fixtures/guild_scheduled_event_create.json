@@ -1,0 +1,24 @@
+{
+  "op": 0,
+  "t": "GUILD_SCHEDULED_EVENT_CREATE",
+  "s": 40,
+  "d": {
+    "id": "5000000000000000004",
+    "guild_id": "2000000000000000001",
+    "channel_id": null,
+    "creator_id": "1000000000000000003",
+    "name": "Atelier d'écriture",
+    "description": "Thème : l'automne.",
+    "scheduled_start_time": "2026-11-28T15:00:00+00:00",
+    "scheduled_end_time": "2026-11-28T17:00:00+00:00",
+    "privacy_level": 2,
+    "status": 1,
+    "entity_type": 3,
+    "entity_id": null,
+    "entity_metadata": { "location": "Médiathèque" },
+    "image": null,
+    "auto_start": false,
+    "recurrence_rule": null,
+    "guild_scheduled_event_exceptions": []
+  }
+}

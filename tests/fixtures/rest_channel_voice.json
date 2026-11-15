@@ -1,0 +1,17 @@
+{
+  "id": "3000000000000000014",
+  "type": 2,
+  "guild_id": "2000000000000000001",
+  "name": "Vocal",
+  "position": 2,
+  "parent_id": "3000000000000000010",
+  "permission_overwrites": [],
+  "nsfw": false,
+  "bitrate": 64000,
+  "user_limit": 8,
+  "rtc_region": "rotterdam",
+  "video_quality_mode": 2,
+  "rate_limit_per_user": 0,
+  "last_message_id": null,
+  "flags": 0
+}

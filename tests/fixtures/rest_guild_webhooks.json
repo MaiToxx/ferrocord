@@ -1,0 +1,25 @@
+[
+  {
+    "id": "6000000000000000001",
+    "type": 1,
+    "guild_id": "2000000000000000001",
+    "channel_id": "3000000000000000011",
+    "user": { "id": "1000000000000000002", "username": "alice", "global_name": "Alice", "avatar": null },
+    "name": "Annonces",
+    "avatar": null,
+    "application_id": null,
+    "url": "https://discord.invalid/api/webhooks/6000000000000000001/jetonfictif"
+  },
+  {
+    "id": "6000000000000000002",
+    "type": 2,
+    "guild_id": "2000000000000000001",
+    "channel_id": "3000000000000000012",
+    "name": "Club fictif #nouvelles",
+    "avatar": "00112233445566778899aabbccddeeff",
+    "application_id": null,
+    "source_guild": { "id": "2000000000000000009", "name": "Club fictif", "icon": null },
+    "source_channel": { "id": "3000000000000000099", "name": "nouvelles" }
+  },
+  { "type": 1, "name": "sans identifiant" }
+]

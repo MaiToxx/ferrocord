@@ -1,0 +1,37 @@
+{
+  "id": "5000000000000000901",
+  "channel_id": "3000000000000000011",
+  "author": { "id": "1000000000000000001", "username": "moi_fictif", "global_name": "Moi Fictif", "discriminator": "0", "avatar": null, "public_flags": 0 },
+  "content": "regarde",
+  "timestamp": "2025-01-15T10:05:00.000000+00:00",
+  "edited_timestamp": null,
+  "tts": false,
+  "mention_everyone": false,
+  "mentions": [],
+  "mention_roles": [],
+  "attachments": [
+    {
+      "id": "7000000000000000901",
+      "filename": "SPOILER_photo.png",
+      "size": 9,
+      "url": "https://cdn.discordapp.com/attachments/3000000000000000011/7000000000000000901/SPOILER_photo.png?ex=00000000&is=00000000&hm=00",
+      "proxy_url": "https://media.discordapp.net/attachments/3000000000000000011/7000000000000000901/SPOILER_photo.png?ex=00000000&is=00000000&hm=00",
+      "content_type": "image/png",
+      "description": "un chat"
+    },
+    {
+      "id": "7000000000000000902",
+      "filename": "notes.txt",
+      "size": 7,
+      "url": "https://cdn.discordapp.com/attachments/3000000000000000011/7000000000000000902/notes.txt?ex=00000000&is=00000000&hm=00",
+      "proxy_url": "https://media.discordapp.net/attachments/3000000000000000011/7000000000000000902/notes.txt?ex=00000000&is=00000000&hm=00",
+      "content_type": "text/plain; charset=utf-8"
+    }
+  ],
+  "embeds": [],
+  "components": [],
+  "pinned": false,
+  "type": 0,
+  "flags": 0,
+  "nonce": "123456789"
+}

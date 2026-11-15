@@ -1,0 +1,10 @@
+{
+  "threads": [
+    { "id": "5000000000000000720", "type": 11, "guild_id": "2000000000000000001", "parent_id": "3000000000000000050", "name": "Vieille question", "owner_id": "1000000000000000003", "message_count": 12, "member_count": 3,
+      "thread_metadata": { "archived": true, "auto_archive_duration": 1440, "archive_timestamp": "2023-10-01T00:00:00+00:00", "locked": false } },
+    { "id": "5000000000000000721", "type": 11, "guild_id": "2000000000000000001", "parent_id": "3000000000000000012", "name": "autre salon",
+      "thread_metadata": { "archived": true, "auto_archive_duration": 1440, "archive_timestamp": "2023-10-01T00:00:00+00:00", "locked": false } }
+  ],
+  "members": [ { "id": "5000000000000000720", "user_id": "1000000000000000001", "join_timestamp": "2023-09-01T00:00:00+00:00", "flags": 0 } ],
+  "has_more": true
+}

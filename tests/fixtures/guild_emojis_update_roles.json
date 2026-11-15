@@ -1,0 +1,16 @@
+{
+  "op": 0,
+  "t": "GUILD_EMOJIS_UPDATE",
+  "s": 22,
+  "d": {
+    "guild_id": "2000000000000000001",
+    "emojis": [
+      { "id": "7000000000000000501", "name": "ferris", "roles": [], "user": { "id": "1000000000000000002", "username": "alice_fictive", "global_name": "Alice", "discriminator": "0", "avatar": null, "public_flags": 0 }, "require_colons": true, "managed": false, "animated": false, "available": true },
+      { "id": "7000000000000000502", "name": "danse", "roles": [], "require_colons": true, "managed": false, "animated": true, "available": true },
+      { "id": "7000000000000000503", "name": "ancien", "roles": [], "require_colons": true, "managed": false, "animated": false, "available": false },
+      { "id": "7000000000000000504", "name": "reserve", "roles": ["2000000000000001999"], "require_colons": true, "managed": false, "animated": false, "available": true },
+      { "id": null, "name": "🙂" },
+      { "id": "7000000000000000505", "name": 42 }
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+[
+  {
+    "id": "5000000000000000710",
+    "channel_id": "5000000000000000710",
+    "type": 0,
+    "content": "Message de départ fictif.\nDeuxième ligne de la publication.",
+    "author": { "id": "1000000000000000002", "username": "alice_fictive" },
+    "attachments": [
+      {
+        "id": "7000000000000000001",
+        "filename": "notes.txt",
+        "content_type": "text/plain",
+        "url": "https://cdn.discordapp.com/attachments/3000000000000000050/7000000000000000001/notes.txt",
+        "proxy_url": "https://media.discordapp.net/attachments/3000000000000000050/7000000000000000001/notes.txt"
+      },
+      {
+        "id": "7000000000000000002",
+        "filename": "carte.png",
+        "content_type": "image/png",
+        "url": "https://cdn.discordapp.com/attachments/3000000000000000050/7000000000000000002/carte.png",
+        "proxy_url": "https://media.discordapp.net/attachments/3000000000000000050/7000000000000000002/carte.png",
+        "width": 640,
+        "height": 360
+      }
+    ],
+    "embeds": [
+      {
+        "type": "link",
+        "thumbnail": {
+          "url": "https://exemple.invalid/vignette.png",
+          "proxy_url": "https://images-ext-1.discordapp.net/external/fictif/vignette.png",
+          "width": 320,
+          "height": 180
+        }
+      }
+    ]
+  }
+]

@@ -1,0 +1,47 @@
+{
+  "op": 0,
+  "t": "MESSAGE_CREATE",
+  "s": 30,
+  "d": {
+    "id": "5000000000000000320",
+    "channel_id": "3000000000000000011",
+    "guild_id": "2000000000000000001",
+    "author": { "id": "1000000000000000003", "username": "bob_fictif", "global_name": null, "discriminator": "0", "avatar": null, "public_flags": 0 },
+    "member": { "roles": [], "joined_at": "2024-03-01T12:00:00.000000+00:00", "nick": null, "deaf": false, "mute": false, "flags": 0, "pending": false, "premium_since": null },
+    "content": "Salut Alice, bienvenue !",
+    "timestamp": "2025-01-15T10:05:00.000000+00:00",
+    "edited_timestamp": null,
+    "tts": false,
+    "mention_everyone": false,
+    "mentions": [ { "id": "1000000000000000002", "username": "alice_fictive", "global_name": "Alice", "discriminator": "0", "avatar": null, "public_flags": 0 } ],
+    "mention_roles": [],
+    "attachments": [],
+    "embeds": [],
+    "components": [],
+    "pinned": false,
+    "type": 19,
+    "flags": 0,
+    "message_reference": { "type": 0, "message_id": "5000000000000000300", "channel_id": "3000000000000000011", "guild_id": "2000000000000000001" },
+    "referenced_message": {
+      "id": "5000000000000000300",
+      "channel_id": "3000000000000000011",
+      "author": { "id": "1000000000000000002", "username": "alice_fictive", "global_name": "Alice", "discriminator": "0", "avatar": "a11ce0000000000000000000000000a1", "public_flags": 0 },
+      "content": "Bonjour tout le monde",
+      "timestamp": "2025-01-15T10:00:00.000000+00:00",
+      "edited_timestamp": null,
+      "tts": false,
+      "mention_everyone": false,
+      "mentions": [],
+      "mention_roles": [],
+      "attachments": [],
+      "embeds": [],
+      "pinned": false,
+      "type": 0,
+      "flags": 0
+    },
+    "reactions": [
+      { "count": 3, "count_details": { "burst": 1, "normal": 2 }, "burst_colors": ["#ffcc00"], "me": false, "me_burst": false, "emoji": { "id": null, "name": "🎉" }, "burst_count": 1 },
+      { "count": 1, "count_details": { "burst": 0, "normal": 1 }, "burst_colors": [], "me": true, "me_burst": false, "emoji": { "id": "6000000000000000501", "name": "ferris", "animated": false }, "burst_count": 0 }
+    ]
+  }
+}

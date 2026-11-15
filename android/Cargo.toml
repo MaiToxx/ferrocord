@@ -1,0 +1,18 @@
+[package]
+name = "ferrocord-android"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+description = "Bibliothèque native de l'APK Android de Ferrocord (point d'entrée NativeActivity)"
+
+# Bibliothèque partagée chargée par la NativeActivity d'Android
+# (`android.app.lib_name` du manifeste). À part de la crate principale pour
+# que l'exécutable Windows ne fabrique pas de DLL en plus.
+[lib]
+name = "ferrocord_android"
+crate-type = ["cdylib"]
+path = "lib.rs"
+
+[dependencies]
+ferrocord = { path = ".." }

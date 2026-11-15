@@ -1,0 +1,50 @@
+{
+  "op": 0,
+  "t": "GUILD_CREATE",
+  "s": 2,
+  "d": {
+    "id": "2000000000000000004",
+    "name": "Serveur Vocal",
+    "icon": null,
+    "splash": null,
+    "owner_id": "1000000000000000001",
+    "afk_channel_id": null,
+    "afk_timeout": 300,
+    "verification_level": 1,
+    "default_message_notifications": 1,
+    "explicit_content_filter": 0,
+    "roles": [{ "id": "2000000000000000004", "name": "@everyone", "permissions": "3148800", "position": 0, "color": 0, "hoist": false, "managed": false, "mentionable": false, "flags": 0 }],
+    "emojis": [],
+    "features": [],
+    "mfa_level": 0,
+    "system_channel_id": "3000000000000000050",
+    "preferred_locale": "fr",
+    "premium_tier": 0,
+    "nsfw_level": 0,
+    "joined_at": "2024-06-01T12:00:00.000000+00:00",
+    "large": false,
+    "unavailable": false,
+    "member_count": 6,
+    "voice_states": [
+      { "user_id": "1000000000000000002", "channel_id": "3000000000000000051", "session_id": "s-alice", "deaf": false, "mute": false, "self_deaf": false, "self_mute": false, "self_video": false, "suppress": false, "request_to_speak_timestamp": null, "member": { "user": { "id": "1000000000000000002", "username": "alice_fictive", "global_name": "Alice", "avatar": null, "discriminator": "0" }, "nick": null, "roles": [], "joined_at": "2024-06-01T12:00:00.000000+00:00", "deaf": false, "mute": false } },
+      { "user_id": "1000000000000000005", "channel_id": "3000000000000000051", "session_id": "s-dana", "deaf": false, "mute": false, "self_deaf": false, "self_mute": true, "self_video": true, "suppress": false, "request_to_speak_timestamp": null, "member": { "user": { "id": "1000000000000000005", "username": "dana_fictive", "global_name": "Dana", "avatar": null, "discriminator": "0" }, "nick": null, "roles": [], "joined_at": "2024-06-01T12:00:00.000000+00:00", "deaf": false, "mute": false } },
+      { "user_id": "1000000000000000006", "channel_id": "3000000000000000051", "session_id": "s-eve", "deaf": false, "mute": true, "self_deaf": false, "self_mute": false, "self_video": false, "self_stream": true, "suppress": false, "request_to_speak_timestamp": null },
+      { "user_id": "1000000000000000007", "channel_id": "3000000000000000052", "session_id": "s-bob", "deaf": true, "mute": false, "self_deaf": true, "self_mute": true, "self_video": false, "suppress": false, "request_to_speak_timestamp": null, "member": { "user": { "id": "1000000000000000007", "username": "bob_fictif", "global_name": null, "avatar": null, "discriminator": "0" }, "nick": "Bob (vocal)", "roles": [], "joined_at": "2024-06-01T12:00:00.000000+00:00", "deaf": true, "mute": false } }
+    ],
+    "members": [
+      { "user": { "id": "1000000000000000006", "username": "eve_fictive", "global_name": "Ève", "avatar": null, "discriminator": "0" }, "nick": null, "roles": [], "joined_at": "2024-06-01T12:00:00.000000+00:00", "deaf": false, "mute": true, "flags": 0 }
+    ],
+    "threads": [],
+    "presences": [],
+    "stage_instances": [],
+    "guild_scheduled_events": [],
+    "soundboard_sounds": [],
+    "channels": [
+      { "id": "3000000000000000050", "type": 0, "name": "discussion", "position": 0, "parent_id": null, "permission_overwrites": [], "nsfw": false, "topic": null, "last_message_id": null, "rate_limit_per_user": 0, "flags": 0 },
+      { "id": "3000000000000000053", "type": 13, "name": "Scène", "position": 3, "parent_id": "3000000000000000054", "permission_overwrites": [], "bitrate": 64000, "user_limit": 10000, "rtc_region": null, "flags": 0 },
+      { "id": "3000000000000000051", "type": 2, "name": "Salon vocal", "position": 1, "parent_id": "3000000000000000054", "permission_overwrites": [], "bitrate": 64000, "user_limit": 0, "rtc_region": null, "flags": 0 },
+      { "id": "3000000000000000054", "type": 4, "name": "Vocal", "position": 1, "parent_id": null, "permission_overwrites": [], "flags": 0 },
+      { "id": "3000000000000000052", "type": 2, "name": "Petit salon", "position": 2, "parent_id": "3000000000000000054", "permission_overwrites": [{ "id": "2000000000000000004", "type": 0, "allow": "0", "deny": "2097152" }], "bitrate": 64000, "user_limit": 2, "rtc_region": null, "flags": 0 }
+    ]
+  }
+}

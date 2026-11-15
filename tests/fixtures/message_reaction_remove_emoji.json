@@ -1,0 +1,11 @@
+{
+  "op": 0,
+  "t": "MESSAGE_REACTION_REMOVE_EMOJI",
+  "s": 35,
+  "d": {
+    "channel_id": "3000000000000000011",
+    "guild_id": "2000000000000000001",
+    "message_id": "5000000000000000320",
+    "emoji": { "id": null, "name": "🎉" }
+  }
+}

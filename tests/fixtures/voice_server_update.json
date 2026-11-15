@@ -1,0 +1,9 @@
+{
+  "op": 0,
+  "t": "VOICE_SERVER_UPDATE",
+  "s": 4,
+  "d": {
+    "guild_id": "2000000000000000004",
+    "endpoint": "voix-fictive.example.invalid:443"
+  }
+}

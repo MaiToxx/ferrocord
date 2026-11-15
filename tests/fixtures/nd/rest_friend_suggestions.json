@@ -1,0 +1,16 @@
+[
+  {
+    "suggested_user": { "id": "1000000000000000701", "username": "camille_fictive", "global_name": "Camille Fictive", "discriminator": "0", "avatar": null, "public_flags": 0 },
+    "reasons": [{ "type": 1, "platform": "steam", "name": "CamilleSynthétique" }],
+    "from_suggested_user_contacts": false,
+    "mutual_friends_count": 2
+  },
+  {
+    "suggested_user": { "id": "1000000000000000702", "username": "denis_fictif", "global_name": null, "discriminator": "0", "avatar": "a11ce0000000000000000000000000a1" },
+    "reasons": [{ "type": 1 }, { "type": 1, "platform_type": "xbox", "name": "Denis#0000" }]
+  },
+  { "suggested_user": { "id": "1000000000000000701", "username": "doublon" }, "reasons": [] },
+  { "suggested_user": null, "reasons": [] },
+  { "reasons": "x" },
+  3
+]

@@ -1,0 +1,18 @@
+{
+  "op": 0,
+  "t": "AUTO_MODERATION_ACTION_EXECUTION",
+  "s": 42,
+  "d": {
+    "guild_id": "2000000000000000001",
+    "action": { "type": 1, "metadata": { "custom_message": "Pas de ça ici." } },
+    "rule_id": "2000000000000000601",
+    "rule_trigger_type": 1,
+    "user_id": "1000000000000000003",
+    "channel_id": "3000000000000000011",
+    "message_id": null,
+    "alert_system_message_id": null,
+    "content": "une arnaque fictive",
+    "matched_keyword": "arnaque",
+    "matched_content": "arnaque"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "type": 0,
+  "code": "ferro",
+  "expires_at": null,
+  "guild": { "id": "2000000000000000009", "name": "Rustacés", "splash": null, "banner": null, "description": null, "icon": "0123456789abcdef0123456789abcdef", "features": [], "verification_level": 1, "vanity_url_code": null, "nsfw_level": 0, "nsfw": false, "premium_subscription_count": 3 },
+  "guild_id": "2000000000000000009",
+  "channel": { "id": "3000000000000000990", "type": 0, "name": "bienvenue" },
+  "inviter": { "id": "1000000000000000002", "username": "alice_fictive", "global_name": "Alice", "avatar": null, "discriminator": "0", "public_flags": 0 },
+  "approximate_member_count": 1234,
+  "approximate_presence_count": 42
+}

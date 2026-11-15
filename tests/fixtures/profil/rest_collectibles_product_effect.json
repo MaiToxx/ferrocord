@@ -1,0 +1,28 @@
+{
+  "sku_id": "6000000000000000302",
+  "store_listing_id": "6000000000000000303",
+  "type": 1,
+  "name": "Aurore fictive",
+  "summary": "Produit synthétique : l'identifiant de l'effet diffère du SKU.",
+  "category_sku_id": "6000000000000000900",
+  "premium_type": 0,
+  "styles": { "background_colors": [1118481, 2236962], "button_colors": [5793266, 5793266], "confetti_colors": [16777215] },
+  "unpublished_at": null,
+  "items": [
+    {
+      "type": 1,
+      "id": "6000000000000000301",
+      "sku_id": "6000000000000000302",
+      "title": "Aurore fictive",
+      "description": "Effet de profil synthétique.",
+      "accessibilityLabel": "Un halo synthétique entoure le profil",
+      "animationType": 1,
+      "thumbnailPreviewSrc": "https://cdn.discordapp.com/assets/profile_effects/effects/fictif/aurore/apercu.png",
+      "reducedMotionSrc": "https://cdn.discordapp.com/assets/profile_effects/effects/fictif/aurore/reduit.png",
+      "effects": [
+        { "src": "https://cdn.discordapp.com/assets/profile_effects/effects/fictif/aurore/intro.png", "loop": false, "height": 880, "width": 450, "duration": 1500, "start": 0, "loopDelay": 0, "position": { "x": 0, "y": 0 }, "zIndex": 100 },
+        { "src": "https://cdn.discordapp.com/assets/profile_effects/effects/fictif/aurore/boucle.png", "loop": true, "height": 880, "width": 450, "duration": 2000, "start": 1500, "loopDelay": 500, "position": { "x": 0, "y": 0 }, "zIndex": 101 }
+      ]
+    }
+  ]
+}

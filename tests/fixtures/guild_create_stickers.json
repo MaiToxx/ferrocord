@@ -1,0 +1,29 @@
+{
+    "op":  0,
+    "t":  "GUILD_CREATE",
+    "s":  40,
+    "d":  {
+              "id":  "2000000000000000001",
+              "name":  "Serveur",
+              "channels":  [
+
+                           ],
+              "roles":  [
+
+                        ],
+              "emojis":  [
+
+                         ],
+              "stickers":  [
+                               {
+                                   "id":  "7000000000000000703",
+                                   "name":  "Salut",
+                                   "tags":  "wave",
+                                   "type":  2,
+                                   "format_type":  1,
+                                   "description":  "",
+                                   "available":  true
+                               }
+                           ]
+          }
+}

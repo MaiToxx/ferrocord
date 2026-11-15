@@ -1,0 +1,11 @@
+{
+  "op": 0,
+  "t": "MESSAGE_UPDATE",
+  "s": 21,
+  "d": {
+    "id": "5000000000000000302",
+    "channel_id": "3000000000000000011",
+    "guild_id": "2000000000000000001",
+    "embeds": [{ "type": "article", "url": "https://exemple.invalid/article", "title": "Titre fictif" }]
+  }
+}

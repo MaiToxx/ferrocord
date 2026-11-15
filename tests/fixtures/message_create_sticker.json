@@ -1,0 +1,56 @@
+{
+    "op":  0,
+    "t":  "MESSAGE_CREATE",
+    "s":  40,
+    "d":  {
+              "id":  "1100000000000000001",
+              "channel_id":  "3000000000000000011",
+              "guild_id":  "2000000000000000001",
+              "author":  {
+                             "id":  "1100000000000000003",
+                             "username":  "alice",
+                             "global_name":  "Alice",
+                             "avatar":  null
+                         },
+              "content":  "",
+              "type":  0,
+              "timestamp":  "2025-01-01T00:00:00+00:00",
+              "tts":  false,
+              "mention_everyone":  false,
+              "mentions":  [
+
+                           ],
+              "attachments":  [
+
+                              ],
+              "embeds":  [
+
+                         ],
+              "sticker_items":  [
+                                    {
+                                        "id":  "7000000000000000701",
+                                        "name":  "Wave",
+                                        "format_type":  2
+                                    },
+                                    {
+                                        "id":  "7000000000000000704",
+                                        "name":  "Lottie",
+                                        "format_type":  3
+                                    },
+                                    {
+                                        "id":  "7000000000000000705",
+                                        "name":  "gif",
+                                        "format_type":  4
+                                    },
+                                    {
+                                        "id":  "7000000000000000706",
+                                        "name":  "inconnu",
+                                        "format_type":  9
+                                    },
+                                    {
+                                        "name":  "sans identifiant",
+                                        "format_type":  1
+                                    }
+                                ]
+          }
+}

@@ -1,0 +1,17 @@
+{
+  "id": "5000000000000000100",
+  "username": "utilisateur.test",
+  "global_name": "Utilisateur Test",
+  "discriminator": "0",
+  "avatar": null,
+  "email": "test@example.invalid",
+  "phone": "+33100000000",
+  "verified": true,
+  "mfa_enabled": true,
+  "premium_type": 2,
+  "bio": "Bio de test",
+  "accent_color": 5793266,
+  "banner": null,
+  "locale": "fr",
+  "flags": 0
+}

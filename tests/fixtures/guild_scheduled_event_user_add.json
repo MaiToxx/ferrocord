@@ -1,0 +1,6 @@
+{
+  "op": 0,
+  "t": "GUILD_SCHEDULED_EVENT_USER_ADD",
+  "s": 41,
+  "d": { "guild_scheduled_event_id": "5000000000000000004", "user_id": "1000000000000000003", "guild_id": "2000000000000000001", "guild_scheduled_event_exception_id": null, "response": 1 }
+}

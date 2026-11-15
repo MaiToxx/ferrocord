@@ -1,0 +1,6 @@
+{
+  "op": 0,
+  "t": "CHANNEL_UPDATE",
+  "s": 3,
+  "d": { "id": "3000000000000000012", "type": 0, "guild_id": "2000000000000000001", "name": "discussion-libre", "position": 5, "parent_id": "3000000000000000020", "permission_overwrites": [], "nsfw": false, "topic": "Sujet fictif", "last_message_id": null, "rate_limit_per_user": 0, "flags": 0 }
+}

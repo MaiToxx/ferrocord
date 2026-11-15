@@ -1,0 +1,16 @@
+{
+  "op": 0,
+  "t": "MESSAGE_REACTION_ADD",
+  "s": 33,
+  "d": {
+    "user_id": "1000000000000000004",
+    "channel_id": "3000000000000000011",
+    "message_id": "5000000000000000320",
+    "guild_id": "2000000000000000001",
+    "emoji": { "id": "6000000000000000501", "name": "ferris", "animated": false },
+    "message_author_id": "1000000000000000003",
+    "burst": true,
+    "burst_colors": ["#ff6600"],
+    "type": 1
+  }
+}

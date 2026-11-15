@@ -1,0 +1,15 @@
+{
+  "id": "2000000000000001101",
+  "name": "Bibliothécaires",
+  "color": 3447003,
+  "colors": { "primary_color": 3447003, "secondary_color": 15277667, "tertiary_color": null },
+  "hoist": true,
+  "icon": "b1b11000000000000000000000000b1b",
+  "unicode_emoji": null,
+  "position": 3,
+  "permissions": "268438528",
+  "managed": true,
+  "mentionable": true,
+  "tags": { "bot_id": "1000000000000000099", "premium_subscriber": null },
+  "flags": 0
+}

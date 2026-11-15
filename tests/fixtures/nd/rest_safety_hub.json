@@ -1,0 +1,25 @@
+{
+  "classifications": [
+    {
+      "id": "1000000000000000971", "classification_type": { "id": 1, "name": "fictif" },
+      "description": "Message synthétique jugé contraire aux règles.",
+      "explainer_link": "https://discord.com/safety/exemple-fictif",
+      "actions": [
+        { "id": "1", "action_type": 1, "descriptions": ["Envoi de messages privés limité.", "Avertissement."] },
+        { "id": "2", "descriptions": null },
+        null
+      ],
+      "max_expiration_time": "2027-01-10T00:00:00+00:00",
+      "flagged_content": [], "is_coppa": false, "is_spam": false
+    },
+    { "id": "1000000000000000972", "description": "Autre infraction synthétique.", "explainer_link": "http://exemple.invalid/clair", "actions": [], "max_expiration_time": null },
+    { "id": "1000000000000000973", "description": "   " },
+    7
+  ],
+  "guild_classifications": [{ "id": "1000000000000000974" }],
+  "account_standing": { "state": 200 },
+  "is_dsa_eligible": true,
+  "is_appeal_eligible": true,
+  "username": "moi_fictif",
+  "appeal_eligibility": []
+}

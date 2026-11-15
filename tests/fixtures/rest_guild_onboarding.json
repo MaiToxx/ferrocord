@@ -1,0 +1,36 @@
+{
+  "guild_id": "2000000000000000501",
+  "prompts": [
+    {
+      "id": "6000000000000000001",
+      "type": 0,
+      "title": "Qu'est-ce qui vous amène ?",
+      "single_select": true,
+      "required": true,
+      "in_onboarding": true,
+      "options": [
+        { "id": "6000000000000000011", "title": "Les jeux", "description": "Soirées jeux", "channel_ids": ["3000000000000000501"], "role_ids": ["7000000000000000501"], "emoji": { "id": null, "name": "🎲", "animated": false } },
+        { "id": "6000000000000000012", "title": "La discussion", "description": null, "channel_ids": [], "role_ids": [], "emoji": { "id": null, "name": null } }
+      ]
+    },
+    {
+      "id": "6000000000000000002",
+      "type": 1,
+      "title": "Vos langues",
+      "single_select": false,
+      "required": false,
+      "in_onboarding": false,
+      "options": [
+        { "id": "6000000000000000021", "title": "Français", "description": "", "channel_ids": [], "role_ids": [], "emoji": { "id": "4000000000000000501", "name": "salut", "animated": false } },
+        { "id": "6000000000000000022", "title": "English", "channel_ids": [], "role_ids": [] }
+      ]
+    }
+  ],
+  "default_channel_ids": ["3000000000000000501", "3000000000000000502"],
+  "enabled": true,
+  "below_requirements": false,
+  "mode": 1,
+  "responses": ["6000000000000000011"],
+  "onboarding_prompts_seen": {},
+  "onboarding_responses_seen": {}
+}

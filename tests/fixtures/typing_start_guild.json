@@ -1,0 +1,22 @@
+{
+  "op": 0,
+  "t": "TYPING_START",
+  "s": 20,
+  "d": {
+    "channel_id": "3000000000000000011",
+    "guild_id": "2000000000000000001",
+    "user_id": "1000000000000000002",
+    "timestamp": 1736935200,
+    "member": {
+      "user": { "id": "1000000000000000002", "username": "alice_fictive", "global_name": "Alice", "discriminator": "0", "avatar": "a11ce0000000000000000000000000a1", "public_flags": 0 },
+      "roles": [],
+      "joined_at": "2024-03-01T12:00:00.000000+00:00",
+      "nick": "Alice du serveur",
+      "deaf": false,
+      "mute": false,
+      "flags": 0,
+      "pending": false,
+      "premium_since": null
+    }
+  }
+}

@@ -1,0 +1,44 @@
+# Thème Ferrocord (.ferrotheme) : bleu-vert profond, accent turquoise, dégradé d'eau calme.
+# Pour l'utiliser : Paramètres > Apparence > Thèmes partageables, ou déposez ce
+# fichier sur la fenêtre de Ferrocord. Les clés absentes viennent de « base ».
+ferrotheme = 1
+nom = "Lagon"
+auteur = "Ferrocord"
+
+version = 3
+base = "sombre"
+
+[couleurs]
+bg0 = "#0c1519"
+bg1 = "#0c1519"
+bg2 = "#121e24"
+bg3 = "#1a2a32"
+border = "#27404a"
+pill = "#1a2a32"
+selected = "#1f333c"
+row_hover = "#16252c"
+text = "#dbe7ea"
+text_strong = "#f6fbfc"
+muted = "#a3b8be"
+faint = "#8ea4aa"
+accent = "#0e7c86"
+widget_text = "#a3b8be"
+button_bg = "#223740"
+button_text = "#f6fbfc"
+control_bg = "#2b454f"
+separator = "#1a2b33"
+menu_bg = "#172830"
+menu_hover = "#24404b"
+channel_idle = "#7d9299"
+
+[texte_riche]
+code_bg = "#0c1519"
+mention_bg = "#1aa3b04d"
+mention_text = "#bdf0f5"
+spoiler = "#27404a"
+
+[apparence]
+degrade = true
+degrade_couleurs = ["#0f4c81", "#1fa29a"]
+degrade_angle = 30
+degrade_force = 16

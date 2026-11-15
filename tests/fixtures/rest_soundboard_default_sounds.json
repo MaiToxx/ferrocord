@@ -1,0 +1,6 @@
+[
+  { "name": "quack", "sound_id": "7000000000000000001", "volume": 1.0, "emoji_id": null, "emoji_name": "🦆", "available": true },
+  { "name": "airhorn", "sound_id": "7000000000000000002", "volume": 1.0, "emoji_id": null, "emoji_name": "🔊", "available": true },
+  { "name": "cricket", "sound_id": "7000000000000000003", "volume": 0.5, "emoji_id": null, "emoji_name": "🦗", "available": true },
+  "illisible"
+]

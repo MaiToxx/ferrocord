@@ -1,0 +1,20 @@
+{
+  "categories": [
+    { "name": "bravo", "src": "https://media.tenor.com/synthetique11AAAAM/bravo.gif" },
+    { "name": "merci", "src": "https://media.tenor.com/synthetique12AAAAM/merci.gif" },
+    { "name": "sans image" },
+    { "name": "rire", "src": "https://media.tenor.com/synthetique13AAAAM/rire.gif" }
+  ],
+  "gifs": [
+    {
+      "id": "7000000000000000010",
+      "title": "",
+      "url": "https://tenor.com/view/tendance-synthetique-gif-7000000000000000010",
+      "src": "https://media.tenor.com/synthetique10AAAAM/tendance.gif",
+      "gif_src": "https://media.tenor.com/synthetique10AAAAC/tendance.gif",
+      "width": 220,
+      "height": 165,
+      "preview": "https://media.tenor.com/synthetique10AAAAD/tendance.png"
+    }
+  ]
+}

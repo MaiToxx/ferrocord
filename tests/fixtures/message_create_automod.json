@@ -1,0 +1,38 @@
+{
+  "op": 0,
+  "t": "MESSAGE_CREATE",
+  "s": 16,
+  "d": {
+    "id": "5000000000000000401",
+    "channel_id": "3000000000000000011",
+    "guild_id": "2000000000000000001",
+    "author": { "id": "1000000000000000005", "username": "carol_fictive", "global_name": "Carol", "discriminator": "0", "avatar": null, "public_flags": 0 },
+    "member": { "roles": [], "joined_at": "2025-01-15T10:05:00.000000+00:00", "nick": null, "deaf": false, "mute": false, "flags": 0, "pending": false, "premium_since": null },
+    "content": "",
+    "timestamp": "2025-01-15T10:06:00.000000+00:00",
+    "edited_timestamp": null,
+    "tts": false,
+    "mention_everyone": false,
+    "mentions": [],
+    "mention_roles": [],
+    "attachments": [],
+    "embeds": [
+      {
+        "type": "auto_moderation_message",
+        "description": "achète des crédits ici, pas cher",
+        "fields": [
+          { "name": "rule_name", "value": "Publicité", "inline": false },
+          { "name": "channel_id", "value": "3000000000000000011", "inline": false },
+          { "name": "decision_id", "value": "fictif-0001", "inline": false },
+          { "name": "keyword", "value": "crédits", "inline": false },
+          { "name": "keyword_matched_content", "value": "crédits", "inline": false },
+          { "name": "flagged_message_id", "value": "5000000000000000305", "inline": false }
+        ]
+      }
+    ],
+    "components": [],
+    "pinned": false,
+    "type": 24,
+    "flags": 0
+  }
+}

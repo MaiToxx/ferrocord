@@ -1,0 +1,47 @@
+[
+  {
+    "id": "2000000000000000601",
+    "guild_id": "2000000000000000001",
+    "name": "Mots interdits",
+    "creator_id": "1000000000000000001",
+    "event_type": 1,
+    "trigger_type": 1,
+    "trigger_metadata": {
+      "keyword_filter": ["arnaque*"],
+      "regex_patterns": ["fr[e3]e n[i1]tro"],
+      "allow_list": ["arnaque-test"]
+    },
+    "actions": [
+      { "type": 1, "metadata": { "custom_message": "Pas de ça ici." } },
+      { "type": 2, "metadata": { "channel_id": "3000000000000000016" } },
+      { "type": 3, "metadata": { "duration_seconds": 60 } }
+    ],
+    "enabled": true,
+    "exempt_roles": ["2000000000000000501"],
+    "exempt_channels": []
+  },
+  {
+    "id": "2000000000000000602",
+    "guild_id": "2000000000000000001",
+    "name": "Mentions en masse",
+    "creator_id": "1000000000000000001",
+    "event_type": 1,
+    "trigger_type": 5,
+    "trigger_metadata": { "mention_total_limit": 10, "mention_raid_protection_enabled": true },
+    "actions": [{ "type": 1, "metadata": {} }],
+    "enabled": false,
+    "exempt_roles": [],
+    "exempt_channels": []
+  },
+  {
+    "id": "2000000000000000603",
+    "guild_id": "2000000000000000001",
+    "name": "Règle de Discord",
+    "event_type": 1,
+    "trigger_type": 7,
+    "trigger_metadata": {},
+    "actions": [{ "type": 2, "metadata": { "channel_id": "3000000000000000016" } }],
+    "enabled": true
+  },
+  { "id": "illisible", "trigger_type": "x" }
+]

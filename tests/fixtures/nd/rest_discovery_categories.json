@@ -1,0 +1,8 @@
+[
+  { "id": 1, "name": "Jeux", "is_primary": true },
+  { "id": 2, "name": "Musique", "is_primary": true },
+  { "id": 30, "name": "Jeux de rôle", "is_primary": false },
+  { "id": 1, "name": "Doublon", "is_primary": true },
+  { "name": "Sans identifiant", "is_primary": true },
+  "x"
+]

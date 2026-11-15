@@ -1,0 +1,10 @@
+{
+  "op": 0,
+  "t": "STREAM_SERVER_UPDATE",
+  "s": 12,
+  "d": {
+    "stream_key": "guild:2000000000000000004:3000000000000000051:1000000000000000006",
+    "guild_id": "2000000000000000004",
+    "endpoint": "direct-fictif.example.invalid:443"
+  }
+}

@@ -1,0 +1,7 @@
+[
+  { "id": "2000000000000000001", "name": "@everyone", "permissions": "1024", "position": 0, "color": 0, "hoist": false, "managed": false, "mentionable": false, "icon": null, "unicode_emoji": null, "flags": 0 },
+  { "id": "2000000000000001101", "name": "Lecteurs", "permissions": "3072", "position": 2, "color": 3447003, "hoist": true, "managed": false, "mentionable": false, "icon": null, "unicode_emoji": "📚", "flags": 0 },
+  { "id": "2000000000000001102", "name": "Invités", "permissions": "1024", "position": 1, "color": 0, "hoist": false, "managed": false, "mentionable": true, "icon": null, "unicode_emoji": null, "flags": 0 },
+  { "id": "2000000000000001103", "permissions": "illisible", "position": 3 },
+  "pas un rôle"
+]

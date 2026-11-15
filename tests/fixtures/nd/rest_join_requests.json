@@ -1,0 +1,20 @@
+{
+  "guild_join_requests": [
+    {
+      "id": "1000000000000000951", "join_request_id": "1000000000000000951", "created_at": "2026-03-04T09:30:00.000000+00:00",
+      "application_status": "SUBMITTED", "guild_id": "2000000000000000001", "last_seen": null, "rejection_reason": null,
+      "user_id": "1000000000000000701", "interview_channel_id": null,
+      "user": { "id": "1000000000000000701", "username": "camille_fictive", "global_name": "Camille Fictive", "discriminator": "0", "avatar": null },
+      "form_responses": [
+        { "field_type": "TERMS", "label": "Lis et accepte les règles", "required": true, "values": ["Rester courtois."], "response": true },
+        { "field_type": "TEXT_INPUT", "label": "Pourquoi nous rejoindre ?", "required": false, "response": "Pour parler de plantes imaginaires." },
+        { "field_type": "MULTIPLE_CHOICE", "label": "Comment nous as-tu trouvés ?", "required": true, "values": ["Un ami", "Une recherche"], "response": 1 }
+      ]
+    },
+    { "id": "1000000000000000952", "application_status": "APPROVED", "user_id": "1000000000000000702" },
+    { "id": "1000000000000000951", "application_status": "SUBMITTED", "user_id": "1000000000000000703" },
+    { "application_status": "SUBMITTED" },
+    4
+  ],
+  "total": 1
+}

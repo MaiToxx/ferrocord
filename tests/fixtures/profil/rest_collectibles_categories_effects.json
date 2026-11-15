@@ -1,0 +1,47 @@
+[
+  {
+    "sku_id": "6000000000000000900",
+    "name": "Collection fictive",
+    "summary": "Catégorie synthétique : aucune donnée réelle.",
+    "products": [
+      {
+        "sku_id": "6000000000000000010",
+        "type": 0,
+        "name": "Décoration fictive",
+        "items": [{ "type": 0, "sku_id": "6000000000000000010", "asset": "a_dec0000000000000000000000000d1", "label": "Décoration synthétique" }]
+      },
+      {
+        "sku_id": "6000000000000000302",
+        "type": 1,
+        "name": "Aurore fictive",
+        "items": [{ "type": 1, "id": "6000000000000000301", "sku_id": "6000000000000000302" }]
+      },
+      {
+        "sku_id": "6000000000000000312",
+        "type": 1,
+        "name": "Braise fictive",
+        "items": [
+          {
+            "type": 1,
+            "id": "6000000000000000311",
+            "sku_id": "6000000000000000312",
+            "title": "Braise fictive",
+            "accessibilityLabel": "Des braises synthétiques montent sur le profil",
+            "thumbnailPreviewSrc": "https://cdn.discordapp.com/assets/profile_effects/effects/fictif/braise/apercu.png",
+            "reducedMotionSrc": "https://cdn.discordapp.com/assets/profile_effects/effects/fictif/braise/reduit.png",
+            "effects": [{ "src": "https://cdn.discordapp.com/assets/profile_effects/effects/fictif/braise/boucle.png", "loop": true, "height": 880, "width": 450, "duration": 1000, "start": 0, "loopDelay": 0, "position": { "x": 0, "y": 0 }, "zIndex": 1 }]
+          }
+        ]
+      },
+      { "sku_id": "6000000000000000399", "type": 1, "name": "Doublon", "items": [{ "type": 1, "id": "6000000000000000301", "sku_id": "6000000000000000399" }] },
+      { "sku_id": null, "type": 1, "items": [{ "type": 1 }] },
+      "illisible"
+    ]
+  },
+  {
+    "sku_id": "6000000000000000901",
+    "name": "Autre collection fictive",
+    "products": [{ "sku_id": "6000000000000000001", "type": 1, "name": "Pluie fictive", "items": [{ "type": 1, "sku_id": "6000000000000000001", "effects": [] }] }]
+  },
+  null
+]

@@ -1,0 +1,39 @@
+{
+  "op": 0,
+  "t": "MESSAGE_CREATE",
+  "s": 34,
+  "d": {
+    "id": "5000000000000000910",
+    "channel_id": "3000000000000000011",
+    "guild_id": "2000000000000000001",
+    "author": { "id": "4000000000000000001", "username": "robot_fictif", "global_name": null, "discriminator": "0", "avatar": null, "bot": true, "public_flags": 0 },
+    "content": "",
+    "timestamp": "2025-01-15T10:06:00.000000+00:00",
+    "edited_timestamp": null,
+    "tts": false,
+    "mention_everyone": false,
+    "mentions": [ { "id": "1000000000000000002", "username": "alice_fictive", "global_name": "Alice", "discriminator": "0", "avatar": null } ],
+    "mention_roles": [],
+    "attachments": [
+      { "id": "7000000000000000301", "filename": "carte.png", "size": 2048, "url": "https://cdn.discordapp.com/attachments/3000000000000000011/7000000000000000301/carte.png", "proxy_url": "https://media.discordapp.net/attachments/3000000000000000011/7000000000000000301/carte.png", "width": 400, "height": 300, "content_type": "image/png" }
+    ],
+    "embeds": [],
+    "pinned": false,
+    "type": 0,
+    "flags": 32768,
+    "components": [
+      { "type": 17, "id": 1, "accent_color": 5793266, "components": [
+        { "type": 9, "id": 2, "components": [ { "type": 10, "id": 3, "content": "**Météo** du jour : <@1000000000000000002> a gagné" } ],
+          "accessory": { "type": 11, "id": 4, "media": { "url": "https://cdn.discordapp.com/attachments/3000000000000000011/7000000000000000302/icone.png", "proxy_url": "https://media.discordapp.net/attachments/3000000000000000011/7000000000000000302/icone.png", "width": 128, "height": 128, "content_type": "image/png", "attachment_id": "7000000000000000302" }, "description": "Soleil" } },
+        { "type": 14, "id": 5, "divider": true, "spacing": 2 },
+        { "type": 12, "id": 6, "items": [
+          { "media": { "url": "attachment://carte.png" }, "description": "Carte" },
+          { "media": { "url": "https://media.discordapp.net/external/fictif/photo.jpg", "proxy_url": "https://media.discordapp.net/external/fictif/photo.jpg", "width": 640, "height": 480, "content_type": "image/jpeg" }, "spoiler": true }
+        ] },
+        { "type": 1, "id": 7, "components": [ { "type": 5, "id": 8, "custom_id": "qui", "placeholder": "Choisir quelqu'un" } ] },
+        { "type": 10, "id": 9, "content": "Fin" },
+        { "type": 99, "id": 10 }
+      ] }
+    ]
+  }
+}

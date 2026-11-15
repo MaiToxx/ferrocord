@@ -1,0 +1,15 @@
+[
+  {
+    "id": "7000000000000000701",
+    "name": "Salut",
+    "tags": "wave",
+    "type": 2,
+    "format_type": 1,
+    "description": "Un salut",
+    "asset": "",
+    "available": true,
+    "guild_id": "2000000000000000001",
+    "user": { "id": "1000000000000000004", "username": "bob", "global_name": null, "avatar": null, "discriminator": "0" }
+  },
+  { "name": "sans identifiant", "format_type": 2 }
+]

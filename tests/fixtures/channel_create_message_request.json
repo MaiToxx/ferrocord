@@ -1,0 +1,6 @@
+{
+  "op": 0,
+  "t": "CHANNEL_CREATE",
+  "s": 21,
+  "d": { "id": "4000000000000000009", "type": 1, "last_message_id": "5000000000000000301", "flags": 0, "is_message_request": true, "is_message_request_timestamp": "2026-11-14T10:00:00+00:00", "is_spam": true, "recipients": [ { "id": "1000000000000000009", "username": "inconnu_fictif", "global_name": "Inconnu", "discriminator": "0", "avatar": null } ] }
+}

@@ -1,0 +1,36 @@
+{
+  "op": 0,
+  "t": "PRESENCE_UPDATE",
+  "s": 40,
+  "d": {
+    "user": { "id": "1000000000000000002" },
+    "guild_id": "2000000000000000001",
+    "status": "online",
+    "client_status": { "desktop": "online", "mobile": "idle" },
+    "activities": [
+      {
+        "name": "Custom Status",
+        "type": 4,
+        "created_at": 1736935200000,
+        "state": "En train de coder",
+        "emoji": { "name": "🦀" }
+      },
+      {
+        "name": "Jeu Fictif",
+        "type": 0,
+        "created_at": 1736935200000,
+        "timestamps": { "start": 1736935200000 },
+        "application_id": "6000000000000000001",
+        "details": "Niveau 3",
+        "state": "En solo"
+      },
+      {
+        "name": "Lecteur Fictif",
+        "type": 2,
+        "created_at": 1736935200000,
+        "details": "Morceau fictif",
+        "state": "Artiste fictif"
+      }
+    ]
+  }
+}

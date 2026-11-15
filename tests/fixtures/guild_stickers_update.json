@@ -1,0 +1,31 @@
+{
+    "op":  0,
+    "t":  "GUILD_STICKERS_UPDATE",
+    "s":  40,
+    "d":  {
+              "guild_id":  "2000000000000000001",
+              "stickers":  [
+                               {
+                                   "id":  "7000000000000000701",
+                                   "name":  "Wave",
+                                   "tags":  "wave",
+                                   "type":  2,
+                                   "format_type":  1,
+                                   "description":  "Salut",
+                                   "available":  true,
+                                   "guild_id":  "2000000000000000001"
+                               },
+                               {
+                                   "id":  "7000000000000000702",
+                                   "name":  "Perdu",
+                                   "tags":  "x",
+                                   "type":  2,
+                                   "format_type":  1,
+                                   "description":  null,
+                                   "available":  false,
+                                   "guild_id":  "2000000000000000001"
+                               },
+                               "illisible"
+                           ]
+          }
+}

@@ -1,0 +1,26 @@
+[
+  {
+    "id": "7000000000000000001",
+    "title": "",
+    "url": "https://tenor.com/view/chat-synthetique-gif-7000000000000000001",
+    "src": "https://media.tenor.com/synthetique01AAAAM/chat-synthetique.gif",
+    "gif_src": "https://media.tenor.com/synthetique01AAAAC/chat-synthetique.gif",
+    "width": 220,
+    "height": 124,
+    "preview": "https://media.tenor.com/synthetique01AAAAD/chat-synthetique.png"
+  },
+  {
+    "id": "7000000000000000002",
+    "title": "",
+    "url": "https://tenor.com/view/chat-qui-saute-gif-7000000000000000002",
+    "src": "https://media.tenor.com/synthetique02AAAAM/chat-qui-saute.gif",
+    "gif_src": "https://media.tenor.com/synthetique02AAAAC/chat-qui-saute.gif",
+    "width": 220,
+    "height": 220,
+    "preview": "https://media.tenor.com/synthetique02AAAAD/chat-qui-saute.png"
+  },
+  { "id": "7000000000000000003", "title": "", "src": "https://media.tenor.com/synthetique03AAAAM/sans-adresse.gif" },
+  { "id": "7000000000000000004", "url": "https://tenor.com/view/media-non-https-gif-7000000000000000004", "src": "http://media.tenor.com/synthetique04AAAAM/x.gif" },
+  42,
+  { "id": "7000000000000000005", "url": "https://tenor.com/view/champs-absents-gif-7000000000000000005", "src": "https://media.tenor.com/synthetique05AAAAM/champs-absents.gif" }
+]

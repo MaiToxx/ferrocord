@@ -1,0 +1,6 @@
+{
+  "op": 0,
+  "t": "RELATIONSHIP_UPDATE",
+  "s": 11,
+  "d": { "id": "1000000000000000002", "type": 1, "nickname": "Ali", "user_ignored": true, "since": "2024-01-01T00:00:00+00:00" }
+}

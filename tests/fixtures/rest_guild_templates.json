@@ -1,0 +1,15 @@
+[
+  {
+    "code": "hgM48av5Q69A",
+    "name": "Club fictif",
+    "description": "Salons et rôles d'un club.",
+    "usage_count": 3,
+    "creator_id": "1000000000000000001",
+    "created_at": "2026-01-10T10:00:00+00:00",
+    "updated_at": "2026-02-01T10:00:00+00:00",
+    "source_guild_id": "2000000000000000001",
+    "serialized_source_guild": { "name": "Alpha" },
+    "is_dirty": true
+  },
+  { "name": "sans code" }
+]

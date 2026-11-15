@@ -1,0 +1,6 @@
+{
+  "op": 0,
+  "t": "PRESENCE_UPDATE",
+  "s": 14,
+  "d": { "user": { "id": "1000000000000000003" }, "status": "idle", "client_status": { "desktop": "idle" }, "activities": [] }
+}

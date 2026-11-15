@@ -1,0 +1,43 @@
+{
+  "op": 0,
+  "t": "GUILD_CREATE",
+  "s": 2,
+  "d": {
+    "id": "2000000000000000001",
+    "name": "Serveur Alpha",
+    "icon": "a1fa0000000000000000000000000a1f",
+    "splash": null,
+    "owner_id": "1000000000000000002",
+    "afk_channel_id": null,
+    "afk_timeout": 300,
+    "verification_level": 1,
+    "default_message_notifications": 1,
+    "explicit_content_filter": 0,
+    "roles": [{ "id": "2000000000000000001", "name": "@everyone", "permissions": "1024", "position": 0, "color": 0, "hoist": false, "managed": false, "mentionable": false, "flags": 0 }],
+    "emojis": [],
+    "features": [],
+    "mfa_level": 0,
+    "system_channel_id": "3000000000000000011",
+    "preferred_locale": "fr",
+    "premium_tier": 0,
+    "nsfw_level": 0,
+    "joined_at": "2024-03-01T12:00:00.000000+00:00",
+    "large": false,
+    "unavailable": false,
+    "member_count": 4,
+    "voice_states": [],
+    "members": [],
+    "threads": [],
+    "presences": [],
+    "stage_instances": [],
+    "guild_scheduled_events": [],
+    "soundboard_sounds": [],
+    "channels": [
+      { "id": "3000000000000000012", "type": 0, "name": "hors-sujet", "position": 1, "parent_id": "3000000000000000010", "permission_overwrites": [], "nsfw": false, "topic": null, "last_message_id": null, "rate_limit_per_user": 0, "flags": 0 },
+      { "id": "3000000000000000014", "type": 2, "name": "Vocal", "position": 2, "parent_id": "3000000000000000010", "permission_overwrites": [], "bitrate": 64000, "user_limit": 0, "rtc_region": null, "flags": 0 },
+      { "id": "3000000000000000010", "type": 4, "name": "Discussions", "position": 0, "parent_id": null, "permission_overwrites": [], "flags": 0 },
+      { "id": "3000000000000000011", "type": 0, "name": "général", "position": 0, "parent_id": "3000000000000000010", "permission_overwrites": [], "nsfw": false, "topic": null, "last_message_id": null, "rate_limit_per_user": 0, "flags": 0 },
+      { "id": "3000000000000000013", "type": 5, "name": "annonces", "position": 0, "parent_id": null, "permission_overwrites": [], "nsfw": false, "topic": null, "last_message_id": null, "flags": 0 }
+    ]
+  }
+}

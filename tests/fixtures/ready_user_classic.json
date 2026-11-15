@@ -1,0 +1,100 @@
+{
+  "op": 0,
+  "t": "READY",
+  "s": 1,
+  "d": {
+    "v": 10,
+    "user": {
+      "id": "1000000000000000001",
+      "username": "moi_fictif",
+      "global_name": "Moi Fictif",
+      "discriminator": "0",
+      "avatar": "0e010000000000000000000000000e01",
+      "bot": false,
+      "mfa_enabled": false,
+      "verified": true,
+      "email": null,
+      "flags": 0,
+      "premium_type": 0
+    },
+    "session_id": "session-fictive-0001",
+    "resume_gateway_url": "wss://reprise.example.invalid",
+    "session_type": "normal",
+    "guilds": [
+      {
+        "id": "2000000000000000001",
+        "name": "Serveur Alpha",
+        "icon": "a1fa0000000000000000000000000a1f",
+        "owner_id": "1000000000000000002",
+        "joined_at": "2024-03-01T12:00:00.000000+00:00",
+        "member_count": 4,
+        "large": false,
+        "roles": [{ "id": "2000000000000000001", "name": "@everyone", "permissions": "1024", "position": 0, "color": 0, "hoist": false, "managed": false, "mentionable": false }],
+        "channels": [
+          { "id": "3000000000000000021", "type": 0, "name": "ancien", "position": 0, "parent_id": "3000000000000000020", "permission_overwrites": [], "nsfw": false, "topic": null, "last_message_id": null, "rate_limit_per_user": 0, "flags": 0 },
+          { "id": "3000000000000000011", "type": 0, "name": "général", "position": 0, "parent_id": "3000000000000000010", "permission_overwrites": [], "nsfw": false, "topic": "Salon fictif", "last_message_id": "5000000000000000203", "rate_limit_per_user": 0, "flags": 0 },
+          { "id": "3000000000000000020", "type": 4, "name": "Archives", "position": 1, "parent_id": null, "permission_overwrites": [], "flags": 0 },
+          { "id": "3000000000000000014", "type": 2, "name": "Vocal", "position": 2, "parent_id": "3000000000000000010", "permission_overwrites": [], "bitrate": 64000, "user_limit": 0, "rtc_region": null, "flags": 0 },
+          { "id": "3000000000000000013", "type": 5, "name": "annonces", "position": 0, "parent_id": null, "permission_overwrites": [], "nsfw": false, "topic": null, "last_message_id": null, "flags": 0 },
+          { "id": "3000000000000000010", "type": 4, "name": "Discussions", "position": 0, "parent_id": null, "permission_overwrites": [], "flags": 0 },
+          { "id": "3000000000000000012", "type": 0, "name": "hors-sujet", "position": 1, "parent_id": "3000000000000000010", "permission_overwrites": [], "nsfw": false, "topic": null, "last_message_id": null, "rate_limit_per_user": 0, "flags": 0 }
+        ]
+      },
+      {
+        "id": "2000000000000000002",
+        "name": "Serveur Bêta",
+        "icon": null,
+        "owner_id": "1000000000000000001",
+        "joined_at": "2024-04-01T12:00:00.000000+00:00",
+        "member_count": 2,
+        "large": false,
+        "roles": [],
+        "channels": [
+          { "id": "3000000000000000031", "type": 0, "name": "accueil", "position": 0, "parent_id": null, "permission_overwrites": [], "nsfw": false, "topic": null, "last_message_id": null, "rate_limit_per_user": 0, "flags": 0 }
+        ]
+      },
+      {
+        "id": "2000000000000000003",
+        "name": "Serveur Gamma",
+        "icon": null,
+        "owner_id": "1000000000000000003",
+        "joined_at": "2024-05-01T12:00:00.000000+00:00",
+        "member_count": 3,
+        "large": false,
+        "roles": [],
+        "channels": [
+          { "id": "3000000000000000041", "type": 0, "name": "salon-gamma", "position": 0, "parent_id": null, "permission_overwrites": [], "nsfw": false, "topic": null, "last_message_id": null, "rate_limit_per_user": 0, "flags": 0 }
+        ]
+      }
+    ],
+    "private_channels": [
+      {
+        "id": "4000000000000000001",
+        "type": 1,
+        "last_message_id": "5000000000000000100",
+        "flags": 0,
+        "recipients": [{ "id": "1000000000000000002", "username": "alice_fictive", "global_name": "Alice", "discriminator": "0", "avatar": "a11ce0000000000000000000000000a1", "public_flags": 0 }]
+      },
+      {
+        "id": "4000000000000000002",
+        "type": 3,
+        "name": null,
+        "icon": null,
+        "owner_id": "1000000000000000003",
+        "last_message_id": "5000000000000000200",
+        "flags": 0,
+        "recipients": [
+          { "id": "1000000000000000003", "username": "bob_fictif", "global_name": null, "discriminator": "0", "avatar": null, "public_flags": 0 },
+          { "id": "1000000000000000004", "username": "eve_fictive", "global_name": "Ève", "discriminator": "0", "avatar": null, "public_flags": 0 }
+        ]
+      }
+    ],
+    "relationships": [],
+    "presences": [],
+    "user_settings": {
+      "guild_positions": ["2000000000000000003", "2000000000000000001", "2000000000000000002"],
+      "locale": "fr",
+      "theme": "dark"
+    }
+  }
+}

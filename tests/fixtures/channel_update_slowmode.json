@@ -1,0 +1,6 @@
+{
+  "op": 0,
+  "t": "CHANNEL_UPDATE",
+  "s": 23,
+  "d": { "id": "3000000000000000011", "type": 0, "guild_id": "2000000000000000001", "name": "général", "position": 0, "parent_id": "3000000000000000010", "permission_overwrites": [], "nsfw": false, "topic": "Salon fictif", "last_message_id": "5000000000000000203", "rate_limit_per_user": 30, "flags": 0 }
+}

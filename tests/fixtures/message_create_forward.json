@@ -1,0 +1,41 @@
+{
+  "op": 0,
+  "t": "MESSAGE_CREATE",
+  "s": 31,
+  "d": {
+    "id": "5000000000000000321",
+    "channel_id": "3000000000000000011",
+    "guild_id": "2000000000000000001",
+    "author": { "id": "1000000000000000004", "username": "eve_fictive", "global_name": null, "discriminator": "0", "avatar": null, "public_flags": 0 },
+    "content": "",
+    "timestamp": "2025-01-15T10:06:00.000000+00:00",
+    "edited_timestamp": null,
+    "tts": false,
+    "mention_everyone": false,
+    "mentions": [],
+    "mention_roles": [],
+    "attachments": [],
+    "embeds": [],
+    "components": [],
+    "pinned": true,
+    "type": 0,
+    "flags": 16384,
+    "message_reference": { "type": 1, "message_id": "5000000000000000150", "channel_id": "3000000000000000012", "guild_id": "2000000000000000001" },
+    "message_snapshots": [
+      {
+        "message": {
+          "type": 0,
+          "content": "Réunion demain à 10 h, ordre du jour dans le fichier joint.",
+          "embeds": [],
+          "attachments": [ { "id": "7000000000000000009", "filename": "ordre-du-jour.txt", "size": 120, "url": "https://cdn.discordapp.com/attachments/3000000000000000012/7000000000000000009/ordre-du-jour.txt?ex=00000000&is=00000000&hm=00" } ],
+          "timestamp": "2025-01-14T18:00:00.000000+00:00",
+          "edited_timestamp": null,
+          "flags": 0,
+          "mentions": [],
+          "mention_roles": [],
+          "components": []
+        }
+      }
+    ]
+  }
+}

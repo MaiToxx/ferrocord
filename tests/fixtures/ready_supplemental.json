@@ -1,0 +1,19 @@
+{
+  "op": 0,
+  "t": "READY_SUPPLEMENTAL",
+  "s": 2,
+  "d": {
+    "guilds": [{ "id": "2000000000000000001", "voice_states": [], "embedded_activities": [] }],
+    "merged_members": [[]],
+    "merged_presences": {
+      "guilds": [[]],
+      "friends": [
+        { "user_id": "1000000000000000002", "status": "online", "client_status": { "desktop": "online" }, "activities": [{ "type": 4, "name": "Custom Status", "state": "Disponible" }, { "type": 0, "name": "Jeu fictif", "created_at": 1700000000000 }] },
+        { "user_id": "1000000000000000003", "status": "dnd", "client_status": { "mobile": "dnd" }, "activities": [{ "type": 4, "name": "Custom Status", "state": "En réunion" }] },
+        { "user_id": "1000000000000000005", "status": "unknown_status", "activities": "illisible" }
+      ]
+    },
+    "lazy_private_channels": [],
+    "disclose": []
+  }
+}

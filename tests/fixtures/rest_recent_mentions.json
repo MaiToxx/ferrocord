@@ -1,0 +1,40 @@
+[
+  {
+    "id": "5000000000000000403",
+    "channel_id": "3000000000000000012",
+    "author": { "id": "1000000000000000003", "username": "bob_fictif", "global_name": "Bob", "discriminator": "0", "avatar": null, "public_flags": 0 },
+    "content": "Salut <@1000000000000000001>, as-tu vu <#3000000000000000011> ?",
+    "timestamp": "2025-01-15T10:03:00.000000+00:00",
+    "edited_timestamp": null,
+    "tts": false,
+    "mention_everyone": false,
+    "mentions": [
+      { "id": "1000000000000000001", "username": "moi_fictif", "global_name": "Moi Fictif", "discriminator": "0", "avatar": null, "public_flags": 0 }
+    ],
+    "mention_roles": [],
+    "attachments": [],
+    "embeds": [],
+    "components": [],
+    "pinned": false,
+    "type": 0,
+    "flags": 0
+  },
+  {
+    "id": "5000000000000000401",
+    "channel_id": "4000000000000000001",
+    "author": { "id": "1000000000000000002", "username": "alice_fictive", "global_name": "Alice", "discriminator": "0", "avatar": null, "public_flags": 0 },
+    "content": "<@1000000000000000001> tu viens ce soir ?",
+    "timestamp": "2025-01-15T10:01:00.000000+00:00",
+    "edited_timestamp": null,
+    "tts": false,
+    "mention_everyone": false,
+    "mentions": [
+      { "id": "1000000000000000001", "username": "moi_fictif", "global_name": "Moi Fictif", "discriminator": "0", "avatar": null, "public_flags": 0 }
+    ],
+    "mention_roles": [],
+    "attachments": [],
+    "embeds": [],
+    "pinned": false,
+    "type": 0
+  }
+]

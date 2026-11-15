@@ -1,0 +1,11 @@
+{
+  "code": "fictif",
+  "type": 0,
+  "expires_at": null,
+  "guild": { "id": "2000000000000000301", "name": "Club fictif", "icon": null, "features": ["MEMBER_VERIFICATION_GATE_ENABLED"], "nsfw_level": 0 },
+  "guild_id": "2000000000000000301",
+  "channel": { "id": "3000000000000000301", "type": 0, "name": "accueil" },
+  "inviter": { "id": "1000000000000000002", "username": "alice", "global_name": "Alice", "avatar": null },
+  "new_member": true,
+  "show_verification_form": true
+}

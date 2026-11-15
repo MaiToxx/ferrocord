@@ -1,0 +1,27 @@
+{
+  "op": 0,
+  "t": "GUILD_CREATE",
+  "s": 3,
+  "d": {
+    "id": "2000000000000000002",
+    "name": "Serveur Bêta",
+    "icon": null,
+    "owner_id": "1000000000000000001",
+    "roles": [],
+    "emojis": [],
+    "features": [],
+    "joined_at": "2024-04-01T12:00:00.000000+00:00",
+    "large": false,
+    "unavailable": false,
+    "member_count": 2,
+    "voice_states": [],
+    "members": [],
+    "threads": [],
+    "presences": [],
+    "stage_instances": [],
+    "guild_scheduled_events": [],
+    "channels": [
+      { "id": "3000000000000000031", "type": 0, "name": "accueil", "position": 0, "parent_id": null, "permission_overwrites": [], "nsfw": false, "topic": null, "last_message_id": null, "rate_limit_per_user": 0, "flags": 0 }
+    ]
+  }
+}

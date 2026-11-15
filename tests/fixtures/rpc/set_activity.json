@@ -1,0 +1,26 @@
+{
+  "nonce": "1",
+  "cmd": "SET_ACTIVITY",
+  "args": {
+    "pid": 4242,
+    "activity": {
+      "state": "En groupe",
+      "details": "Donjon des Brumes",
+      "timestamps": { "start": 1700000000, "end": 1700000900 },
+      "assets": {
+        "large_image": "6000000000000000041",
+        "large_text": "Carte du monde",
+        "small_image": "niveau",
+        "small_text": "Niveau 12"
+      },
+      "party": { "id": "groupe-1", "size": [2, 4], "privacy": 0 },
+      "secrets": { "match": "secret-partie", "join": "secret-rejoindre", "spectate": "secret-regarder" },
+      "instance": false,
+      "buttons": [
+        { "label": "Site du jeu", "url": "https://exemple.invalid/jeu" },
+        { "label": "Piège", "url": "javascript:alert(1)" }
+      ],
+      "champ_futur": { "inconnu": true }
+    }
+  }
+}

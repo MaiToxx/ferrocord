@@ -1,0 +1,195 @@
+[package]
+name = "ferrocord"
+version = "0.1.0"
+edition = "2024"
+# 1.88 suffit aux let-chains, mais eframe/egui 0.37 exigent 1.95.
+rust-version = "1.95"
+description = "Client Discord natif et léger écrit en Rust (non officiel)"
+
+# android/ : bibliothèque native de l'APK (phase 7). Les commandes lancées
+# ici ne concernent que ferrocord ; tools/signer reste un outil à part.
+[workspace]
+members = ["android"]
+
+[dependencies]
+chrono = "0.4.45"
+# Rendu OpenGL (glow) : beaucoup plus léger que wgpu pour une interface 2D simple.
+# Vérifié au lot « d3d » (docs/mesures-d3d.md) : wgpu sur Direct3D 12 coûte ici
+# +158 Mo de mémoire privée, +400 ms de démarrage et +4,5 Mo d'exécutable.
+# Sans « links » : les liens sont ouverts par `install::browser` (lot C6), qui
+# retire `DISCORD_TOKEN` de l'environnement du navigateur ; webbrowser retiré.
+eframe = { version = "0.37.0", default-features = false, features = ["glow", "default_fonts", "clipboard"] }
+# Glyphes en couleur (COLR) : les emojis de Segoe UI Emoji dans les pseudos et les noms
+# (lot « glyphes »). Rien à télécharger : epaint et vello_cpu sont déjà là (eframe) ; seule
+# la partie texte de vello_cpu (glifo) s'ajoute à la compilation.
+epaint = { version = "0.37.0", default-features = false, features = ["color_fonts"] }
+# Décompression du flux de la passerelle (zlib-stream). Déjà présente dans
+# l'exécutable (PNG, via image), avec le moteur Rust pur miniz_oxide.
+flate2 = "1.1.11"
+futures-util ={ version = "0.3.34", default-features = false, features = ["sink", "std"] }
+# Décodage des avatars et icônes (PNG, JPEG, WebP, GIF), sans les autres formats
+# ni rayon. Déjà présente dans l'exécutable (PNG, via eframe et arboard) ; seuls
+# les décodeurs JPEG, WebP et GIF s'y ajoutent.
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls"] }
+serde = { version = "1.0.229", features = ["derive"] }
+# Langue du système au démarrage (Windows : GetUserPreferredUILanguages), sans dépendance.
+sys-locale = "0.3.2"
+serde_json = { version = "1.0.154", features = ["raw_value"] }
+# io-util : lecture des trames du tube Rich Presence (lot R) ; déjà activée par
+# d'autres dépendances (cargo tree), nommée ici : rien ne s'ajoute.
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "time", "sync", "net", "io-util"] }
+tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"] }
+# Déjà présente (c'est la boucle d'événements d'eframe) ; nommée ici pour lister
+# les écrans avant de créer la fenêtre (position retenue hors écran : ignorée).
+# Aucune fonctionnalité ajoutée, aucune nouvelle crate.
+winit = { version = "0.30.13", default-features = false }
+# Lecture de theme.toml avec la position de chaque valeur (lignes des erreurs) ; sans serde ni écriture.
+toml = { version = "1.2.1", default-features = false, features = ["std", "parse"] }
+
+# Corps en flux des envois de fichiers (lot T8) : déjà présentes dans
+# l'exécutable (via reqwest et hyper), nommées pour `reqwest::Body::wrap`.
+bytes = "1.12.1"
+http-body = "1.0.1"
+# Chiffrement du transport vocal (AES-256-GCM, ChaCha20-Poly1305 ; lot V1) et
+# de bout en bout DAVE (MLS : ECDSA/ECDH P-256, HKDF, HPKE ; AES-128-GCM ; lot
+# V3) : déjà dans l'exécutable comme moteur de rustls. openmls écarté : +2,45 Mio.
+aws-lc-rs = { version = "1.19.0", default-features = false, features = ["aws-lc-sys"] }
+
+# Codec Opus du vocal (lot V2) : liaisons sûres de libopus (C, compilée par
+# CMake et liée statiquement via opusic-sys), sans autre dépendance Rust.
+# Encodeur + décodeur, FEC, PLC et DTX : tout ce que demande Discord.
+# Mesuré : +584 Kio sur l'exécutable de release (moteur entier compris).
+# Écartées : audiopus (même libopus, API moins complète, plus maintenue) et les
+# Opus en Rust pur (encodeurs jeunes, sans FEC/DTX fiables).
+opus = "0.4.0"
+# Suppression de bruit de base : spectrale, écrite à la main (audio/dsp/denoise.rs).
+# nnnoiseless (RNNoise en Rust pur, +1,11 Mio mesurés au lot V7) avait été retirée
+# pour tenir le budget de taille ; ce budget levé, elle revient au lot E4 comme
+# plugin (coupé par défaut, audio/dsp/rnn.rs). Sans ses fonctionnalités par défaut
+# (ni outil en ligne de commande, ni lecture de fichiers) : s'ajoutent easyfft,
+# realfft, rustfft et leurs petites dépendances, toutes en Rust pur.
+nnnoiseless = { version = "0.5.2", default-features = false }
+# Codec H.264 de la vidéo (lot M2), REPLI LOGICIEL : OpenH264 de Cisco (C++,
+# BSD-2), compilé depuis ses sources et lié statiquement, derrière une
+# interface sûre. Sert quand Windows n'a ni encodeur matériel ni décodeur
+# H.264 (Media Foundation, voir src/video/codec/mod.rs pour les mesures).
+openh264 = { version = "0.9.10", default-features = false, features = ["source"] }
+# Décodage MP3 des sons du tableau (phase 6) : Rust pur, sans `unsafe` de
+# notre côté, seul le format MP3 (l'Ogg/Opus est lu à la main + libopus,
+# src/audio/clip/). Écartée : minimp3 (C, liaison moins tenue). Mesuré :
+# +609 Kio sur l'exécutable de release pour tout le lot (27,04 → 27,66 Mo).
+# « vorbis » : son des fichiers WebM anciens (lot VID), Rust pur, même crate.
+symphonia = { version = "0.5.4", default-features = false, features = ["mp3", "vorbis"] }
+# Connexion par QR code (lot C2) : encodeur QR de Nayuki, Rust pur, sans
+# dépendance ; le QR est dessiné module par module dans egui (aucune image).
+qrcodegen = "1.8.0"
+
+[features]
+# Lot « d3d » (essai) : rendu wgpu (Direct3D 12) à côté d'OpenGL, choisi au lancement par
+# FERROCORD_RENDU=d3d12 (src/rendu.rs). Désactivée par défaut et à laisser ainsi : mesuré
+# nettement plus lourd et plus lent qu'OpenGL (docs/mesures-d3d.md). Gardée pour refaire
+# la mesure avec un wgpu ou un pilote plus récent ; rien n'en entre dans l'exécutable livré.
+rendu-wgpu = ["eframe/wgpu_no_default_features", "dep:wgpu"]
+
+[target.'cfg(windows)'.dependencies]
+# Boîte de dialogue « Ouvrir » native de Windows (IFileOpenDialog) sans
+# écrire d'`unsafe` nous-mêmes ; seulement windows-sys 0.61 (déjà présent,
+# via winit) et raw-window-handle (déjà présent). Lot T8.
+rfd = { version = "0.18.0", default-features = false }
+# Coffre à jetons : Gestionnaire d'identifiants de Windows, sans écrire
+# d'`unsafe` nous-mêmes. Seulement le magasin natif Windows (pas de recherche
+# par expression régulière, pas d'autres systèmes).
+keyring-core = "1.0.1"
+windows-native-keyring-store = { version = "1.1.0", default-features = false }
+# Nombre de noms (liens physiques) d'un fichier avant de l'écraser par des
+# zéros : la bibliothèque standard ne le donne pas encore sous Windows.
+# Déjà présente dans l'arbre des dépendances (via walkdir/same-file).
+winapi-util = "0.1.11"
+# Notifications de bureau (toasts) et sons, par les API WinRT de Windows :
+# déjà présente (via accesskit_windows) ; ces API y sont sûres, sans `unsafe`
+# de notre côté. Seules les liaisons utilisées entrent dans l'exécutable.
+# Win32_Media_MediaFoundation, Com, Ole, Variant : codecs H.264 de Windows
+# (lot M2, `unsafe` isolé dans src/video/codec/mf.rs).
+# Win32_UI_WindowsAndMessaging, Input_KeyboardAndMouse, LibraryLoader :
+# appui-pour-parler global (crochet clavier, src/voice/ptt_hook.rs).
+# Win32_System_Diagnostics_ToolHelp : programmes en cours, détection des jeux (lot C3, src/procs.rs).
+# Win32_Graphics_Gdi : ScreenToClient, barre de titre intégrée (lot V1, src/platform/caption.rs).
+# Win32_Security_Cryptography : DPAPI, clé de l'historique hors ligne (lot H, src/offline/dpapi.rs).
+# Win32_System_Memory : polices du système projetées en mémoire, pas copiées (lot C9, src/platform/mapped.rs).
+# Globalization : fuseau horaire IANA du système (Calendar.GetTimeZone), pour net/identity.rs.
+# Win32_Graphics_Dwm, Win32_UI_Controls (structure MARGINS) : fond Mica ou acrylique de
+# Windows 11 (lot E5, `unsafe` isolé dans src/platform/backdrop.rs). Liaisons seules, aucune crate.
+# Win32_UI_Shell : raccourcis .lnk de l'installation (IShellLinkW, lot distrib, `unsafe` isolé dans src/install/shortcut.rs).
+windows = { version = "0.62.2", features = ["Data_Xml_Dom", "Foundation", "Media_Core", "Media_Playback", "Media_SpeechSynthesis", "UI_Notifications", "Devices_Enumeration", "Foundation_Collections", "Graphics_Imaging", "Media_Capture", "Media_Capture_Frames", "Media_MediaProperties", "Storage_Streams", "Win32_Foundation", "Win32_Media_Audio", "Win32_Media_MediaFoundation", "Win32_Security", "Win32_Security_Cryptography", "Win32_System_Com", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Com_StructuredStorage", "Win32_System_Ole", "Win32_System_Threading", "Win32_System_Variant", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_LibraryLoader", "Win32_System_Memory", "Globalization", "Win32_Graphics_Gdi", "Win32_Graphics_Dwm", "Win32_UI_Controls", "Win32_UI_Shell", "Wdk_System_Threading"] }
+# Nom et icône des notifications (clé AppUserModelId du registre de
+# l'utilisateur) : interface sûre des mêmes auteurs, sur les mêmes crates de base.
+windows-registry = "0.6.1"
+# Icône de la zone de notification et son menu (Shell_NotifyIcon), sans
+# `unsafe` de notre côté ; sur windows-sys 0.61, déjà présente.
+tray-icon = { version = "0.26.1", default-features = false }
+# Périphériques audio du vocal (lot V5) : WASAPI en mode partagé, sans
+# `unsafe` de notre côté ; repose sur `windows` 0.62, déjà présente.
+cpal = { version = "0.18.2", default-features = false }
+# Capture d'écrans et de fenêtres (lot M3) : Windows Graphics Capture,
+# énumération des écrans et fenêtres, lecture des pixels par une texture
+# intermédiaire D3D11 ; tout l'`unsafe` (interop COM/D3D11) est dans la crate.
+# Sur `windows` 0.62, déjà présente ; ajoute rayon (non appelé : retiré par
+# l'éditeur de liens). Écartée : notre propre interop, qui exige de l'`unsafe`
+# (IGraphicsCaptureItemInterop, D3D11CreateDevice, EnumWindows).
+windows-capture = "2.0.1"
+# Déjà présente (base de `windows`) : nommée pour la macro `#[implement]` du
+# rappel d'activation de la boucle WASAPI par processus (lot M3).
+windows-core = "0.62.2"
+# Rendu Direct3D 12 (lot « d3d », fonctionnalité « rendu-wgpu ») : le wgpu d'eframe,
+# nommé ici pour ne lui donner QUE le dorsal DX12 (ni Vulkan, ni Metal, ni GLES, ni WebGPU).
+wgpu = { version = "30.0.2", default-features = false, features = ["dx12"], optional = true }
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+# Accessibilité (lecteurs d'écran) : partout sauf Android, où eframe ne
+# l'offre qu'avec GameActivity (classe Java à embarquer), pas NativeActivity.
+eframe = { version = "0.37.0", default-features = false, features = ["accesskit"] }
+# Dossiers du système ; sur Android, ceux de l'activité (src/platform).
+dirs = "7.0.0"
+
+[target.'cfg(target_os = "android")'.dependencies]
+# Android (phase 7) : point d'entrée NativeActivity d'eframe et de winit
+# (mêmes versions, seule la fonctionnalité de plateforme s'ajoute).
+eframe = { version = "0.37.0", default-features = false, features = ["android-native-activity"] }
+winit = { version = "0.30.13", default-features = false, features = ["android-native-activity"] }
+# Micro et haut-parleur : AAudio, par la même crate que WASAPI sous Windows.
+cpal = { version = "0.18.2", default-features = false }
+# Appels Java (Keystore, Intent, permissions, notifications) depuis la
+# NativeActivity ; `ndk-context` donne la JavaVM et l'activité.
+jni = { version = "0.22.4", default-features = false }
+ndk-context = "0.1.1"
+# Racines TLS de Mozilla pour reqwest : le vérificateur du système de
+# reqwest (rustls-platform-verifier) exige sur Android une classe Java que
+# l'APK, sans code Java, n'a pas, et panique à la première requête.
+# Déjà dans Cargo.lock (même source que webpki-roots de tokio-tungstenite).
+webpki-root-certs = "1.0.12"
+
+[dev-dependencies]
+# Captures PNG de l'aperçu hors ligne (examples/preview.rs) ; absent de l'exécutable.
+png = "0.18.1"
+# Tests seulement : lecture/écriture ligne à ligne du faux serveur HTTP (aucune nouvelle crate).
+tokio = { version = "1.54.1", features = ["io-util"] }
+
+# RNNoise et sa transformée de Fourier sont optimisées même en débogage : sans
+# cela le plugin coûte 19 % d'un cœur (mesuré) au lieu d'environ 1 %, et le
+# test de coût (audio::dsp::rnn) ne dirait rien de la version livrée.
+[profile.dev.package.nnnoiseless]
+opt-level = 3
+[profile.dev.package.rustfft]
+opt-level = 3
+[profile.dev.package.realfft]
+opt-level = 3
+[profile.dev.package.easyfft]
+opt-level = 3
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = true
+panic = "unwind"

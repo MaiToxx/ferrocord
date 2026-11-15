@@ -1,0 +1,44 @@
+# Thème Ferrocord (.ferrotheme) : bruns sombres et accent de braise, léger dégradé chaud.
+# Pour l'utiliser : Paramètres > Apparence > Thèmes partageables, ou déposez ce
+# fichier sur la fenêtre de Ferrocord. Les clés absentes viennent de « base ».
+ferrotheme = 1
+nom = "Braise"
+auteur = "Ferrocord"
+
+version = 3
+base = "sombre"
+
+[couleurs]
+bg0 = "#161210"
+bg1 = "#161210"
+bg2 = "#1e1916"
+bg3 = "#29221d"
+border = "#3a302a"
+pill = "#29221d"
+selected = "#332a24"
+row_hover = "#241d19"
+text = "#e6dfd9"
+text_strong = "#fcf8f4"
+muted = "#b5a99f"
+faint = "#a0958b"
+accent = "#c2501a"
+widget_text = "#b5a99f"
+button_bg = "#382e27"
+button_text = "#fcf8f4"
+control_bg = "#453930"
+separator = "#2c2420"
+menu_bg = "#2a221d"
+menu_hover = "#3a2f28"
+channel_idle = "#8f8379"
+
+[texte_riche]
+code_bg = "#161210"
+mention_bg = "#c2501a4d"
+mention_text = "#ffd2b3"
+spoiler = "#3a302a"
+
+[apparence]
+degrade = true
+degrade_couleurs = ["#8a1f2b", "#d96a1e"]
+degrade_angle = 20
+degrade_force = 14

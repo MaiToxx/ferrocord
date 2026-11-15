@@ -1,0 +1,8 @@
+[
+  { "id": "6000000000000000051", "type": 1, "name": "logo" },
+  { "id": "6000000000000000052", "type": 2, "name": "carte_2" },
+  { "id": "pas-un-identifiant", "type": 1, "name": "faux" },
+  { "id": "6000000000000000053", "type": 1, "name": "nom avec espace" },
+  { "id": "6000000000000000054", "type": 1 },
+  "entrée fictive mal formée"
+]

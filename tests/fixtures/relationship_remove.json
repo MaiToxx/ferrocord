@@ -1,0 +1,6 @@
+{
+  "op": 0,
+  "t": "RELATIONSHIP_REMOVE",
+  "s": 12,
+  "d": { "id": "1000000000000000006", "type": 4, "nickname": null, "user_ignored": false }
+}

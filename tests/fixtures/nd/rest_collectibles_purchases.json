@@ -1,0 +1,65 @@
+[
+  {
+    "sku_id": "6000000000000000001",
+    "type": 1,
+    "name": "Pluie fictive",
+    "purchased_at": "2026-01-02T03:04:05+00:00",
+    "purchase_type": 1,
+    "items": [
+      {
+        "type": 1,
+        "sku_id": "6000000000000000001",
+        "title": "Pluie fictive",
+        "accessibilityLabel": "Des gouttes synthétiques tombent sur le profil",
+        "animationType": 1,
+        "thumbnailPreviewSrc": "https://cdn.discordapp.com/assets/profile_effects/effects/fictif/pluie/apercu.png",
+        "reducedMotionSrc": "https://cdn.discordapp.com/assets/profile_effects/effects/fictif/pluie/reduit.png",
+        "effects": [
+          { "src": "https://cdn.discordapp.com/assets/profile_effects/effects/fictif/pluie/boucle.png", "loop": true, "height": 880, "width": 450, "duration": 1200, "start": 0, "loopDelay": 300, "position": { "x": 0, "y": 0 }, "zIndex": 1 }
+        ]
+      }
+    ]
+  },
+  {
+    "sku_id": "6000000000000000010",
+    "type": 0,
+    "name": "Décoration fictive",
+    "purchased_at": "2026-01-02T03:04:05+00:00",
+    "items": [{ "type": 0, "sku_id": "6000000000000000010", "asset": "a_dec0000000000000000000000000d1", "label": "Décoration synthétique" }]
+  },
+  {
+    "sku_id": "6000000000000000020",
+    "type": 2,
+    "name": "Plaque fictive",
+    "items": [{ "type": 2, "sku_id": "6000000000000000020", "asset": "nameplates/nameplates/fictive/", "palette": "cobalt", "label": "Plaque synthétique" }]
+  },
+  {
+    "sku_id": "6000000000000000002",
+    "type": 1,
+    "name": "Braises fictives",
+    "purchased_at": "2026-02-03T04:05:06+00:00",
+    "purchase_type": 10,
+    "items": [
+      {
+        "type": 1,
+        "sku_id": "6000000000000000002",
+        "title": "Braises fictives",
+        "accessibilityLabel": "Des braises synthétiques montent du bas du profil",
+        "animationType": 2,
+        "thumbnailPreviewSrc": "https://cdn.discordapp.com/assets/profile_effects/effects/fictif/braises/apercu.png",
+        "reducedMotionSrc": "https://cdn.discordapp.com/assets/profile_effects/effects/fictif/braises/reduit.png",
+        "effects": [
+          { "src": "https://cdn.discordapp.com/assets/profile_effects/effects/fictif/braises/boucle.png", "loop": true, "height": 880, "width": 450, "duration": 2000, "start": 0, "loopDelay": 0, "position": { "x": 0, "y": 0 }, "zIndex": 1 }
+        ]
+      }
+    ]
+  },
+  {
+    "sku_id": "6000000000000000001",
+    "type": 1,
+    "name": "Doublon",
+    "items": [{ "type": 1, "sku_id": "6000000000000000001", "title": "Doublon", "effects": [{ "src": "https://cdn.discordapp.com/assets/profile_effects/effects/fictif/pluie/boucle.png", "loop": true, "duration": 1 }] }]
+  },
+  "entrée illisible",
+  { "sku_id": null, "type": 1, "items": [] }
+]

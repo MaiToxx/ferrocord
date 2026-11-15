@@ -1,0 +1,19 @@
+{
+  "op": 0,
+  "t": "VOICE_STATE_UPDATE",
+  "s": 63,
+  "d": {
+    "guild_id": "2000000000000000601",
+    "channel_id": "3000000000000000601",
+    "user_id": "1000000000000000003",
+    "member": { "user": { "id": "1000000000000000003", "username": "bob_fictif" }, "roles": [], "joined_at": "2026-11-13T12:00:00.000000+00:00" },
+    "session_id": "session-fictive-bob",
+    "deaf": false,
+    "mute": false,
+    "self_deaf": false,
+    "self_mute": false,
+    "self_video": false,
+    "suppress": true,
+    "request_to_speak_timestamp": "2025-11-13T16:00:00+00:00"
+  }
+}

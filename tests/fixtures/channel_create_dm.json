@@ -1,0 +1,12 @@
+{
+  "op": 0,
+  "t": "CHANNEL_CREATE",
+  "s": 5,
+  "d": {
+    "id": "4000000000000000005",
+    "type": 1,
+    "last_message_id": null,
+    "flags": 0,
+    "recipients": [{ "id": "1000000000000000005", "username": "carol_fictive", "global_name": "Carol", "discriminator": "0", "avatar": null, "public_flags": 0 }]
+  }
+}

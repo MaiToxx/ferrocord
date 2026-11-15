@@ -1,0 +1,34 @@
+[
+  {
+    "id": "7000000000000000001",
+    "name": "Robot fictif",
+    "type": "discord",
+    "enabled": true,
+    "account": { "id": "4000000000000000001", "name": "Robot fictif" },
+    "application": {
+      "id": "4000000000000000001",
+      "name": "Robot fictif",
+      "icon": null,
+      "description": "Un robot de démonstration.",
+      "bot": { "id": "4000000000000000002", "username": "Robot fictif", "discriminator": "0", "avatar": null, "bot": true }
+    },
+    "scopes": ["bot", "applications.commands"],
+    "user": { "id": "1000000000000000002", "username": "alice", "global_name": "Alice" }
+  },
+  {
+    "id": "7000000000000000002",
+    "name": "chaine-fictive",
+    "type": "youtube",
+    "enabled": true,
+    "syncing": false,
+    "role_id": "5000000000000000001",
+    "enable_emoticons": false,
+    "expire_behavior": 0,
+    "expire_grace_period": 1,
+    "account": { "id": "UCfictif", "name": "chaine-fictive" },
+    "synced_at": "2025-11-14T00:00:00+00:00",
+    "subscriber_count": 12,
+    "revoked": false
+  },
+  { "name": "sans identifiant", "type": "twitch" }
+]

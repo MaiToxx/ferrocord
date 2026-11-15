@@ -1,0 +1,27 @@
+{
+  "op": 0,
+  "t": "READY",
+  "s": 1,
+  "d": {
+    "v": 10,
+    "user": {
+      "id": "1000000000000000009",
+      "username": "robot_fictif",
+      "global_name": null,
+      "discriminator": "4321",
+      "avatar": null,
+      "bot": true,
+      "verified": true,
+      "mfa_enabled": false,
+      "flags": 0
+    },
+    "guilds": [
+      { "id": "2000000000000000001", "unavailable": true },
+      { "id": "2000000000000000002", "unavailable": true }
+    ],
+    "session_id": "session-fictive-bot",
+    "resume_gateway_url": "wss://reprise.example.invalid",
+    "shard": [0, 1],
+    "application": { "id": "6000000000000000001", "flags": 0 }
+  }
+}

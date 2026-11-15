@@ -1,0 +1,19 @@
+[
+  {
+    "user": { "id": "1000000000000000002", "username": "alice_fictive", "global_name": "Alice", "discriminator": "0", "avatar": null, "public_flags": 0 },
+    "nick": "Ali",
+    "roles": ["2000000000000001101"],
+    "joined_at": "2024-03-01T12:00:00.000000+00:00",
+    "deaf": false,
+    "mute": false,
+    "flags": 0,
+    "pending": false
+  },
+  {
+    "user": { "id": "1000000000000000003", "username": "alain_fictif", "global_name": null, "discriminator": "0", "avatar": null },
+    "nick": null,
+    "roles": [],
+    "joined_at": "2025-01-15T08:30:00.000000+00:00"
+  },
+  { "nick": "sans utilisateur" }
+]

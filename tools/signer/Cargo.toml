@@ -1,0 +1,15 @@
+[package]
+name = "ferrocord-signer"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Clé et signature des manifestes de mise à jour de Ferrocord (outil de l'auteur, hors exécutable)"
+
+# Outil à part : ni membre ni dépendance de Ferrocord.
+[workspace]
+
+[dependencies]
+# Mêmes versions que Ferrocord (Ed25519, SHA-256) ; objets NASM précompilés,
+# comme dans Ferrocord (où rustls les active).
+aws-lc-rs = { version = "1.19.0", default-features = false, features = ["aws-lc-sys", "prebuilt-nasm"] }
+serde_json = "1.0.154"

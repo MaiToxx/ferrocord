@@ -1,0 +1,34 @@
+[
+  { "name": "name_rate_limit", "response": {
+    "code": 50035,
+    "errors": { "global_name": { "_errors": [{ "code": "RATE_LIMIT", "message": "You are changing your name too fast. Try again later." }] } },
+    "message": "Invalid Form Body"
+  } },
+  { "name": "nick_rate_limit", "response": {
+    "code": 50035,
+    "errors": { "nick": { "_errors": [{ "code": "NICKNAME_RATE_LIMIT", "message": "You are changing your nickname too fast. Try again later." }] } },
+    "message": "Invalid Form Body"
+  } },
+  { "name": "avatar_rate_limit", "response": {
+    "code": 50035,
+    "errors": { "avatar": { "_errors": [{ "code": "AVATAR_RATE_LIMIT", "message": "You are changing your avatar too fast. Try again later." }] } },
+    "message": "Invalid Form Body"
+  } },
+  { "name": "avatar_too_large", "response": {
+    "code": 50035,
+    "errors": { "avatar": { "_errors": [{ "code": "BASE_TYPE_MAX_LENGTH", "message": "File cannot be larger than 10240.0 kb." }] } },
+    "message": "Invalid Form Body"
+  } },
+  { "name": "entity_too_large", "response": { "code": 40005, "message": "Request entity too large" } },
+  { "name": "theme_premium", "response": {
+    "code": 50035,
+    "errors": { "theme_colors": { "_errors": [{ "code": "PREMIUM_REQUIRED", "message": "This feature requires a premium subscription." }] } },
+    "message": "Invalid Form Body"
+  } },
+  { "name": "bio_too_long", "response": {
+    "code": 50035,
+    "errors": { "bio": { "_errors": [{ "code": "BASE_TYPE_MAX_LENGTH", "message": "Must be 190 or fewer in length." }] } },
+    "message": "Invalid Form Body"
+  } },
+  { "name": "plain", "response": { "code": 50035, "message": "Invalid Form Body" } }
+]

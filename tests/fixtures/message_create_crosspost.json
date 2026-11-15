@@ -1,0 +1,26 @@
+{
+  "op": 0,
+  "t": "MESSAGE_CREATE",
+  "s": 43,
+  "d": {
+    "id": "5000000000000000402",
+    "channel_id": "3000000000000000011",
+    "guild_id": "2000000000000000001",
+    "author": { "id": "1000000000000000099", "username": "Rustacés #annonces", "discriminator": "0000", "avatar": null, "bot": true },
+    "webhook_id": "1000000000000000099",
+    "content": "Nouvelle version publiée : https://discord.gg/ferro",
+    "timestamp": "2025-01-16T11:00:00.000000+00:00",
+    "edited_timestamp": null,
+    "tts": false,
+    "mention_everyone": false,
+    "mentions": [],
+    "mention_roles": [],
+    "attachments": [],
+    "embeds": [],
+    "components": [],
+    "pinned": false,
+    "type": 0,
+    "flags": 2,
+    "message_reference": { "type": 0, "message_id": "5000000000000000990", "channel_id": "3000000000000000990", "guild_id": "2000000000000000009" }
+  }
+}

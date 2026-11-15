@@ -1,0 +1,17 @@
+{
+  "id": "2000000000000000001",
+  "name": "Club fictif",
+  "owner_id": "1000000000000000001",
+  "verification_level": 2,
+  "explicit_content_filter": 1,
+  "default_message_notifications": 1,
+  "mfa_level": 1,
+  "incidents_data": {
+    "invites_disabled_until": "2025-11-15T00:00:00+00:00",
+    "dms_disabled_until": null,
+    "raid_detected_at": null,
+    "dm_spam_detected_at": null
+  },
+  "roles": [],
+  "features": ["COMMUNITY"]
+}

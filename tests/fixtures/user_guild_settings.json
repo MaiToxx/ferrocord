@@ -1,0 +1,31 @@
+{
+  "op": 0,
+  "t": "READY",
+  "s": 1,
+  "d": {
+  "user_guild_settings": {
+  "version": 12,
+  "partial": false,
+  "entries": [
+    {
+      "guild_id": "5000000000000000001",
+      "muted": true,
+      "mute_config": { "end_time": "2030-01-01T00:00:00+00:00", "selected_time_window": 3600 },
+      "message_notifications": 0,
+      "suppress_everyone": true,
+      "suppress_roles": false,
+      "mobile_push": true,
+      "hide_muted_channels": false,
+      "notify_highlights": 0,
+      "flags": 0,
+      "version": 3,
+      "channel_overrides": [
+        { "channel_id": "5000000000000000011", "muted": true, "mute_config": { "end_time": null, "selected_time_window": -1 }, "message_notifications": 2, "collapsed": false, "flags": 0 },
+        { "channel_id": "5000000000000000012", "muted": false, "mute_config": null, "message_notifications": 3, "collapsed": true }
+      ]
+    },
+    { "guild_id": null, "muted": false, "channel_overrides": [] },
+    { "guild_id": "5000000000000000002", "muted": "forme inattendue" }
+  ]
+}
+}}

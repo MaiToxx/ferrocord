@@ -1,0 +1,19 @@
+{
+  "op": 0,
+  "t": "VOICE_STATE_UPDATE",
+  "s": 3,
+  "d": {
+    "guild_id": "2000000000000000004",
+    "channel_id": "3000000000000000051",
+    "user_id": "1000000000000000001",
+    "member": { "user": { "id": "1000000000000000001", "username": "moi_fictif", "global_name": "Moi Fictif", "avatar": null, "discriminator": "0" }, "nick": null, "roles": [], "joined_at": "2024-06-01T12:00:00.000000+00:00", "deaf": false, "mute": false, "flags": 0 },
+    "session_id": "session-vocale-fictive",
+    "deaf": false,
+    "mute": false,
+    "self_deaf": false,
+    "self_mute": false,
+    "self_video": false,
+    "suppress": false,
+    "request_to_speak_timestamp": null
+  }
+}

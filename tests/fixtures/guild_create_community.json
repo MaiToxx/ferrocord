@@ -1,0 +1,59 @@
+{
+  "op": 0,
+  "t": "GUILD_CREATE",
+  "s": 30,
+  "d": {
+    "id": "2000000000000000501",
+    "properties": {
+      "id": "2000000000000000501",
+      "name": "Club communautaire",
+      "icon": null,
+      "owner_id": "1000000000000000003",
+      "description": "Un club fictif",
+      "features": ["COMMUNITY", "NEWS", "WELCOME_SCREEN_ENABLED", "GUILD_ONBOARDING", "GUILD_ONBOARDING_HAS_PROMPTS"],
+      "rules_channel_id": "3000000000000000502",
+      "public_updates_channel_id": "3000000000000000503",
+      "system_channel_id": "3000000000000000501"
+    },
+    "roles": [
+      { "id": "2000000000000000501", "name": "@everyone", "permissions": "1024", "position": 0, "color": 0 },
+      { "id": "7000000000000000501", "name": "Joueurs", "permissions": "0", "position": 1, "color": 3447003 }
+    ],
+    "emojis": [],
+    "joined_at": "2026-11-13T12:00:00.000000+00:00",
+    "large": false,
+    "unavailable": false,
+    "member_count": 3,
+    "voice_states": [],
+    "members": [],
+    "threads": [],
+    "presences": [],
+    "stage_instances": [],
+    "channels": [
+      { "id": "3000000000000000501", "type": 0, "name": "général", "position": 0, "parent_id": null, "permission_overwrites": [] },
+      { "id": "3000000000000000502", "type": 0, "name": "règles", "position": 1, "parent_id": null, "permission_overwrites": [] },
+      { "id": "3000000000000000503", "type": 0, "name": "modérateurs", "position": 2, "parent_id": null, "permission_overwrites": [] },
+      { "id": "3000000000000000504", "type": 2, "name": "Salon vocal", "position": 3, "parent_id": null, "permission_overwrites": [], "bitrate": 64000, "user_limit": 0 },
+      { "id": "3000000000000000505", "type": 13, "name": "Scène", "position": 4, "parent_id": null, "permission_overwrites": [] }
+    ],
+    "guild_scheduled_events": [
+      {
+        "id": "5000000000000000501",
+        "guild_id": "2000000000000000501",
+        "channel_id": "3000000000000000504",
+        "creator_id": "1000000000000000003",
+        "name": "Rencontre",
+        "description": null,
+        "scheduled_start_time": "2026-11-20T18:00:00+00:00",
+        "scheduled_end_time": null,
+        "privacy_level": 2,
+        "status": 1,
+        "entity_type": 2,
+        "entity_metadata": null,
+        "image": null,
+        "auto_start": false,
+        "recurrence_rule": null
+      }
+    ]
+  }
+}

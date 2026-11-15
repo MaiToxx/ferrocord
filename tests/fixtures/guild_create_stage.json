@@ -1,0 +1,42 @@
+{
+  "op": 0,
+  "t": "GUILD_CREATE",
+  "s": 67,
+  "d": {
+    "id": "2000000000000000601",
+    "properties": {
+      "id": "2000000000000000601",
+      "name": "Club de conférences",
+      "icon": null,
+      "owner_id": "1000000000000000001",
+      "description": null,
+      "features": ["COMMUNITY"]
+    },
+    "roles": [
+      { "id": "2000000000000000601", "name": "@everyone", "permissions": "4298114048", "position": 0, "color": 0 }
+    ],
+    "emojis": [],
+    "joined_at": "2026-11-13T12:00:00.000000+00:00",
+    "large": false,
+    "unavailable": false,
+    "member_count": 5,
+    "members": [],
+    "threads": [],
+    "presences": [],
+    "channels": [
+      { "id": "3000000000000000600", "type": 0, "name": "accueil", "position": 0, "parent_id": null, "permission_overwrites": [] },
+      { "id": "3000000000000000601", "type": 13, "name": "Grande scène", "position": 1, "parent_id": null, "permission_overwrites": [], "topic": null },
+      { "id": "3000000000000000602", "type": 2, "name": "Salon vocal", "position": 2, "parent_id": null, "permission_overwrites": [], "bitrate": 64000, "user_limit": 0, "status": "On joue aux échecs" }
+    ],
+    "stage_instances": [
+      { "id": "5000000000000000601", "guild_id": "2000000000000000601", "channel_id": "3000000000000000601", "topic": "Questions du jeudi", "privacy_level": 2, "discoverable_disabled": false, "guild_scheduled_event_id": null }
+    ],
+    "voice_states": [
+      { "user_id": "1000000000000000002", "channel_id": "3000000000000000601", "session_id": "s-a", "deaf": false, "mute": false, "self_deaf": false, "self_mute": false, "self_video": false, "suppress": false, "request_to_speak_timestamp": null },
+      { "user_id": "1000000000000000003", "channel_id": "3000000000000000601", "session_id": "s-b", "deaf": false, "mute": false, "self_deaf": false, "self_mute": false, "self_video": false, "suppress": true, "request_to_speak_timestamp": "2025-11-13T16:00:00+00:00" },
+      { "user_id": "1000000000000000004", "channel_id": "3000000000000000601", "session_id": "s-c", "deaf": false, "mute": false, "self_deaf": false, "self_mute": false, "self_video": false, "suppress": true, "request_to_speak_timestamp": null },
+      { "user_id": "1000000000000000005", "channel_id": "3000000000000000602", "session_id": "s-d", "deaf": false, "mute": false, "self_deaf": false, "self_mute": true, "self_video": false, "suppress": false, "request_to_speak_timestamp": null },
+      { "channel_id": "3000000000000000602" }
+    ]
+  }
+}

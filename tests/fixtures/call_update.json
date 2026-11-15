@@ -1,0 +1,11 @@
+{
+  "op": 0,
+  "t": "CALL_UPDATE",
+  "s": 61,
+  "d": {
+    "channel_id": "4000000000000000001",
+    "message_id": "5000000000000000700",
+    "region": "rotterdam",
+    "ringing": []
+  }
+}

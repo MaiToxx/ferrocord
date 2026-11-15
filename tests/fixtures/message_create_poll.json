@@ -1,0 +1,43 @@
+{
+  "op": 0,
+  "t": "MESSAGE_CREATE",
+  "s": 40,
+  "d": {
+    "id": "5000000000000000400",
+    "channel_id": "3000000000000000011",
+    "guild_id": "2000000000000000001",
+    "author": { "id": "1000000000000000002", "username": "alice_fictive", "global_name": "Alice", "discriminator": "0", "avatar": null, "public_flags": 0 },
+    "member": { "roles": [], "joined_at": "2024-03-01T12:00:00.000000+00:00", "nick": null, "deaf": false, "mute": false, "flags": 0, "pending": false, "premium_since": null },
+    "content": "",
+    "timestamp": "2025-01-15T10:10:00.000000+00:00",
+    "edited_timestamp": null,
+    "tts": false,
+    "mention_everyone": false,
+    "mentions": [],
+    "mention_roles": [],
+    "attachments": [],
+    "embeds": [],
+    "components": [],
+    "pinned": false,
+    "type": 0,
+    "flags": 0,
+    "poll": {
+      "question": { "text": "Où mange-t-on vendredi\u00a0?" },
+      "answers": [
+        { "answer_id": 1, "poll_media": { "text": "Pizzeria", "emoji": { "id": null, "name": "🍕" } } },
+        { "answer_id": 2, "poll_media": { "text": "Crêperie", "emoji": { "id": "7000000000000000501", "name": "ferris" } } },
+        { "answer_id": 3, "poll_media": { "text": "Chez moi" } }
+      ],
+      "expiry": "2030-01-01T00:00:00.000000+00:00",
+      "allow_multiselect": true,
+      "layout_type": 1,
+      "results": {
+        "is_finalized": false,
+        "answer_counts": [
+          { "id": 1, "count": 3, "me_voted": true },
+          { "id": 2, "count": 1, "me_voted": false }
+        ]
+      }
+    }
+  }
+}

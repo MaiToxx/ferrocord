@@ -1,0 +1,29 @@
+[
+  {
+    "code": "invfictif1",
+    "type": 0,
+    "guild": { "id": "2000000000000000001", "name": "Alpha" },
+    "channel": { "id": "3000000000000000011", "type": 0, "name": "général" },
+    "inviter": { "id": "1000000000000000002", "username": "alice", "global_name": "Alice" },
+    "uses": 3,
+    "max_uses": 10,
+    "max_age": 86400,
+    "temporary": false,
+    "created_at": "2025-11-14T00:00:00+00:00",
+    "expires_at": "2025-11-15T00:00:00+00:00"
+  },
+  {
+    "code": "invfictif2",
+    "type": 0,
+    "guild": { "id": "2000000000000000001", "name": "Alpha" },
+    "channel": { "id": "3000000000000000012", "type": 0, "name": "hors-sujet" },
+    "inviter": { "id": "1000000000000000003", "username": "bob", "global_name": null },
+    "uses": 0,
+    "max_uses": 0,
+    "max_age": 0,
+    "temporary": true,
+    "created_at": "2025-11-14T00:00:00+00:00",
+    "expires_at": null
+  },
+  { "type": 0, "guild": { "id": "2000000000000000001" } }
+]

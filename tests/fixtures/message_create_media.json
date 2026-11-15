@@ -1,0 +1,125 @@
+{
+  "op": 0,
+  "t": "MESSAGE_CREATE",
+  "s": 13,
+  "d": {
+    "id": "5000000000000000320",
+    "channel_id": "3000000000000000011",
+    "guild_id": "2000000000000000001",
+    "author": { "id": "1000000000000000003", "username": "bob_fictif", "global_name": null, "discriminator": "0", "avatar": null, "public_flags": 0 },
+    "member": { "roles": [], "joined_at": "2024-03-02T12:00:00.000000+00:00", "nick": null, "deaf": false, "mute": false, "flags": 0, "pending": false, "premium_since": null },
+    "content": "Quelques fichiers",
+    "timestamp": "2025-01-15T10:05:00.000000+00:00",
+    "edited_timestamp": null,
+    "tts": false,
+    "mention_everyone": false,
+    "mentions": [],
+    "mention_roles": [],
+    "attachments": [
+      {
+        "id": "7000000000000000011",
+        "filename": "paysage-fictif.jpg",
+        "size": 245760,
+        "url": "https://cdn.discordapp.com/attachments/3000000000000000011/7000000000000000011/paysage-fictif.jpg?ex=00000000&is=00000000&hm=00",
+        "proxy_url": "https://media.discordapp.net/attachments/3000000000000000011/7000000000000000011/paysage-fictif.jpg?ex=00000000&is=00000000&hm=00",
+        "content_type": "image/jpeg",
+        "width": 1600,
+        "height": 900,
+        "placeholder": "fictif",
+        "placeholder_version": 1
+      },
+      {
+        "id": "7000000000000000012",
+        "filename": "SPOILER_surprise.png",
+        "size": 51200,
+        "url": "https://cdn.discordapp.com/attachments/3000000000000000011/7000000000000000012/SPOILER_surprise.png?ex=00000000&is=00000000&hm=00",
+        "proxy_url": "https://media.discordapp.net/attachments/3000000000000000011/7000000000000000012/SPOILER_surprise.png?ex=00000000&is=00000000&hm=00",
+        "content_type": "image/png",
+        "width": 800,
+        "height": 800,
+        "description": "Texte alternatif fictif",
+        "flags": 8
+      },
+      {
+        "id": "7000000000000000013",
+        "filename": "danse.gif",
+        "size": 1048576,
+        "url": "https://cdn.discordapp.com/attachments/3000000000000000011/7000000000000000013/danse.gif?ex=00000000&is=00000000&hm=00",
+        "proxy_url": "https://media.discordapp.net/attachments/3000000000000000011/7000000000000000013/danse.gif?ex=00000000&is=00000000&hm=00",
+        "content_type": "image/gif",
+        "width": 480,
+        "height": 270,
+        "flags": 32
+      },
+      {
+        "id": "7000000000000000014",
+        "filename": "clip.mp4",
+        "size": 7340032,
+        "url": "https://cdn.discordapp.com/attachments/3000000000000000011/7000000000000000014/clip.mp4?ex=00000000&is=00000000&hm=00",
+        "proxy_url": "https://media.discordapp.net/attachments/3000000000000000011/7000000000000000014/clip.mp4?ex=00000000&is=00000000&hm=00",
+        "content_type": "video/mp4",
+        "width": 1280,
+        "height": 720
+      },
+      {
+        "id": "7000000000000000015",
+        "filename": "note-vocale.ogg",
+        "size": 20480,
+        "url": "https://cdn.discordapp.com/attachments/3000000000000000011/7000000000000000015/note-vocale.ogg?ex=00000000&is=00000000&hm=00",
+        "proxy_url": "https://media.discordapp.net/attachments/3000000000000000011/7000000000000000015/note-vocale.ogg?ex=00000000&is=00000000&hm=00",
+        "content_type": "audio/ogg",
+        "duration_secs": 3.5
+      },
+      {
+        "id": "7000000000000000016",
+        "filename": "archive.zip",
+        "size": 3145728,
+        "url": "https://cdn.discordapp.com/attachments/3000000000000000011/7000000000000000016/archive.zip?ex=00000000&is=00000000&hm=00",
+        "proxy_url": "https://media.discordapp.net/attachments/3000000000000000011/7000000000000000016/archive.zip?ex=00000000&is=00000000&hm=00",
+        "content_type": "application/zip"
+      }
+    ],
+    "embeds": [
+      {
+        "type": "rich",
+        "title": "Titre riche fictif",
+        "url": "https://exemple.invalid/riche",
+        "description": "Description fictive sur plusieurs mots, assez longue pour passer à la ligne dans un embed étroit.",
+        "color": 5793266,
+        "timestamp": "2025-01-15T10:00:00.000000+00:00",
+        "author": { "name": "Auteur fictif", "url": "https://exemple.invalid/auteur", "icon_url": "https://exemple.invalid/auteur.png", "proxy_icon_url": "https://images-ext-1.discordapp.net/external/fictif/auteur.png" },
+        "fields": [
+          { "name": "Champ 1", "value": "Valeur en ligne", "inline": true },
+          { "name": "Champ 2", "value": "Autre valeur", "inline": true },
+          { "name": "Champ large", "value": "Valeur sur toute la largeur", "inline": false }
+        ],
+        "image": { "url": "https://exemple.invalid/grande.png", "proxy_url": "https://images-ext-2.discordapp.net/external/fictif/grande.png", "width": 400, "height": 200, "content_type": "image/png", "flags": 0 },
+        "thumbnail": { "url": "https://exemple.invalid/vignette.png", "proxy_url": "https://images-ext-1.discordapp.net/external/fictif/vignette.png", "width": 80, "height": 80 },
+        "footer": { "text": "Pied fictif", "icon_url": "https://exemple.invalid/pied.png", "proxy_icon_url": "https://images-ext-1.discordapp.net/external/fictif/pied.png" },
+        "provider": { "name": "Fournisseur fictif", "url": "https://exemple.invalid" }
+      },
+      {
+        "type": "video",
+        "url": "https://video.exemple.invalid/watch?v=fictif",
+        "title": "Vidéo fictive",
+        "description": "Une vidéo d'exemple.",
+        "color": 16711680,
+        "provider": { "name": "VidéoFictive", "url": "https://video.exemple.invalid" },
+        "author": { "name": "Chaîne fictive", "url": "https://video.exemple.invalid/chaine" },
+        "thumbnail": { "url": "https://video.exemple.invalid/vignette.jpg", "proxy_url": "https://images-ext-1.discordapp.net/external/fictif/video.jpg", "width": 1280, "height": 720, "placeholder": "fictif", "placeholder_version": 1 },
+        "video": { "url": "https://video.exemple.invalid/embed/fictif", "width": 1280, "height": 720 }
+      },
+      {
+        "type": "gifv",
+        "url": "https://gif.exemple.invalid/vue/fictif",
+        "provider": { "name": "GifFictif", "url": "https://gif.exemple.invalid" },
+        "thumbnail": { "url": "https://gif.exemple.invalid/fictif.png", "proxy_url": "https://images-ext-2.discordapp.net/external/fictif/gif.png", "width": 498, "height": 280, "flags": 32 },
+        "video": { "url": "https://gif.exemple.invalid/fictif.mp4", "proxy_url": "https://images-ext-1.discordapp.net/external/fictif/gif.mp4", "width": 498, "height": 280 }
+      }
+    ],
+    "components": [],
+    "pinned": false,
+    "type": 0,
+    "flags": 0
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "op": 0,
+  "t": "MESSAGE_ACK",
+  "s": 13,
+  "d": { "channel_id": "3000000000000000011", "message_id": "5000000000000000203", "mention_count": 0, "manual": false, "flags": null, "last_viewed": 3600, "version": 42 }
+}

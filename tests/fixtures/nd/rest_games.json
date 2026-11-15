@@ -1,0 +1,15 @@
+[
+  {
+    "id": "7000000000000000001",
+    "name": "Course Fictive 6",
+    "icon_hash": "0123456789abcdef0123456789abcdef",
+    "cover_image_hash": "fedcba9876543210fedcba9876543210",
+    "aliases": [],
+    "executables": [],
+    "themes": [],
+    "hook": true,
+    "overlay": false
+  },
+  { "id": "7000000000000000002", "name": "Guerre Fictive", "icon_hash": null, "aliases": [], "executables": [] },
+  { "id": "7000000000000000008", "name": "   " }
+]

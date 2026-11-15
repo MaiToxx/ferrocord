@@ -1,0 +1,161 @@
+{
+  "quests": [
+    {
+      "id": "8000000000000000011",
+      "config": {
+        "id": "8000000000000000011",
+        "config_version": 2,
+        "starts_at": "2026-11-10T18:00:00+00:00",
+        "expires_at": "2099-11-16T01:00:00+00:00",
+        "features": [15],
+        "application": { "id": "9000000000000000011", "name": "Cartes Synthétiques" },
+        "assets": {
+          "hero": "quests/8000000000000000011/1410000000000000001.mp4",
+          "hero_video": "quests/8000000000000000011/1410000000000000001.mp4",
+          "quest_bar_hero": "quests/8000000000000000011/1410000000000000002.jpg",
+          "quest_bar_hero_video": "quests/8000000000000000011/1410000000000000003.webm",
+          "game_tile": "quests/8000000000000000011/1410000000000000004.png",
+          "game_tile_light": "quests/8000000000000000011/1410000000000000005.png",
+          "game_tile_dark": "quests/8000000000000000011/1410000000000000006.png",
+          "logotype": "quests/8000000000000000011/1410000000000000007.png",
+          "logotype_light": "quests/8000000000000000011/1410000000000000008.png",
+          "logotype_dark": "quests/8000000000000000011/1410000000000000009.png"
+        },
+        "colors": { "primary": "#7A2BD0", "secondary": "#1B1035" },
+        "messages": { "quest_name": "Vaincre le simulateur fictif", "game_title": "Cartes Synthétiques", "game_publisher": "Cartes Synthétiques" },
+        "task_config_v2": {
+          "join_operator": "or",
+          "tasks": {
+            "ACHIEVEMENT_IN_GAME": {
+              "type": "ACHIEVEMENT_IN_GAME",
+              "target": 7,
+              "messages": { "task_title": "Trouver les cartes", "task_description": "Trouve les 7 cartes fictives de Cartes Synthétiques pour débloquer une Décoration d'avatar fictive." }
+            }
+          }
+        },
+        "rewards_config": {
+          "assignment_method": 1,
+          "rewards": [
+            {
+              "type": 3,
+              "sku_id": "9100000000000000011",
+              "asset": "quests/8000000000000000011/1410000000000000010.mp4",
+              "asset_video": "quests/8000000000000000011/1410000000000000010.mp4",
+              "messages": { "name": "Décoration d'avatar fictive", "name_with_article": "une Décoration d'avatar fictive" }
+            }
+          ],
+          "platforms": [0]
+        },
+        "share_policy": "shareable_everywhere",
+        "cta_config": { "link": "https://discord.gg/fictif0000", "button_label": "Rejoindre" }
+      },
+      "user_status": {
+        "user_id": "1000000000000000001",
+        "quest_id": "8000000000000000011",
+        "enrolled_at": "2026-11-11T10:00:00+00:00",
+        "completed_at": null,
+        "claimed_at": null,
+        "progress": {}
+      },
+      "preview": false
+    },
+    {
+      "id": "8000000000000000012",
+      "config": {
+        "id": "8000000000000000012",
+        "config_version": 2,
+        "starts_at": "2026-11-12T18:00:00+00:00",
+        "expires_at": "2099-11-21T01:00:00+00:00",
+        "application": { "id": "9000000000000000012", "name": "Appel du Devoir Fictif", "link": "https://exemple.invalid/appel" },
+        "assets": {
+          "hero": "https://cdn.discordapp.com/quests/8000000000000000012/1420000000000000001.webp",
+          "quest_bar_hero": "https://cdn.discordapp.com/quests/8000000000000000012/1420000000000000002.webp",
+          "game_tile": "https://cdn.discordapp.com/quests/8000000000000000012/1420000000000000003.png",
+          "logotype": "https://cdn.discordapp.com/quests/8000000000000000012/1420000000000000007.png"
+        },
+        "colors": { "primary": "#3B4A2A", "secondary": "#0E120A" },
+        "messages": { "quest_name": "Appel du Devoir Fictif : Guerre Synthétique 4", "game_title": "Appel du Devoir Fictif : Guerre Synthétique 4", "game_publisher": "Éditeur Fictif" },
+        "task_config_v2": {
+          "join_operator": "or",
+          "tasks": {
+            "PLAY_ON_DESKTOP": { "type": "PLAY_ON_DESKTOP", "target": 900 },
+            "PLAY_ON_XBOX": { "type": "PLAY_ON_XBOX", "target": 900 },
+            "PLAY_ON_PLAYSTATION": { "type": "PLAY_ON_PLAYSTATION", "target": 900 }
+          }
+        },
+        "rewards_config": {
+          "assignment_method": 1,
+          "rewards": [
+            {
+              "type": 2,
+              "sku_id": "9100000000000000012",
+              "asset": "https://cdn.discordapp.com/quests/8000000000000000012/1420000000000000005.png",
+              "messages": { "name": "Plan d'arme fictif exclusif", "name_with_article": "Plan d'arme fictif exclusif" }
+            }
+          ],
+          "platforms": [0]
+        },
+        "cta_config": { "link": "https://exemple.invalid/appel/jouer", "button_label": "Jouer" }
+      },
+      "user_status": null,
+      "preview": false
+    },
+    {
+      "id": "8000000000000000013",
+      "config": {
+        "id": "8000000000000000013",
+        "config_version": 2,
+        "starts_at": "2026-11-14T18:00:00+00:00",
+        "expires_at": "2099-12-02T01:00:00+00:00",
+        "application": { "id": "9000000000000000013", "name": "Rail Stellaire Fictif", "link": "http://exemple.invalid/sans-tls" },
+        "assets": {
+          "hero": "hero.mp4",
+          "hero_video": "hero.mp4",
+          "quest_bar_hero_video": "questbar.webm",
+          "game_tile": "gametile.png",
+          "logotype": "wordmark.png",
+          "logotype_light": "wordmark_clair.png"
+        },
+        "messages": { "quest_name": "Rail Stellaire Fictif", "game_title": "Rail Stellaire Fictif", "game_publisher": "SOCIÉTÉ FICTIVE PTE. LTD." },
+        "task_config_v2": { "join_operator": "or", "tasks": { "PLAY_ON_DESKTOP": { "type": "PLAY_ON_DESKTOP", "target": 900 }, "PLAY_ON_PLAYSTATION": { "type": "PLAY_ON_PLAYSTATION", "target": 900 } } },
+        "rewards_config": {
+          "assignment_method": 1,
+          "rewards": [{ "type": 1, "sku_id": "9100000000000000013", "asset": "assets/quests/8000000000000000013/pack.png", "messages": { "name": "Pack Quête V4.7" } }],
+          "platforms": [0]
+        },
+        "cta_config": { "link": "javascript:alert(1)" }
+      },
+      "user_status": null,
+      "preview": false
+    },
+    {
+      "id": "8000000000000000014",
+      "config": {
+        "id": "8000000000000000014",
+        "config_version": 2,
+        "starts_at": "2026-10-01T18:00:00+00:00",
+        "expires_at": "2026-10-20T01:00:00+00:00",
+        "application": { "id": "9000000000000000014", "name": "Ferme Synthétique" },
+        "assets": { "hero": "hero.png", "game_tile": "gametile.png", "logotype": "wordmark.png" },
+        "messages": { "quest_name": "Récolte fictive", "game_title": "Ferme Synthétique", "game_publisher": "Studio des Champs Fictifs" },
+        "task_config_v2": { "join_operator": "and", "tasks": { "WATCH_VIDEO": { "type": "WATCH_VIDEO", "target": 45 } } },
+        "rewards_config": {
+          "assignment_method": 1,
+          "rewards": [{ "type": 4, "sku_id": "9100000000000000014", "asset": "orbes.png", "messages": { "name": "400 Orbes", "name_with_article": "400 Orbes" }, "orb_quantity": 400 }],
+          "platforms": [0]
+        }
+      },
+      "user_status": {
+        "user_id": "1000000000000000001",
+        "quest_id": "8000000000000000014",
+        "enrolled_at": "2026-10-02T10:00:00+00:00",
+        "completed_at": "2026-10-03T10:00:00+00:00",
+        "claimed_at": "2026-10-03T11:00:00+00:00",
+        "progress": { "WATCH_VIDEO": { "value": 45, "event_name": "WATCH_VIDEO" } }
+      },
+      "preview": false
+    }
+  ],
+  "excluded_quests": [],
+  "quest_enrollment_blocked_until": null
+}

@@ -1,0 +1,83 @@
+{
+  "analytics_id": "analyse-fictive",
+  "doing_deep_historical_index": false,
+  "total_results": 57,
+  "messages": [
+    [
+      {
+        "id": "5000000000000000301",
+        "channel_id": "3000000000000000011",
+        "guild_id": "2000000000000000001",
+        "author": { "id": "1000000000000000002", "username": "alice_fictive", "global_name": "Alice", "discriminator": "0", "avatar": "a11ce0000000000000000000000000a1", "public_flags": 0 },
+        "content": "On se donne rendez-vous **demain** pour le rendez-vous fictif ?",
+        "timestamp": "2025-01-14T09:05:00.000000+00:00",
+        "edited_timestamp": null,
+        "tts": false,
+        "mention_everyone": false,
+        "mentions": [],
+        "mention_roles": [],
+        "attachments": [],
+        "embeds": [],
+        "components": [],
+        "pinned": false,
+        "type": 0,
+        "flags": 0,
+        "hit": true
+      }
+    ],
+    [
+      {
+        "id": "5000000000000000302",
+        "channel_id": "5000000000000000777",
+        "guild_id": "2000000000000000001",
+        "author": { "id": "1000000000000000003", "username": "bob_fictif", "global_name": null, "discriminator": "0", "avatar": null, "public_flags": 0 },
+        "content": "Le rendez-vous est noté, voici le plan",
+        "timestamp": "2025-01-15T10:00:00.000000+00:00",
+        "edited_timestamp": null,
+        "mention_everyone": false,
+        "mentions": [],
+        "attachments": [
+          { "id": "6000000000000000302", "filename": "plan.png", "size": 1234, "url": "https://cdn.discordapp.com/attachments/7000000000000000001/fictif/plan.png", "proxy_url": "https://media.discordapp.net/attachments/7000000000000000001/fictif/plan.png", "content_type": "image/png", "width": 320, "height": 200 }
+        ],
+        "embeds": [],
+        "pinned": true,
+        "type": 0
+      }
+    ],
+    [
+      { "id": "5000000000000000399", "channel_id": "3000000000000000011", "content": "message sans auteur : illisible" }
+    ],
+    [
+      {
+        "id": "5000000000000000303",
+        "channel_id": "3000000000000000011",
+        "author": { "id": "1000000000000000002", "username": "alice_fictive", "global_name": "Alice", "discriminator": "0", "avatar": null },
+        "content": "contexte avant",
+        "type": 0,
+        "hit": false
+      },
+      {
+        "id": "5000000000000000304",
+        "channel_id": "3000000000000000011",
+        "author": { "id": "1000000000000000001", "username": "moi_fictif", "global_name": "Moi Fictif", "discriminator": "0", "avatar": null },
+        "content": "Rendez-vous confirmé",
+        "type": 0,
+        "hit": true
+      }
+    ]
+  ],
+  "threads": [
+    {
+      "id": "5000000000000000777",
+      "type": 11,
+      "guild_id": "2000000000000000001",
+      "parent_id": "3000000000000000011",
+      "name": "Sujet",
+      "owner_id": "1000000000000000001",
+      "message_count": 2,
+      "member_count": 1,
+      "thread_metadata": { "archived": true, "auto_archive_duration": 1440, "archive_timestamp": "2025-01-16T10:00:00+00:00", "locked": false }
+    }
+  ],
+  "members": []
+}

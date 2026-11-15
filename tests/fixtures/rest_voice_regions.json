@@ -1,0 +1,8 @@
+[
+  { "id": "brazil", "name": "Brazil", "custom": false, "deprecated": false, "optimal": false },
+  { "id": "rotterdam", "name": "Rotterdam", "custom": false, "deprecated": false, "optimal": true },
+  { "id": "us-east", "name": "US East", "custom": false, "deprecated": false, "optimal": false },
+  { "id": "amsterdam", "name": "Amsterdam", "custom": false, "deprecated": true, "optimal": false },
+  { "name": "Sans identifiant" },
+  "forme inattendue"
+]

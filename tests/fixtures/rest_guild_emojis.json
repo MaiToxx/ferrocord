@@ -1,0 +1,23 @@
+[
+  {
+    "id": "7000000000000000801",
+    "name": "ferris",
+    "roles": [],
+    "user": { "id": "1000000000000000003", "username": "alice_fictive", "global_name": "Alice", "avatar": null, "discriminator": "0" },
+    "require_colons": true,
+    "managed": false,
+    "animated": false,
+    "available": true
+  },
+  {
+    "id": "7000000000000000802",
+    "name": "danse",
+    "roles": ["2000000000000000201"],
+    "require_colons": true,
+    "managed": false,
+    "animated": true,
+    "available": true
+  },
+  { "id": "7000000000000000803", "name": null },
+  "pas un emoji"
+]

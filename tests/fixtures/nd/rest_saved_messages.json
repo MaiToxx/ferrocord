@@ -1,0 +1,16 @@
+{
+  "results": [
+    {
+      "message": { "id": "1000000000000000981", "channel_id": "3000000000000000011", "content": "Un message synthétique\nà garder.", "author": { "id": "1000000000000000003", "username": "bob_fictif", "global_name": null } },
+      "save_data": { "channel_id": "3000000000000000011", "message_id": "1000000000000000981", "guild_id": "2000000000000000001", "saved_at": "2026-03-01T08:00:00+00:00", "author_summary": "", "channel_summary": "", "message_summary": "", "notes": "", "due_at": null }
+    },
+    {
+      "message": { "id": "1000000000000000982", "channel_id": "3000000000000000011", "content": "Pense à arroser les semis fictifs demain.", "author": { "id": "1000000000000000002", "username": "alice_fictive", "global_name": "Alice Fictive" } },
+      "save_data": { "channel_id": "3000000000000000011", "message_id": "1000000000000000982", "guild_id": "2000000000000000001", "saved_at": "2026-03-02T08:00:00+00:00", "due_at": "2026-03-03T08:00:00+00:00" }
+    },
+    { "message": null, "save_data": { "channel_id": "3000000000000000012", "message_id": "1000000000000000983", "saved_at": "2026-02-01T08:00:00+00:00", "due_at": null } },
+    { "message": null, "save_data": { "channel_id": "3000000000000000011", "message_id": "1000000000000000981" } },
+    { "save_data": { "channel_id": "x" } },
+    5
+  ]
+}

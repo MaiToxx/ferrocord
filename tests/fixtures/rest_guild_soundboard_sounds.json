@@ -1,0 +1,24 @@
+{
+  "items": [
+    {
+      "name": "ding",
+      "sound_id": "7000000000000000901",
+      "volume": 0.6,
+      "emoji_id": null,
+      "emoji_name": "🔔",
+      "guild_id": "2000000000000000001",
+      "available": true,
+      "user": { "id": "1000000000000000003", "username": "alice_fictive", "global_name": "Alice", "avatar": null, "discriminator": "0" }
+    },
+    {
+      "name": "tambour",
+      "sound_id": "7000000000000000902",
+      "volume": 1,
+      "emoji_id": "7000000000000000801",
+      "emoji_name": null,
+      "guild_id": "2000000000000000001",
+      "available": false
+    },
+    { "name": "sans identifiant", "volume": 0.5 }
+  ]
+}

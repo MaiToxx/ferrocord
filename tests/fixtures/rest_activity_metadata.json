@@ -1,0 +1,5 @@
+{
+  "button_urls": ["https://exemple.invalid/rejoindre", "javascript:alert(1)"],
+  "artist_ids": ["artiste-fictif"],
+  "type": "track"
+}

@@ -1,0 +1,6 @@
+# Dépôt GitHub public dont les « Releases » servent les mises à jour, sous la
+# forme propriétaire/dépôt sur une ligne (exemple : moncompte/ferrocord).
+# Vide (aucune ligne hors commentaires) : pas d'adresse par défaut, donc pas
+# de vérification automatique ; l'adresse du manifeste se règle alors dans
+# local.toml (section [mises_a_jour], clé manifeste). Voir docs/distribution.md.
+MaiToxx/ferrocord

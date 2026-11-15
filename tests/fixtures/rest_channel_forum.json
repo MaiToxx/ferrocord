@@ -1,0 +1,26 @@
+{
+  "id": "3000000000000000501",
+  "type": 15,
+  "guild_id": "2000000000000000001",
+  "name": "entraide",
+  "position": 3,
+  "parent_id": null,
+  "topic": "Posez vos questions ici.",
+  "nsfw": false,
+  "rate_limit_per_user": 30,
+  "default_auto_archive_duration": 4320,
+  "default_thread_rate_limit_per_user": 0,
+  "default_sort_order": null,
+  "default_forum_layout": 1,
+  "flags": 0,
+  "last_message_id": null,
+  "permission_overwrites": [
+    { "id": "2000000000000000001", "type": 0, "allow": "0", "deny": "2048" }
+  ],
+  "available_tags": [
+    { "id": "3000000000000000601", "name": "Résolu", "moderated": true, "emoji_id": null, "emoji_name": "✅" },
+    { "id": "3000000000000000602", "name": "Question", "moderated": false, "emoji_id": "4000000000000000001", "emoji_name": null },
+    { "name": 12 }
+  ],
+  "default_reaction_emoji": { "emoji_id": null, "emoji_name": "👍" }
+}

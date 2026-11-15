@@ -1,0 +1,14 @@
+{
+  "op": 0,
+  "t": "STAGE_INSTANCE_CREATE",
+  "s": 64,
+  "d": {
+    "id": "5000000000000000601",
+    "guild_id": "2000000000000000601",
+    "channel_id": "3000000000000000601",
+    "topic": "Questions du jeudi",
+    "privacy_level": 2,
+    "discoverable_disabled": false,
+    "guild_scheduled_event_id": null
+  }
+}

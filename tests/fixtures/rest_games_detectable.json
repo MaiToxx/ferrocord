@@ -1,0 +1,41 @@
+[
+  {
+    "aliases": ["PUBG: BATTLEGROUNDS", "PUBG"],
+    "executables": [
+      { "is_launcher": false, "name": "win64/tslgame_be.exe", "os": "win32" },
+      { "is_launcher": false, "name": "win64/tslgame.exe", "os": "win32" },
+      { "is_launcher": false, "name": "TslGame.exe", "os": "win32" },
+      { "is_launcher": false, "name": "tslgame", "os": "linux" }
+    ],
+    "hook": true,
+    "id": "6000000000000000020",
+    "name": "PLAYERUNKNOWN'S BATTLEGROUNDS",
+    "overlay": true,
+    "overlay_compatibility_hook": true,
+    "overlay_methods": null,
+    "overlay_warn": false,
+    "themes": ["Action", "Warfare"]
+  },
+  {
+    "id": "6000000000000000010",
+    "name": "Lanceur Fictif",
+    "executables": [{ "is_launcher": true, "name": "lanceur.exe", "os": "win32" }],
+    "hook": false
+  },
+  {
+    "id": "6000000000000000011",
+    "name": "Jeu Java Fictif",
+    "executables": [
+      { "is_launcher": false, "name": "javaw.exe", "os": "win32", "arguments": "-jar jeu.jar" },
+      { "is_launcher": false, "name": ">jeujava.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "6000000000000000012",
+    "name": "Jeu Mac Fictif",
+    "executables": [{ "is_launcher": false, "name": "jeu.app", "os": "darwin" }]
+  },
+  { "id": "6000000000000000013", "name": "Sans exécutable" },
+  { "id": 6000000000000000014, "name": "Formes étranges", "executables": [5, null, { "os": "win32", "name": 7 }, { "os": "win32", "name": "bizarre.exe", "is_launcher": "non" }] },
+  "pas un objet"
+]

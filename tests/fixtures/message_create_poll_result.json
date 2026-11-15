@@ -1,0 +1,37 @@
+{
+  "op": 0,
+  "t": "MESSAGE_CREATE",
+  "s": 42,
+  "d": {
+    "id": "5000000000000000401",
+    "channel_id": "3000000000000000011",
+    "guild_id": "2000000000000000001",
+    "author": { "id": "1000000000000000002", "username": "alice_fictive", "global_name": "Alice", "discriminator": "0", "avatar": null, "public_flags": 0 },
+    "content": "",
+    "timestamp": "2025-01-16T10:10:00.000000+00:00",
+    "edited_timestamp": null,
+    "tts": false,
+    "mention_everyone": false,
+    "mentions": [],
+    "mention_roles": [],
+    "attachments": [],
+    "embeds": [
+      {
+        "type": "poll_result",
+        "fields": [
+          { "name": "poll_question_text", "value": "Où mange-t-on vendredi\u00a0?", "inline": false },
+          { "name": "victor_answer_votes", "value": "3", "inline": false },
+          { "name": "total_votes", "value": "4", "inline": false },
+          { "name": "victor_answer_id", "value": "1", "inline": false },
+          { "name": "victor_answer_text", "value": "Pizzeria", "inline": false },
+          { "name": "victor_answer_emoji_name", "value": "🍕", "inline": false }
+        ]
+      }
+    ],
+    "components": [],
+    "pinned": false,
+    "type": 46,
+    "flags": 0,
+    "message_reference": { "type": 0, "message_id": "5000000000000000400", "channel_id": "3000000000000000011", "guild_id": "2000000000000000001" }
+  }
+}

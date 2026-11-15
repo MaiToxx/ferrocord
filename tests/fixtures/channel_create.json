@@ -1,0 +1,6 @@
+{
+  "op": 0,
+  "t": "CHANNEL_CREATE",
+  "s": 2,
+  "d": { "id": "3000000000000000015", "type": 0, "guild_id": "2000000000000000001", "name": "nouveau", "position": 2, "parent_id": "3000000000000000010", "permission_overwrites": [], "nsfw": false, "topic": null, "last_message_id": null, "rate_limit_per_user": 0, "flags": 0 }
+}

@@ -1,0 +1,14 @@
+{
+  "op": 0,
+  "t": "RELATIONSHIP_ADD",
+  "s": 10,
+  "d": {
+    "id": "1000000000000000005",
+    "type": 1,
+    "nickname": null,
+    "user_ignored": false,
+    "since": "2024-06-01T12:00:00+00:00",
+    "should_notify": true,
+    "user": { "id": "1000000000000000005", "username": "carol_fictive", "global_name": "Carol", "discriminator": "0", "avatar": null }
+  }
+}

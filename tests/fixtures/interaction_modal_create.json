@@ -1,0 +1,18 @@
+{
+  "op": 0,
+  "t": "INTERACTION_MODAL_CREATE",
+  "s": 32,
+  "d": {
+    "id": "1200000000000000002",
+    "channel_id": "3000000000000000011",
+    "custom_id": "avis",
+    "nonce": "1300000000000000002",
+    "title": "Votre avis",
+    "application": { "id": "4000000000000000001", "name": "Robot Fictif", "icon": null, "description": "Un robot de test", "bot": { "id": "4000000000000000001", "username": "robot_fictif" } },
+    "components": [
+      { "type": 1, "components": [ { "type": 4, "custom_id": "titre", "style": 1, "label": "Titre", "max_length": 80, "required": true, "placeholder": "En quelques mots" } ] },
+      { "type": 18, "label": "Détails", "description": "Facultatif", "component": { "type": 4, "custom_id": "details", "style": 2, "required": false, "value": "" } },
+      { "type": 18, "label": "Note", "component": { "type": 3, "custom_id": "note", "options": [ { "label": "Bien", "value": "5" }, { "label": "Moyen", "value": "3" } ] } }
+    ]
+  }
+}

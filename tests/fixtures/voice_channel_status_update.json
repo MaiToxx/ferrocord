@@ -1,0 +1,10 @@
+{
+  "op": 0,
+  "t": "VOICE_CHANNEL_STATUS_UPDATE",
+  "s": 65,
+  "d": {
+    "id": "3000000000000000602",
+    "guild_id": "2000000000000000601",
+    "status": "Partie d'échecs en cours"
+  }
+}

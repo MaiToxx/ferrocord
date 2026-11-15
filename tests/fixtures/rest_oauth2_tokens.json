@@ -1,0 +1,4 @@
+[
+  { "id": "5000000000000000701", "scopes": ["identify", "guilds"], "application": { "id": "5000000000000000702", "name": "Appli Test", "icon": null, "description": "", "bot_public": true } },
+  { "id": "5000000000000000703", "scopes": ["identify"], "application": { "id": "5000000000000000704", "name": "Autre appli" } }
+]

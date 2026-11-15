@@ -1,0 +1,15 @@
+{
+  "op": 0, "t": "THREAD_LIST_SYNC", "s": 41,
+  "d": {
+    "guild_id": "2000000000000000001",
+    "channel_ids": ["3000000000000000011", "3000000000000000050"],
+    "threads": [
+      { "id": "5000000000000000700", "type": 11, "guild_id": "2000000000000000001", "parent_id": "3000000000000000011", "name": "Sujet", "message_count": 3, "member_count": 2,
+        "thread_metadata": { "archived": false, "auto_archive_duration": 1440, "archive_timestamp": "2023-11-14T22:13:20+00:00", "locked": false } },
+      { "id": "5000000000000000701", "type": 12, "guild_id": "2000000000000000001", "parent_id": "3000000000000000011", "name": "Privé",
+        "thread_metadata": { "archived": false, "auto_archive_duration": 60, "archive_timestamp": "2023-11-14T22:13:20+00:00", "locked": false, "invitable": false } },
+      { "id": "3000000000000000012", "type": 0, "guild_id": "2000000000000000001", "name": "pas un fil" }
+    ],
+    "members": [ { "id": "5000000000000000701", "user_id": "1000000000000000001", "join_timestamp": "2023-11-14T22:13:20+00:00", "flags": 0 } ]
+  }
+}

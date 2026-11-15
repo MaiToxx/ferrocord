@@ -1,0 +1,24 @@
+{
+  "results": [
+    {
+      "type": 1,
+      "data": {
+        "id": "1000000000000000961", "name": "Arrosoir Fictif", "icon": "a11ce0000000000000000000000000c1",
+        "description": "Application synthétique pour les essais.",
+        "directory_entry": { "guild_count": 12500, "supported_locales": ["fr"], "short_description": "Rappels d'arrosage pour plantes imaginaires." }
+      }
+    },
+    { "type": 3, "data": { "id": "1000000000000000969", "name": "Bannière promotionnelle" } },
+    {
+      "type": 1,
+      "data": { "id": "1000000000000000962", "name": "Semoir Synthétique", "icon": null, "description": "Description longue reprise faute de résumé.", "directory_entry": { "supported_locales": [], "short_description": "  " } }
+    },
+    { "type": 1, "data": { "id": "1000000000000000961", "name": "Doublon" } },
+    { "type": 1, "data": { "name": "Sans identifiant" } },
+    { "type": 1 },
+    null
+  ],
+  "num_pages": 1,
+  "counts_by_category": { "4": 2 },
+  "load_id": "synthetique"
+}

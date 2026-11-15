@@ -1,0 +1,48 @@
+{
+  "user": {
+    "id": "1000000000000000002",
+    "username": "alice_fictive",
+    "global_name": "Alice",
+    "discriminator": "0",
+    "avatar": "a_a11ce0000000000000000000000000a1",
+    "banner": "a_ba11e0000000000000000000000000b1",
+    "accent_color": 6000111,
+    "public_flags": 4194432,
+    "avatar_decoration_data": { "asset": "a_dec0000000000000000000000000d1", "sku_id": "7000000000000009001", "expires_at": null },
+    "collectibles": {
+      "nameplate": { "sku_id": "7000000000000009002", "asset": "nameplates/nameplates/fictive/", "label": "Plaque fictive", "palette": "cobalt", "expires_at": null }
+    },
+    "primary_guild": { "identity_guild_id": "2000000000000000001", "identity_enabled": true, "tag": "RUST", "badge": "7a9000000000000000000000000000b9" },
+    "display_name_styles": { "font_id": 12, "effect_id": 2, "colors": [16743001, 9067760] }
+  },
+  "member": {
+    "user": { "id": "1000000000000000002", "username": "alice_fictive" },
+    "nick": "Ali",
+    "avatar": "a_a11ce0000000000000000000000000a2",
+    "banner": "a_ba11e0000000000000000000000000b2",
+    "avatar_decoration_data": { "asset": "dec1000000000000000000000000d2", "sku_id": "7000000000000009003" },
+    "roles": ["2000000000000009002"],
+    "joined_at": "2024-03-01T12:00:00.000000+00:00",
+    "premium_since": null,
+    "deaf": false,
+    "mute": false,
+    "pending": false
+  },
+  "roles": [
+    {
+      "id": "2000000000000009001", "name": "Uni", "color": 3447003,
+      "colors": { "primary_color": 3447003, "secondary_color": null, "tertiary_color": null },
+      "hoist": true, "icon": null, "unicode_emoji": null, "position": 1, "permissions": "0", "managed": false, "mentionable": false, "flags": 0
+    },
+    {
+      "id": "2000000000000009002", "name": "Dégradé", "color": 16743001,
+      "colors": { "primary_color": 16743001, "secondary_color": 9067760, "tertiary_color": null },
+      "hoist": true, "icon": null, "unicode_emoji": null, "position": 2, "permissions": "0", "managed": false, "mentionable": false, "flags": 0
+    },
+    {
+      "id": "2000000000000009003", "name": "Holographique", "color": 11127295,
+      "colors": { "primary_color": 11127295, "secondary_color": 16759788, "tertiary_color": 16761760 },
+      "hoist": false, "icon": null, "unicode_emoji": null, "position": 3, "permissions": "0", "managed": false, "mentionable": false, "flags": 0
+    }
+  ]
+}

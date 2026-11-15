@@ -1,0 +1,5 @@
+# Clé publique Ed25519 des mises à jour de Ferrocord (64 chiffres hexadécimaux
+# sur une ligne). Écrite ici par `tools/signer cle` ; la clé privée, elle, ne
+# doit jamais entrer dans le dépôt (voir docs/distribution.md).
+# Sans clé, les mises à jour automatiques sont désactivées.
+11c888d6771bcc2470fcbdf645390c8a5d0ce2c89ec4859c2a081aa53981c4d6

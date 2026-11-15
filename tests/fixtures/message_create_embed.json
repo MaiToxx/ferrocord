@@ -1,0 +1,46 @@
+{
+  "op": 0,
+  "t": "MESSAGE_CREATE",
+  "s": 12,
+  "d": {
+    "id": "5000000000000000302",
+    "channel_id": "3000000000000000011",
+    "guild_id": "2000000000000000001",
+    "author": { "id": "1000000000000000002", "username": "alice_fictive", "global_name": "Alice", "discriminator": "0", "avatar": "a11ce0000000000000000000000000a1", "public_flags": 0 },
+    "member": { "roles": [], "joined_at": "2024-03-01T12:00:00.000000+00:00", "nick": null, "deaf": false, "mute": false, "flags": 0, "pending": false, "premium_since": null },
+    "content": "Regardez https://exemple.invalid/article",
+    "timestamp": "2025-01-15T10:02:00.000000+00:00",
+    "edited_timestamp": null,
+    "tts": false,
+    "mention_everyone": false,
+    "mentions": [],
+    "mention_roles": [],
+    "attachments": [],
+    "embeds": [
+      {
+        "type": "article",
+        "url": "https://exemple.invalid/article",
+        "title": "Titre fictif",
+        "description": "Description fictive",
+        "color": 5814783,
+        "provider": { "name": "Exemple" },
+        "thumbnail": { "url": "https://exemple.invalid/vignette.png", "proxy_url": "https://images-ext-1.discordapp.net/external/fictif/vignette.png", "width": 100, "height": 100, "flags": 0 }
+      },
+      {
+        "type": "rich",
+        "title": "Seulement un titre",
+        "fields": [{ "name": "Champ", "value": "Valeur", "inline": false }],
+        "footer": { "text": "Pied fictif" }
+      },
+      {
+        "type": "image",
+        "url": "https://exemple.invalid/image.png",
+        "thumbnail": { "url": "https://exemple.invalid/image.png", "width": 10, "height": 10 }
+      }
+    ],
+    "components": [],
+    "pinned": false,
+    "type": 0,
+    "flags": 0
+  }
+}

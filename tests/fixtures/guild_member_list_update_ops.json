@@ -1,0 +1,52 @@
+{
+  "op": 0,
+  "t": "GUILD_MEMBER_LIST_UPDATE",
+  "s": 8,
+  "d": {
+    "guild_id": "2000000000000000001",
+    "id": "everyone",
+    "member_count": 6,
+    "online_count": 4,
+    "groups": [
+      { "id": "2000000000000001010", "count": 1 },
+      { "id": "online", "count": 3 },
+      { "id": "offline", "count": 2 }
+    ],
+    "ops": [
+      { "op": "DELETE", "index": 3 },
+      {
+        "op": "INSERT",
+        "index": 5,
+        "item": {
+          "member": {
+            "user": { "id": "1000000000000000001", "username": "moi_fictif", "global_name": "Moi Fictif", "discriminator": "0", "avatar": "0000000000000000000000000000000a", "public_flags": 0 },
+            "roles": [],
+            "joined_at": "2024-01-01T00:00:00.000000+00:00",
+            "deaf": false,
+            "mute": false,
+            "flags": 0,
+            "presence": { "user": { "id": "1000000000000000001" }, "status": "idle", "client_status": { "desktop": "idle" }, "activities": [] }
+          }
+        }
+      },
+      {
+        "op": "UPDATE",
+        "index": 1,
+        "item": {
+          "member": {
+            "user": { "id": "1000000000000000002", "username": "alice_fictive", "global_name": "Alice", "discriminator": "0", "avatar": "a11ce0000000000000000000000000a1", "public_flags": 0 },
+            "roles": ["2000000000000001010"],
+            "nick": "Alice (modération)",
+            "joined_at": "2024-01-01T00:00:00.000000+00:00",
+            "deaf": false,
+            "mute": false,
+            "flags": 0,
+            "presence": { "user": { "id": "1000000000000000002" }, "status": "online", "client_status": { "desktop": "online" }, "activities": [] }
+          }
+        }
+      },
+      { "op": "INVALIDATE", "range": [100, 199] },
+      { "op": "SYNC" }
+    ]
+  }
+}

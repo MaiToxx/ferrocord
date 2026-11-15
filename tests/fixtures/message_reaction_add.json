@@ -1,0 +1,17 @@
+{
+  "op": 0,
+  "t": "MESSAGE_REACTION_ADD",
+  "s": 32,
+  "d": {
+    "user_id": "1000000000000000002",
+    "channel_id": "3000000000000000011",
+    "message_id": "5000000000000000320",
+    "guild_id": "2000000000000000001",
+    "member": { "user": { "id": "1000000000000000002", "username": "alice_fictive", "global_name": "Alice", "discriminator": "0", "avatar": null }, "roles": [], "joined_at": "2024-03-01T12:00:00.000000+00:00", "deaf": false, "mute": false },
+    "emoji": { "id": null, "name": "👍" },
+    "message_author_id": "1000000000000000003",
+    "burst": false,
+    "burst_colors": [],
+    "type": 0
+  }
+}

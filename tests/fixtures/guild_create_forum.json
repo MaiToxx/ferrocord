@@ -1,0 +1,23 @@
+{
+  "op": 0, "t": "GUILD_CREATE", "s": 43,
+  "d": {
+    "id": "2000000000000000001", "name": "Serveur Alpha", "owner_id": "1000000000000000002",
+    "roles": [ { "id": "2000000000000000001", "name": "@everyone", "permissions": "1024", "position": 0 } ],
+    "channels": [
+      { "id": "3000000000000000011", "type": 0, "name": "général", "position": 0 },
+      { "id": "3000000000000000050", "type": 15, "name": "entraide", "position": 1, "default_sort_order": 0, "default_forum_layout": 1,
+        "available_tags": [
+          { "id": "6000000000000000900", "name": "Aide", "moderated": false, "emoji_id": null, "emoji_name": "❓" },
+          { "id": "6000000000000000901", "name": "Résolu", "moderated": true, "emoji_id": "7000000000000000077", "emoji_name": "ok" },
+          "illisible"
+        ],
+        "default_reaction_emoji": { "emoji_id": null, "emoji_name": "👍" } }
+    ],
+    "threads": [
+      { "id": "5000000000000000710", "type": 11, "parent_id": "3000000000000000050", "name": "Comment faire ?", "owner_id": "1000000000000000003", "message_count": 5, "member_count": 2, "applied_tags": ["6000000000000000900"],
+        "thread_metadata": { "archived": false, "auto_archive_duration": 4320, "archive_timestamp": "2023-11-14T22:13:20+00:00", "locked": false },
+        "member": { "join_timestamp": "2023-11-14T22:13:20+00:00", "flags": 1 } },
+      { "id": "5000000000000000711", "type": 42, "parent_id": "3000000000000000050", "name": "type inconnu" }
+    ]
+  }
+}

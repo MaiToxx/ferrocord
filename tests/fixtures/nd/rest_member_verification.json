@@ -1,0 +1,10 @@
+{
+  "version": "2026-03-02T10:00:00.000000+00:00",
+  "description": "Serveur synthétique : jardinage imaginaire.",
+  "form_fields": [
+    { "field_type": "TERMS", "label": "Lis et accepte les règles", "description": null, "automations": null, "required": true, "values": ["Rester courtois.", "Pas de publicité."], "response": true },
+    { "field_type": "TEXT_INPUT", "label": "Pourquoi nous rejoindre ?", "description": "Une phrase suffit.", "automations": null, "required": false, "placeholder": null },
+    { "field_type": "PARAGRAPH", "label": "Présente-toi", "description": null, "automations": null, "required": false, "placeholder": "Quelques lignes" },
+    { "field_type": "MULTIPLE_CHOICE", "label": "Comment nous as-tu trouvés ?", "description": null, "automations": null, "required": true, "choices": ["Un ami", "Une recherche"] }
+  ]
+}

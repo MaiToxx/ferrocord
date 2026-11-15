@@ -1,0 +1,44 @@
+# Thème Ferrocord (.ferrotheme) : nuit violette et aurore boréale en dégradé.
+# Pour l'utiliser : Paramètres > Apparence > Thèmes partageables, ou déposez ce
+# fichier sur la fenêtre de Ferrocord. Les clés absentes viennent de « base ».
+ferrotheme = 1
+nom = "Aurore"
+auteur = "Ferrocord"
+
+version = 3
+base = "sombre"
+
+[couleurs]
+bg0 = "#0d0b14"
+bg1 = "#100e19"
+bg2 = "#151221"
+bg3 = "#1f1b2e"
+border = "#322c47"
+pill = "#1f1b2e"
+selected = "#29243b"
+row_hover = "#1a1728"
+text = "#e2e0ee"
+text_strong = "#fbfaff"
+muted = "#aea9c4"
+faint = "#9893b0"
+accent = "#7c5cd6"
+widget_text = "#aea9c4"
+button_bg = "#2b2540"
+button_text = "#fbfaff"
+control_bg = "#372f52"
+separator = "#221d33"
+menu_bg = "#1d1930"
+menu_hover = "#2e2748"
+channel_idle = "#8580a0"
+
+[texte_riche]
+code_bg = "#0d0b14"
+mention_bg = "#7c5cd64d"
+mention_text = "#d9cdfb"
+spoiler = "#322c47"
+
+[apparence]
+degrade = true
+degrade_couleurs = ["#126b54", "#2a4fa8", "#7b3fb5"]
+degrade_angle = 60
+degrade_force = 22

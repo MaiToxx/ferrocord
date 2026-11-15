@@ -1,0 +1,115 @@
+{
+  "op": 0,
+  "t": "GUILD_MEMBER_LIST_UPDATE",
+  "s": 7,
+  "d": {
+    "guild_id": "2000000000000000001",
+    "id": "everyone",
+    "member_count": 6,
+    "online_count": 4,
+    "groups": [
+      { "id": "2000000000000001010", "count": 1 },
+      { "id": "online", "count": 3 },
+      { "id": "offline", "count": 2 }
+    ],
+    "ops": [
+      {
+        "op": "SYNC",
+        "range": [0, 99],
+        "items": [
+          { "group": { "id": "2000000000000001010", "count": 1 } },
+          {
+            "member": {
+              "user": { "id": "1000000000000000002", "username": "alice_fictive", "global_name": "Alice", "discriminator": "0", "avatar": "a11ce0000000000000000000000000a1", "public_flags": 0 },
+              "roles": ["2000000000000001010"],
+              "nick": "Alice (modération)",
+              "joined_at": "2024-01-01T00:00:00.000000+00:00",
+              "premium_since": null,
+              "deaf": false,
+              "mute": false,
+              "flags": 0,
+              "pending": false,
+              "communication_disabled_until": null,
+              "avatar": null,
+              "presence": {
+                "user": { "id": "1000000000000000002" },
+                "status": "dnd",
+                "client_status": { "desktop": "dnd" },
+                "activities": [
+                  { "id": "custom", "type": 4, "name": "Custom Status", "state": "En réunion", "created_at": 1700000000000 }
+                ]
+              }
+            }
+          },
+          { "group": { "id": "online", "count": 3 } },
+          {
+            "member": {
+              "user": { "id": "1000000000000000001", "username": "moi_fictif", "global_name": "Moi Fictif", "discriminator": "0", "avatar": "0000000000000000000000000000000a", "public_flags": 0 },
+              "roles": [],
+              "nick": null,
+              "joined_at": "2024-01-01T00:00:00.000000+00:00",
+              "deaf": false,
+              "mute": false,
+              "flags": 0,
+              "presence": { "user": { "id": "1000000000000000001" }, "status": "online", "client_status": { "desktop": "online" }, "activities": [] }
+            }
+          },
+          {
+            "member": {
+              "user": { "id": "1000000000000000006", "username": "robot_fictif", "global_name": null, "discriminator": "1234", "avatar": null, "bot": true, "public_flags": 0 },
+              "roles": [],
+              "joined_at": "2024-01-01T00:00:00.000000+00:00",
+              "deaf": false,
+              "mute": false,
+              "flags": 0,
+              "presence": {
+                "user": { "id": "1000000000000000006" },
+                "status": "online",
+                "client_status": { "web": "online" },
+                "activities": [{ "id": "jeu", "type": 0, "name": "Échecs", "created_at": 1700000000000 }]
+              }
+            }
+          },
+          {
+            "member": {
+              "user": { "id": "1000000000000000004", "username": "eve_fictive", "global_name": "Ève", "discriminator": "0", "avatar": null, "public_flags": 0 },
+              "roles": [],
+              "joined_at": "2024-01-01T00:00:00.000000+00:00",
+              "deaf": false,
+              "mute": false,
+              "flags": 0,
+              "presence": {
+                "user": { "id": "1000000000000000004" },
+                "status": "idle",
+                "client_status": { "mobile": "idle" },
+                "activities": [{ "id": "radio", "type": 2, "name": "Radio fictive", "details": "Morceau fictif", "created_at": 1700000000000 }]
+              }
+            }
+          },
+          { "group": { "id": "offline", "count": 2 } },
+          {
+            "member": {
+              "user": { "id": "1000000000000000003", "username": "bob_fictif", "global_name": null, "discriminator": "0", "avatar": null, "public_flags": 0 },
+              "roles": [],
+              "joined_at": "2024-01-01T00:00:00.000000+00:00",
+              "deaf": false,
+              "mute": false,
+              "flags": 0,
+              "presence": { "user": { "id": "1000000000000000003" }, "status": "offline", "client_status": {}, "activities": [] }
+            }
+          },
+          {
+            "member": {
+              "user": { "id": "1000000000000000005", "username": "carol_fictive", "global_name": "Carol", "discriminator": "0", "avatar": null, "public_flags": 0 },
+              "roles": [],
+              "joined_at": "2024-01-01T00:00:00.000000+00:00",
+              "deaf": false,
+              "mute": false,
+              "flags": 0
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

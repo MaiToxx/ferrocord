@@ -1,0 +1,27 @@
+{
+  "op": 0,
+  "t": "CALL_CREATE",
+  "s": 60,
+  "d": {
+    "channel_id": "4000000000000000001",
+    "message_id": "5000000000000000700",
+    "region": "rotterdam",
+    "ringing": ["1000000000000000001"],
+    "voice_states": [
+      {
+        "user_id": "1000000000000000002",
+        "channel_id": "4000000000000000001",
+        "session_id": "session-fictive-alice",
+        "deaf": false,
+        "mute": false,
+        "self_deaf": false,
+        "self_mute": false,
+        "self_video": false,
+        "suppress": false,
+        "request_to_speak_timestamp": null
+      },
+      7
+    ],
+    "embedded_activities": []
+  }
+}

@@ -1,0 +1,38 @@
+# Thème Ferrocord (.ferrotheme) : thème clair aux tons de papier, accent ocre.
+# Pour l'utiliser : Paramètres > Apparence > Thèmes partageables, ou déposez ce
+# fichier sur la fenêtre de Ferrocord. Les clés absentes viennent de « base ».
+ferrotheme = 1
+nom = "Papier"
+auteur = "Ferrocord"
+
+version = 3
+base = "clair"
+
+[couleurs]
+bg0 = "#e6dfd3"
+bg1 = "#f1ebe1"
+bg2 = "#faf6ee"
+bg3 = "#ece5d8"
+border = "#d3c9b8"
+pill = "#faf6ee"
+selected = "#ddd4c4"
+row_hover = "#e7dfd1"
+text = "#33302b"
+text_strong = "#14120f"
+muted = "#595247"
+faint = "#655d51"
+accent = "#9a5b1e"
+widget_text = "#595247"
+button_bg = "#ddd4c4"
+button_text = "#14120f"
+control_bg = "#d1c7b5"
+separator = "#ddd5c7"
+menu_bg = "#fdfaf4"
+menu_hover = "#ece5d8"
+channel_idle = "#6f675b"
+
+[texte_riche]
+code_bg = "#ece5d8"
+mention_bg = "#9a5b1e33"
+mention_text = "#6b3c0e"
+spoiler = "#c9bfad"

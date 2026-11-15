@@ -1,0 +1,9 @@
+{
+  "op": 0,
+  "t": "USER_SETTINGS_PROTO_UPDATE",
+  "s": 2,
+  "d": {
+    "settings": { "type": 1, "proto": "MgJSAA==" },
+    "partial": true
+  }
+}
