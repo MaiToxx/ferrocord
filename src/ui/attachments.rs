@@ -247,13 +247,19 @@ fn min_side(t: &Tokens) -> f32 {
 /// Pièces jointes du message `m`. `images` absent : mesure seule (même
 /// place prise, rien demandé ni rendu cliquable).
 pub(super) fn attachments_ui<'a>(ui: &mut egui::Ui, t: &Tokens, lang: Lang, images: Option<&Images>, m: &'a Message, hot: &mut Hot<'a>) {
-    if m.attachments.is_empty() {
+    attachments_list(ui, t, lang, images, &m.attachments, hot);
+}
+
+/// Pièces jointes `list` (celles d'un message, ou de l'instantané d'un
+/// message transféré), avec le même rendu : vignettes, lecteurs, cartes.
+pub(super) fn attachments_list<'a>(ui: &mut egui::Ui, t: &Tokens, lang: Lang, images: Option<&Images>, list: &'a [Attachment], hot: &mut Hot<'a>) {
+    if list.is_empty() {
         return;
     }
     let gap = t.spacing.media_gap;
     // « Afficher les images et vidéos jointes » décoché : chaque fichier garde sa carte.
     let inline = shown(ui.ctx()).attachments;
-    let pics: Vec<&Attachment> = m.attachments.iter().filter(|a| inline && a.kind == MediaKind::Image).collect();
+    let pics: Vec<&Attachment> = list.iter().filter(|a| inline && a.kind == MediaKind::Image).collect();
     if !pics.is_empty() {
         ui.add_space(gap);
     }
@@ -277,7 +283,7 @@ pub(super) fn attachments_ui<'a>(ui: &mut egui::Ui, t: &Tokens, lang: Lang, imag
             }
         }
     }
-    for a in m.attachments.iter().filter(|a| !inline || a.kind != MediaKind::Image) {
+    for a in list.iter().filter(|a| !inline || a.kind != MediaKind::Image) {
         ui.add_space(gap);
         match &a.voice {
             Some(note) => super::voice_note::voice_card(ui, t, lang, images.is_some(), a, note, hot),
@@ -623,6 +629,64 @@ mod tests {
         reveal(&ctx, reveal_key(spoiler));
         pass(&ctx, &images, |ui, im| message_ui(ui, &t, Lang::Fr, im, &m, &doc, false, 0));
         assert!(taken(&urls).iter().any(|u| u.contains("SPOILER_surprise.png")));
+    }
+
+    /// Message transféré (retour d'utilisation : l'image jointe n'était qu'un
+    /// lien « image.png ») : l'instantané montre son image en vignette,
+    /// demandée au proxy média, sa carte d'embed et son autocollant, à la
+    /// même place à la mesure et au dessin.
+    #[test]
+    fn forwarded_snapshot_shows_its_media() {
+        use super::super::message::{measure_ui, message_ui};
+        use crate::state::emoji::{StickerFormat, StickerItem};
+        use crate::state::model::Embed;
+        use crate::state::social::Forward;
+        let picture = Attachment {
+            id: 91,
+            name: "capture-fictive.png".into(),
+            url: "https://cdn.discordapp.com/attachments/8/91/capture-fictive.png?ex=0a&is=0b&hm=0c".into(),
+            proxy_url: "https://media.discordapp.net/attachments/8/91/capture-fictive.png?ex=0a&is=0b&hm=0c".into(),
+            content_type: Some("image/png".into()),
+            width: 1600,
+            height: 900,
+            ..Attachment::default()
+        }
+        .analysed(0);
+        let file = Attachment { id: 92, size: 2048, ..Attachment::file("notes-fictives.txt", "https://cdn.discordapp.com/attachments/8/92/notes-fictives.txt") }.analysed(0);
+        let snapshot = |attachments: Vec<Attachment>, embeds: Vec<Embed>, stickers: Vec<StickerItem>| {
+            let mut m = media_message();
+            m.content.clear();
+            m.attachments.clear();
+            m.embeds.clear();
+            m.meta.forward = Some(Box::new(Forward { content: "Texte de l'instantané".into(), attachments, embeds, stickers, ..Forward::default() }));
+            m
+        };
+        let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().unwrap_or_else(|e| panic!("{e}"));
+        let urls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let ctx = egui::Context::default();
+        let images = Images::start(ctx.clone(), rt.handle(), std::sync::Arc::new(Rec(urls.clone())), None, crate::images::Config::default(), std::sync::Arc::new(|| {}));
+        let t = Tokens::default();
+        let doc = crate::state::markdown::Doc::default();
+        let heights = |m: &Message| {
+            let drawn = pass(&ctx, &images, |ui, im| message_ui(ui, &t, Lang::Fr, im, m, &doc, false, 0));
+            let measured = pass(&ctx, &images, |ui, _| measure_ui(ui, &t, Lang::Fr, m, &doc, false, 0));
+            assert_eq!(drawn, measured, "même place à la mesure et au dessin");
+            drawn
+        };
+        let text_only = heights(&snapshot(Vec::new(), Vec::new(), Vec::new()));
+        assert!(urls.lock().map(|u| u.is_empty()).unwrap_or(false), "rien à charger sans média");
+        // Image : une vignette à sa proportion (550 × 309 au plus), pas une ligne de texte.
+        let with_picture = heights(&snapshot(vec![picture.clone()], Vec::new(), Vec::new()));
+        assert!(with_picture - text_only > 200.0, "vignette absente : {text_only} -> {with_picture}");
+        let got = urls.lock().map(|u| u.clone()).unwrap_or_default();
+        assert!(got.iter().any(|u| u.starts_with("https://media.discordapp.net/attachments/8/91/capture-fictive.png?") && u.contains("width=") && u.contains("height=")), "{got:?}");
+        // Fichier, embed, autocollant : chacun prend sa place sous le texte.
+        let with_file = heights(&snapshot(vec![picture.clone(), file], Vec::new(), Vec::new()));
+        let with_embed = heights(&snapshot(vec![picture.clone()], vec![Embed::text(Some("Carte fictive"), Some("Texte de la carte"))], Vec::new()));
+        let with_sticker = heights(&snapshot(vec![picture], Vec::new(), vec![StickerItem { id: 93, name: "Salut".into(), format: StickerFormat::Png }]));
+        assert!(with_file > with_picture && with_embed > with_picture, "{with_picture} {with_file} {with_embed}");
+        assert!(with_sticker - with_picture >= t.markdown.sticker, "{with_picture} {with_sticker}");
+        assert!(!urls.lock().map(|u| u.iter().any(|x| x.contains("notes-fictives.txt"))).unwrap_or(true), "un fichier n'est jamais demandé comme image");
     }
 
     /// Réglages « Texte et images » : chaque case décochée retire sa part du

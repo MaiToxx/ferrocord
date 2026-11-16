@@ -145,7 +145,11 @@ impl App {
         };
         let channel = v.channel(my.channel_id).map(|c| c.name.clone()).unwrap_or_default();
         let guild = my.guild_id.and_then(|g| self.store.guilds.iter().find(|x| x.id == g)).map(|g| crate::ui::words::guild_name(lang, &g.name).to_string()).unwrap_or_default();
-        let place = vf::place(lang, channel, guild);
+        // Appel d'un MP : le nom de la conversation (ni salon ni serveur).
+        let place = match my.guild_id {
+            Some(_) => vf::place(lang, channel, guild),
+            None => self.store.dms.iter().find(|d| d.id == my.channel_id).map(|d| crate::ui::words::dm_name(lang, &d.name).to_string()).unwrap_or_default(),
+        };
         let mute_forced = !self.store.me.as_ref().is_some_and(|m| v.can_speak(m.id));
         let audio_problem = v.audio_problem.clone();
         let noise = self.local.prefs.audio.noise_suppression;

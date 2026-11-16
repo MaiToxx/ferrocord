@@ -259,10 +259,12 @@ where
     gaps
 }
 
-/// La k-ième nouvelle tentative (k = 1, 2, …) attend au moins `BASE × 2^k`.
+/// La k-ième nouvelle tentative (k = 1, 2, …) attend au moins la moitié de
+/// `BASE × 2^k` : le délai doublé, moins la gigue (lot « fiable »,
+/// `net::backoff::equal_jitter`), qui n'en retire jamais plus de la moitié.
 fn assert_growing(gaps: &[Duration]) {
     for (i, g) in gaps.iter().enumerate() {
-        let min = BASE * (1u32 << (i + 1));
+        let min = BASE * (1u32 << i);
         assert!(*g >= min, "tentative {} trop rapide : {g:?} < {min:?} (écarts : {gaps:?})", i + 1);
     }
 }

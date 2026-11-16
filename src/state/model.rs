@@ -4,7 +4,7 @@
 use super::notice::SystemKind;
 use super::perms::Permissions;
 pub use super::image::{default_avatar_index, Avatar, ImageHash, ImageRef, DEFAULT_AVATARS};
-pub use super::media::{Attachment, Embed, EmbedAuthor, EmbedField, EmbedFooter, EmbedKind, EmbedMedia, EmbedProvider, EmbedSlot, MediaKind};
+pub use super::media::{Attachment, Embed, EmbedAuthor, EmbedField, EmbedFooter, EmbedKind, EmbedMedia, EmbedProvider, EmbedSlot, MediaKind, SafetyNotice};
 use std::collections::HashMap;
 
 pub const DISCORD_EPOCH: u64 = 1_420_070_400_000;
@@ -140,6 +140,29 @@ impl Guild {
     /// Serveur sans rôles ni membre connus (permissions inconnues).
     pub fn new(id: u64, name: String, channels: Vec<Channel>) -> Self {
         Guild { id, name, channels, owner_id: None, roles: Vec::new(), me: None, roles_unreadable: false, icon: None, emojis: Vec::new(), premium_tier: 0, boosts: 0, banner: None, tag: None }
+    }
+
+    /// Rend les capacités en trop (lot « ram »). Les tableaux d'un serveur
+    /// décodé gardent sinon la réserve de leur forme brute, plus grosse : un
+    /// READY de cent serveurs tenait ainsi deux fois plus que nécessaire.
+    pub fn shrink_to_fit(&mut self) {
+        self.name.shrink_to_fit();
+        for c in &mut self.channels {
+            c.name.shrink_to_fit();
+            if let Some(o) = &mut c.overwrites {
+                o.shrink_to_fit();
+            }
+        }
+        self.channels.shrink_to_fit();
+        for r in &mut self.roles {
+            r.name.shrink_to_fit();
+        }
+        self.roles.shrink_to_fit();
+        for e in &mut self.emojis {
+            e.name.shrink_to_fit();
+            e.roles.shrink_to_fit();
+        }
+        self.emojis.shrink_to_fit();
     }
 }
 

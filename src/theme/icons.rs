@@ -141,6 +141,8 @@ pub enum Icon {
     Boost,
     /// Ajouter un ami (silhouette et plus).
     FriendAdd,
+    /// Tout marquer comme lu (double coche).
+    CheckAll,
     /// Fait, choisi (coche).
     Check,
     /// Chevrons (sous-menu, repli, retour).
@@ -197,6 +199,12 @@ pub enum Icon {
     UserCircle,
     /// Précédent (flèche vers la gauche).
     ArrowLeft,
+    /// Fenêtre d'une application (cadre plein, deux boutons dans la barre de titre).
+    Window,
+    /// Démarrer un appel (combiné et ses ondes).
+    PhoneCall,
+    /// Ajouter des amis au MP (deux silhouettes et un plus).
+    GroupAdd,
 }
 
 impl Icon {
@@ -207,12 +215,12 @@ impl Icon {
         Icon::Smile, Icon::Apps, Icon::Mic, Icon::MicOff, Icon::Headphones, Icon::HeadphonesOff, Icon::Gear, Icon::Phone, Icon::HangUp,
         Icon::Camera, Icon::CameraOff, Icon::Screen, Icon::ScreenOff, Icon::Signal, Icon::Pencil, Icon::Trash, Icon::Reply, Icon::Forward,
         Icon::More, Icon::MoreVertical, Icon::Link, Icon::Copy, Icon::Id, Icon::Flag, Icon::Crown, Icon::Boost, Icon::FriendAdd, Icon::Chat,
-        Icon::Close, Icon::Check, Icon::ChevronDown, Icon::ChevronRight, Icon::ChevronUp, Icon::ChevronLeft, Icon::Compass, Icon::Download,
+        Icon::Close, Icon::Check, Icon::CheckAll, Icon::ChevronDown, Icon::ChevronRight, Icon::ChevronUp, Icon::ChevronLeft, Icon::Compass, Icon::Download,
         Icon::Folder, Icon::Calendar, Icon::Star, Icon::Clock, Icon::Eye, Icon::Lock, Icon::Hourglass, Icon::File, Icon::Play, Icon::Pause,
         Icon::Fullscreen, Icon::Paperclip, Icon::Logout, Icon::ArrowDown, Icon::ArrowRight, Icon::Audio, Icon::Plus, Icon::Poll,
         Icon::Quest, Icon::Sliders, Icon::Verified, Icon::Wave, Icon::Nitro, Icon::Shop,
         Icon::User, Icon::ShieldLock, Icon::ChatShield, Icon::Palette, Icon::Accessibility, Icon::Keyboard, Icon::Language, Icon::Gamepad,
-        Icon::Puzzle, Icon::Info, Icon::UserCircle, Icon::ArrowLeft,
+        Icon::Puzzle, Icon::Info, Icon::UserCircle, Icon::ArrowLeft, Icon::Window, Icon::PhoneCall, Icon::GroupAdd,
     ];
 }
 
@@ -393,8 +401,9 @@ fn draw(icon: Icon, painter: &Painter, rect: Rect, color: Color32) {
             }
         }
         Icon::Chat => {
-            painter.rect_filled(Rect::from_min_max(p(-0.85, -0.7), p(0.85, 0.42)), side * 0.2, color);
-            painter.add(Shape::convex_polygon(vec![p(-0.5, 0.3), p(-0.05, 0.3), p(-0.55, 0.88)], color, Stroke::NONE));
+            // Bulle pleine et ronde, sa queue en bas à gauche.
+            painter.circle_filled(p(0.04, -0.06), u * 0.78, color);
+            painter.add(Shape::convex_polygon(vec![p(-0.7, 0.2), p(-0.2, 0.68), p(-0.8, 0.8)], color, Stroke::NONE));
         }
         Icon::PlusCircle => {
             // Disque plein, croix dans le ton opposé : lisible sur tous les fonds.
@@ -529,9 +538,21 @@ impl Pen<'_> {
         self.rr(2.8, 13.0, 7.6, 20.5, 2.0);
         self.rr(16.4, 13.0, 21.2, 20.5, 2.0);
     }
+    /// Caméra compacte : boîtier très arrondi, objectif en trapèze aux angles adoucis.
     fn camera(&self) {
-        self.rr(2.0, 6.5, 15.5, 17.5, 2.5);
-        self.poly(&[(16.5, 10.6), (22.0, 7.2), (22.0, 16.8), (16.5, 13.4)]);
+        self.rr(2.0, 6.0, 15.6, 18.0, 3.6);
+        let lens = [(17.6, 10.6), (20.8, 8.4), (20.8, 15.6), (17.6, 13.4)];
+        self.poly(&lens);
+        self.line(&[lens[0], lens[1], lens[2], lens[3], lens[0]], 1.6);
+    }
+    /// Combiné posé de biais (écouteur en haut à gauche) ; `c`, `r` : le cercle
+    /// dont sa poignée suit un arc, `end` : rayon des deux bouts.
+    fn handset(&self, c: (f32, f32), r: f32, end: f32) {
+        let band = arc_points(c, r, 0.275, 0.475);
+        self.arc(c, r, 0.275, 0.475, end * 1.35);
+        for &(x, y) in [band[0], band[band.len() - 1]].iter() {
+            self.dot(x, y, end);
+        }
     }
     fn screen(&self) {
         self.rr(2.0, 4.0, 22.0, 16.5, 2.0);
@@ -593,10 +614,12 @@ fn filled(icon: Icon, painter: &Painter, rect: Rect, color: Color32) -> bool {
             // Punaise penchée à 45°, pointe en bas à gauche.
             let (s, c) = (TAU / 8.0).sin_cos();
             let r = |x: f32, y: f32| (12.0 + (x - 12.0) * c - (y - 12.0) * s, 12.0 + (x - 12.0) * s + (y - 12.0) * c);
-            k.poly(&[r(7.5, 1.5), r(16.5, 1.5), r(16.5, 4.0), r(7.5, 4.0)]);
-            k.poly(&[r(9.3, 4.0), r(14.7, 4.0), r(15.6, 11.0), r(8.4, 11.0)]);
-            k.poly(&[r(5.5, 13.6), r(8.4, 10.6), r(15.6, 10.6), r(18.5, 13.6)]);
-            k.poly(&[r(11.0, 13.6), r(13.0, 13.6), r(12.0, 22.5)]);
+            // Tête plate aux bouts ronds, corps resserré, embase évasée, aiguille fine.
+            k.line(&[r(8.2, 2.6), r(15.8, 2.6)], 2.2);
+            k.poly(&[r(9.4, 2.8), r(14.6, 2.8), r(15.2, 10.4), r(8.8, 10.4)]);
+            k.poly(&[r(6.2, 13.4), r(8.6, 10.0), r(15.4, 10.0), r(17.8, 13.4)]);
+            k.line(&[r(6.6, 13.2), r(17.4, 13.2)], 1.4);
+            k.line(&[r(12.0, 13.6), r(12.0, 21.6)], 1.5);
         }
         Icon::Help => {
             k.dot(12.0, 12.0, 10.0);
@@ -646,11 +669,20 @@ fn filled(icon: Icon, painter: &Painter, rect: Rect, color: Color32) -> bool {
         }
         Icon::Phone => {
             // Combiné : bande courbe, écouteur et micro plus larges.
-            let band = arc_points((20.0, 4.0), 13.0, 0.275, 0.475);
-            k.arc((20.0, 4.0), 13.0, 0.275, 0.475, 4.2);
-            for &(x, y) in [band[0], band[band.len() - 1]].iter() {
-                k.dot(x, y, 3.0);
-            }
+            k.handset((20.0, 4.0), 13.0, 3.0);
+        }
+        Icon::PhoneCall => {
+            // Le combiné, plus petit et calé en bas à gauche, et deux ondes en haut à droite.
+            k.handset((17.6, 7.4), 11.6, 2.7);
+            k.arc((12.6, 11.4), 4.0, 0.77, 0.98, 1.9);
+            k.arc((12.6, 11.4), 7.6, 0.76, 0.99, 1.9);
+        }
+        Icon::GroupAdd => {
+            // Une silhouette devant, une plus petite derrière, et le « + » en bas à droite.
+            k.person(16.6, 6.4, 4.0);
+            k.person(9.0, 8.2, 6.2);
+            k.line(&[(19.2, 16.4), (19.2, 21.8)], 2.0);
+            k.line(&[(16.5, 19.1), (21.9, 19.1)], 2.0);
         }
         Icon::HangUp => {
             k.arc((12.0, 22.0), 10.5, 0.60, 0.90, 4.0);
@@ -732,6 +764,10 @@ fn filled(icon: Icon, painter: &Painter, rect: Rect, color: Color32) -> bool {
             k.line(&[(15.5, 8.5), (21.5, 8.5)], 2.0);
         }
         Icon::Check => k.line(&[(4.5, 12.5), (9.5, 17.5), (19.5, 6.5)], 2.6),
+        Icon::CheckAll => {
+            k.line(&[(1.8, 12.8), (6.3, 17.3), (14.2, 7.2)], 2.2);
+            k.line(&[(10.8, 15.6), (12.5, 17.3), (21.4, 7.2)], 2.2);
+        }
         Icon::ChevronDown => k.chevron(0.0),
         Icon::ChevronLeft => k.chevron(0.25),
         Icon::ChevronUp => k.chevron(0.5),
@@ -771,35 +807,44 @@ fn filled(icon: Icon, painter: &Painter, rect: Rect, color: Color32) -> bool {
             k.rr(14.0, 4.0, 18.5, 20.0, 1.2);
         }
         Icon::Quest => {
-            // Médaillon, et sa couronne de feuilles ouverte en haut.
-            k.dot(12.0, 12.0, 4.8);
-            for i in 0..10 {
-                let v = Vec2::angled((0.87 + 0.76 * i as f32 / 9.0) * TAU) * 9.0;
-                k.dot(12.0 + v.x, 12.0 + v.y, 1.75);
+            // Couronne de laurier : deux rameaux de feuilles en amande, ouverts en
+            // haut, et le médaillon au centre.
+            k.dot(12.0, 12.0, 3.6);
+            for side in [-1.0f32, 1.0] {
+                for i in 0..5 {
+                    // Du bas du rameau (sous le médaillon) à sa pointe, en haut.
+                    let a = (0.25 + side * (0.05 + 0.092 * i as f32)) * TAU;
+                    let (dir, c) = (Vec2::angled(a), Vec2::angled(a) * 8.0);
+                    // Feuille tournée vers la pointe du rameau, un peu écartée du cercle.
+                    let along = Vec2::angled(a + side * 0.2 * TAU) * 2.4;
+                    let across = dir * 1.25;
+                    let at = |u: f32, v: f32| (12.0 + c.x + along.x * u + across.x * v, 12.0 + c.y + along.y * u + across.y * v);
+                    k.poly(&[at(-1.0, 0.0), at(-0.4, 0.85), at(0.35, 0.85), at(1.0, 0.0), at(0.35, -0.85), at(-0.4, -0.85)]);
+                }
             }
         }
         Icon::Wave => {
-            // Tête, épaules, et le bras levé terminé par la main.
-            k.dot(9.6, 7.4, 3.9);
-            k.cap((9.6, 21.6), 7.6, 0.5, 1.0);
-            k.line(&[(15.6, 15.4), (19.4, 8.6)], 2.8);
-            k.dot(19.9, 5.6, 2.4);
+            // Tête, épaules, et le bras levé à gauche, terminé par la main.
+            k.dot(14.2, 7.6, 3.9);
+            k.cap((14.2, 21.6), 7.4, 0.5, 1.0);
+            k.line(&[(8.6, 15.6), (5.2, 9.4)], 2.8);
+            k.dot(4.6, 6.2, 2.4);
         }
         Icon::Nitro => {
-            k.ring(14.4, 12.0, 6.3, 2.7);
-            k.dot(14.4, 12.0, 2.3);
-            k.line(&[(2.6, 6.6), (8.6, 6.6)], 2.3);
-            k.line(&[(1.6, 12.0), (4.8, 12.0)], 2.3);
-            k.line(&[(3.6, 17.4), (8.6, 17.4)], 2.3);
+            // Disque lancé : l'anneau, son moyeu, et la traînée qui part de son sommet.
+            k.ring(14.6, 12.2, 6.5, 2.6);
+            k.dot(14.6, 12.2, 2.2);
+            k.line(&[(3.2, 5.7), (14.6, 5.7)], 2.6);
+            k.line(&[(1.9, 11.0), (5.0, 11.0)], 2.4);
         }
         Icon::Shop => {
-            // Auvent et ses festons, puis la devanture et sa porte.
-            k.poly(&[(4.6, 3.2), (19.4, 3.2), (21.6, 8.4), (2.4, 8.4)]);
-            for x in [5.6, 12.0, 18.4] {
-                k.dot(x, 8.6, 3.15);
+            // Auvent à quatre festons, puis la devanture et sa porte.
+            k.rr(3.0, 2.8, 21.0, 8.6, 1.6);
+            for x in [5.25, 9.75, 14.25, 18.75] {
+                k.dot(x, 8.8, 2.25);
             }
-            k.rr(4.4, 13.4, 19.6, 21.2, 1.4);
-            k.ink().rr(9.8, 16.0, 14.2, 21.2, 0.9);
+            k.rr(4.6, 12.6, 19.4, 21.2, 1.6);
+            k.ink().rr(10.0, 15.8, 14.0, 21.2, 1.0);
         }
         Icon::Sliders => {
             for (y, knob) in [(6.0, 15.5), (12.0, 8.0), (18.0, 16.5)] {
@@ -842,12 +887,20 @@ fn filled(icon: Icon, painter: &Painter, rect: Rect, color: Color32) -> bool {
             k.line(&[(20.5, 12.0), (4.0, 12.0)], 2.4);
             k.line(&[(10.5, 5.5), (4.0, 12.0), (10.5, 18.5)], 2.4);
         }
-        Icon::UserCircle => {
-            k.dot(12.0, 12.0, 10.0);
+        Icon::Window => {
+            k.rr(2.0, 4.0, 22.0, 20.0, 3.0);
             let i = k.ink();
-            i.dot(12.0, 8.8, 3.1);
-            // Épaules : un disque coupé par le bord du grand.
-            i.cap((12.0, 19.0), 5.6, 0.5, 1.0);
+            i.dot(5.8, 7.8, 1.25);
+            i.dot(9.6, 7.8, 1.25);
+        }
+        Icon::UserCircle => {
+            // Disque à silhouette, et la petite pastille en bas à droite, détourée.
+            k.dot(11.2, 11.2, 9.2);
+            let i = k.ink();
+            i.dot(11.2, 8.2, 2.9);
+            i.cap((11.2, 17.6), 5.2, 0.5, 1.0);
+            i.dot(18.4, 18.4, 4.7);
+            k.dot(18.4, 18.4, 3.1);
         }
         Icon::Search => {
             k.ring(10.2, 10.2, 6.6, 2.6);
@@ -1016,7 +1069,7 @@ mod tests {
             }
         });
         out.textures_delta.clear();
-        assert_eq!(seen.len(), 91);
+        assert_eq!(seen.len(), 95);
     }
 
     /// Triangule ce qu'une couche a reçu depuis `from`, comme le fera l'image.

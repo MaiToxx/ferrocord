@@ -213,13 +213,10 @@ impl App {
         }
     }
 
-    /// Une activité est-elle détectée ou partagée (la manette se montre) ?
-    pub(super) fn panel_activity(&self) -> bool {
-        self.store.activity.current().is_some()
-    }
-
     /// Boutons du panneau, de droite à gauche (`ui` est disposé ainsi) :
-    /// engrenage, casque, micro, manette. `keep` : largeur à laisser à
+    /// engrenage, casque, micro. L'activité en cours a son encart au-dessus
+    /// du panneau et sa manette sous le nom (`game_card.rs`), comme dans le
+    /// client : plus de bouton ici. `keep` : largeur à laisser à
     /// l'avatar et au nom.
     pub(super) fn user_panel_buttons(&mut self, ui: &mut egui::Ui, keep: f32, bg: Color32) {
         let t = self.theme.clone();
@@ -229,7 +226,7 @@ impl App {
         let side = if super::mobile::is_active(ui.ctx()) { side.max(super::mobile::TOUCH) } else { side };
         let gap = t.spacing.item_y / 2.0;
         ui.spacing_mut().item_spacing.x = gap;
-        let fit = fit(ui.available_width(), keep, side, gap, self.panel_activity());
+        let fit = fit(ui.available_width(), keep, side, gap, false);
         if plain_button(ui, &t, side, crate::i18n::table::s::t::GEAR_TIP.get(lang), |p, rect, color| icons::paint(Icon::Gear, p, rect, color)).clicked() {
             self.params.open = !self.params.open;
         }
@@ -257,16 +254,13 @@ impl App {
                 }
             }
         }
-        if fit.activity && plain_button(ui, &t, side, pt::PANEL_ACTIVITY.get(lang), |p, rect, color| paint_gamepad(p, rect, color, bg)).clicked() {
-            self.show_settings(Page::Activity);
-        }
     }
 
     /// Menu d'un chevron : périphérique (sous-menu), profil d'entrée (micro
     /// seulement), volume, « Paramètres vocaux ». Chaque choix s'applique
     /// aussitôt, appel en cours compris (les réglages sont relus par le
     /// moteur vocal) ; le volume est enregistré au lâcher du curseur.
-    fn audio_menu(&mut self, ui: &mut egui::Ui, input: bool) {
+    pub(super) fn audio_menu(&mut self, ui: &mut egui::Ui, input: bool) {
         let t = self.theme.clone();
         let lang = self.lang;
         ui.set_min_width(MENU_WIDTH);

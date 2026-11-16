@@ -133,6 +133,48 @@ pub fn media_url(url: &str, width: u32, height: u32) -> String {
     u.into()
 }
 
+/// Adresse d'une image fixe redimensionnée par le proxy média, sans perte
+/// de qualité (lot « messages », partie D). [`media_url`] seule laisse le
+/// proxy réencoder un JPEG en JPEG à sa qualité par défaut : une seconde
+/// compression, visible sur les textes et les aplats. Ici on demande
+/// `quality=lossless` (valeurs `lossless`, `high`, `low`, « Only supported
+/// with WebP and JPG formats » : docs.discord.food, « CDN Formats »), en
+/// WebP pour un JPEG ou un PNG : la forme des adresses du client officiel
+/// (`…&format=webp&quality=lossless&width=…&height=…`). Seuls des
+/// paramètres s'ajoutent à l'adresse reçue ; jamais sur une image peut-être
+/// animée (GIF, extension inconnue), ni si un `format` est déjà demandé
+/// (affiche d'une vidéo) ; un WebP garde son format (il peut être animé).
+pub fn still_url(url: &str, width: u32, height: u32) -> String {
+    let sized = media_url(url, width, height);
+    let Ok(mut u) = reqwest::Url::parse(&sized) else { return sized };
+    if !u.domain().is_some_and(|h| h == "media.discordapp.net" || is_external_proxy(h)) || u.query_pairs().any(|(k, _)| k == "format" || k == "quality") {
+        return sized;
+    }
+    let ext = u.path().rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase());
+    match ext.as_deref() {
+        Some("jpg" | "jpeg" | "png") => u.query_pairs_mut().append_pair("format", "webp").append_pair("quality", "lossless"),
+        Some("webp") => u.query_pairs_mut().append_pair("quality", "lossless"),
+        _ => return sized,
+    };
+    u.into()
+}
+
+/// Taille demandée au proxy pour afficher `w` × `h` pixels : la même
+/// proportion, le grand côté arrondi au palier supérieur. Redimensionner la
+/// fenêtre ne redemande donc l'image qu'en changeant de palier ; la copie
+/// reçue est ensuite ramenée une fois, ici, à la taille exacte.
+pub fn stepped(w: u32, h: u32, max_side: u32) -> (u32, u32) {
+    let (w, h) = (w.max(1), h.max(1));
+    let long = w.max(h);
+    let step = if long <= 256 { 32 } else if long <= 1024 { 64 } else { 128 };
+    let target = long.div_ceil(step).saturating_mul(step).min(max_side.max(1));
+    if target <= long {
+        return (w, h);
+    }
+    let scale = |v: u32| ((u64::from(v) * u64::from(target)).div_ceil(u64::from(long)) as u32).clamp(1, target);
+    (scale(w), scale(h))
+}
+
 /// Format demandé au CDN.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Format {
@@ -513,6 +555,49 @@ mod tests {
         assert_eq!(media_url("https://images-ext-1.discordapp.net/external/x/a.png", 8, 8), "https://images-ext-1.discordapp.net/external/x/a.png?width=8&height=8");
         assert_eq!(media_url("pas une adresse", 8, 8), "pas une adresse");
         assert!(ok(Discord, &media_url(u, 1, 1)));
+    }
+
+    /// Partie D : sans `quality=lossless`, le proxy recompresse (JPEG → JPEG).
+    #[test]
+    fn still_url_asks_for_a_lossless_copy() {
+        let q = "ex=0a&is=0b&hm=0c";
+        let m = |name: &str| format!("https://media.discordapp.net/attachments/1/2/{name}?{q}");
+        assert_eq!(still_url(&m("photo.JPG"), 320, 180), format!("{}&width=320&height=180&format=webp&quality=lossless", m("photo.JPG")));
+        assert_eq!(still_url(&m("a.png"), 8, 8), format!("{}&width=8&height=8&format=webp&quality=lossless", m("a.png")));
+        assert_eq!(still_url(&m("a.webp"), 8, 8), format!("{}&width=8&height=8&quality=lossless", m("a.webp")), "peut être animé : format gardé");
+        // Peut-être animée, ou format déjà choisi : rien de plus que la taille.
+        for other in [m("a.gif"), m("sans-extension"), format!("{}&format=jpeg", m("film.mp4")), format!("{}&quality=high", m("b.jpg"))] {
+            assert_eq!(still_url(&other, 8, 8), media_url(&other, 8, 8), "{other}");
+        }
+        assert_eq!(still_url("https://images-ext-1.discordapp.net/external/x/https/site.example/a.jpeg", 8, 8), "https://images-ext-1.discordapp.net/external/x/https/site.example/a.jpeg?width=8&height=8&format=webp&quality=lossless");
+        // Hors du proxy média : jamais.
+        let cdn = "https://cdn.discordapp.com/attachments/1/2/a.png";
+        assert_eq!(still_url(cdn, 8, 8), media_url(cdn, 8, 8));
+        let g = "https://media.tenor.com/synthetique01AAAAM/chat.png";
+        assert_eq!(still_url(g, 8, 8), g);
+        assert_eq!(still_url("pas une adresse", 8, 8), "pas une adresse");
+        // Appliquée deux fois : rien n'est doublé.
+        let twice = still_url(&still_url(&m("a.png"), 320, 180), 64, 64);
+        assert_eq!(twice, format!("{}&format=webp&quality=lossless&width=64&height=64", m("a.png")));
+        assert!(ok(Discord, &still_url(&m("a.png"), 1, 1)));
+    }
+
+    /// Paliers : même proportion, jamais plus petit que demandé, borné.
+    #[test]
+    fn stepped_rounds_the_long_side_up() {
+        assert_eq!(stepped(688, 430, 4096), (704, 440));
+        assert_eq!(stepped(704, 440, 4096), (704, 440), "déjà sur un palier");
+        assert_eq!((stepped(700, 438, 4096).0, stepped(690, 431, 4096)), (704, (704, 440)), "même palier");
+        assert_eq!(stepped(100, 100, 4096), (128, 128));
+        assert_eq!(stepped(1300, 20, 4096), (1408, 22));
+        assert_eq!(stepped(4000, 3000, 4096), (4096, 3072));
+        assert_eq!(stepped(4096, 4096, 4096), (4096, 4096));
+        assert_eq!(stepped(5000, 10, 4096), (5000, 10), "au-dessus de la borne : inchangé");
+        assert_eq!(stepped(0, 0, 4096), (32, 32));
+        for (w, h) in [(1, 1), (33, 7), (257, 255), (1025, 3), (999, 1000)] {
+            let (sw, sh) = stepped(w, h, 4096);
+            assert!(sw >= w && sh >= h && sw.max(sh) - w.max(h) < 128, "{w}×{h} → {sw}×{sh}");
+        }
     }
 
     #[test]

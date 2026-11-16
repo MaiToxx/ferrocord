@@ -28,6 +28,7 @@
 //! encodée en pour-cent (UTF-8). Chaque requête suit un geste et passe par
 //! le limiteur commun ; la suppression un par un aussi, à son rythme.
 
+use super::super::backoff;
 use super::super::ratelimit::Route;
 use super::super::rest::{api_req, ApiError, Ctx};
 use super::super::Out;
@@ -45,6 +46,8 @@ use std::time::Duration;
 const MAX_WAIT: Duration = Duration::from_secs(15);
 /// Suppression un par un : chaque message attend son tour plus longtemps.
 const DELETE_WAIT: Duration = Duration::from_secs(60);
+/// Pause entre deux suppressions d'une sélection (bornes, tirée au hasard).
+const DELETE_PAUSE: (Duration, Duration) = (Duration::from_millis(350), Duration::from_millis(900));
 /// Marge sous les 14 jours de la suppression groupée (horloges décalées).
 const AGE_MARGIN_MS: i64 = 60_000;
 
@@ -476,6 +479,10 @@ async fn bulk_delete(ctx: &Ctx, channel_id: u64, ids: &[u64], now_ms: i64) {
         }
     }
     for (n, id) in singles.iter().enumerate() {
+        // Jamais cent suppressions dos à dos (lot « fiable ») : une courte pause irrégulière entre deux.
+        if n > 0 {
+            tokio::time::sleep(backoff::between(DELETE_PAUSE.0, DELETE_PAUSE.1, backoff::unit())).await;
+        }
         let req = Request {
             route: Route { template: "DELETE /channels/{}/messages/{}", major: channel_id },
             method: Method::DELETE,

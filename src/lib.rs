@@ -95,7 +95,7 @@ pub fn with_backdrop(mut options: eframe::NativeOptions, on: bool) -> eframe::Na
 /// Rendu de la fenêtre (lot « d3d ») : OpenGL, sauf si l'exécutable contient
 /// Direct3D 12 (fonctionnalité `rendu-wgpu`) et que `FERROCORD_RENDU` le
 /// demande. À appeler en dernier : la transparence de la fenêtre compte.
-/// [`launch`] le fait ; seuls les lancements directs par eframe l'appellent.
+/// [`launch`] le fait (avec un témoin de démarrage) ; seuls les lancements directs par eframe l'appellent.
 pub fn with_rendu(options: eframe::NativeOptions) -> eframe::NativeOptions {
     rendu::apply(options, rendu::from_env().unwrap_or_default())
 }
@@ -116,7 +116,12 @@ fn backdrop_at_boot() -> bool {
 /// les écrans sont listés au démarrage de la boucle d'événements, juste
 /// avant que la fenêtre soit créée. Sinon, le système choisit la place.
 pub fn launch(app_name: &str, options: eframe::NativeOptions, window: settings::Window, app: eframe::AppCreator<'_>) -> eframe::Result {
-    let mut options = with_rendu(options);
+    // Rendu : ANGLE s'il est posé, sous la garde d'un témoin de démarrage (`rendu::apply_guarded`).
+    let mut options = rendu::apply_guarded(options, rendu::from_env().unwrap_or_default());
+    let app: eframe::AppCreator<'_> = Box::new(move |cc| {
+        rendu::confirm(&cc.egui_ctx);
+        app(cc)
+    });
     let monitors: Rc<RefCell<Option<Vec<settings::Monitor>>>> = Rc::default();
     let seen = monitors.clone();
     let previous = options.window_builder.take();
@@ -140,6 +145,10 @@ pub fn launch(app_name: &str, options: eframe::NativeOptions, window: settings::
     let event_loop = builder.build()?;
     let inner = eframe::create_native(app_name, options, app, &event_loop);
     event_loop.run_app(&mut WithMonitors { inner, monitors })?;
+    // Fermeture : témoin de démarrage rendu ; rendu perdu (périphérique Direct3D retiré…) : relance.
+    if rendu::finish() == rendu::End::Relaunch {
+        install::request_restart();
+    }
     Ok(())
 }
 
@@ -281,12 +290,20 @@ pub fn run() -> eframe::Result {
     let env_token = session::env_token();
     let legacy = account::legacy_path();
     let lock = account::InstanceLock::new(account::lock_path(), account::lock::LOCK_WAIT);
+    // Rendu ANGLE (lot « gl ») : ses bibliothèques sont posées à côté de l'exécutable
+    // INSTALLÉ seulement (jamais à côté d'un exécutable téléchargé ou de compilation).
+    #[cfg(windows)]
+    if let (Ok(exe), Some(places)) = (std::env::current_exe(), install::setup::Places::system())
+        && install::setup::same_path(&exe, &places.target())
+    {
+        rendu::angle::prepare_installed(&mut install::hive::UserHive, &exe);
+    }
     stage("avant_fenetre");
     let first_theme = match &theme.1 {
         Some(theme::Update::Loaded(t)) => Some(t),
         _ => None,
     };
-    let options = with_backdrop(with_titlebar(native_options_for(&window), first_theme), backdrop_at_boot());
+    let options = platform::app_icon::skip_default(with_backdrop(with_titlebar(native_options_for(&window), first_theme), backdrop_at_boot()));
     let result = launch(
         "Ferrocord",
         options,
@@ -300,6 +317,8 @@ pub fn run() -> eframe::Result {
                 }
             };
             stage("fenetre_et_opengl");
+            // Icône de la fenêtre, réduite d'avance (lot « cpu ») : eframe ne la recalcule plus.
+            platform::app_icon::set(cc);
             // Identité annoncée à Discord, figée pour ce lancement (réglage de local.toml).
             let identity = net::identity::Config::for_app();
             let session = session::Session::with_identity(identity.clone());

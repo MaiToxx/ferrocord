@@ -46,7 +46,7 @@ impl ThemeError {
 /// visuelle ; les valeurs de l'ancien préréglage sont mises à jour à la lecture.
 /// 4 : icônes de serveur en carré arrondi dans les préréglages à la géométrie
 /// de Rouille.
-const VERSION: i64 = 5;
+const VERSION: i64 = 6;
 
 /// Texte qui fait paniquer l'analyseur dans les tests.
 #[cfg(test)]
@@ -97,6 +97,7 @@ fn parse_unguarded(text: &str, lang: Lang, skip: &[&str]) -> Result<Tokens, Them
     let mut tokens = match version {
         ..4 => base.tokens_v3(),
         4 => base.tokens_v4(),
+        5 => base.tokens_v5(),
         _ => base.tokens(),
     };
     let mut fields = tokens.fields_mut();
@@ -145,6 +146,12 @@ fn parse_unguarded(text: &str, lang: Lang, skip: &[&str]) -> Result<Tokens, Them
         let new = tokens.base.tokens();
         migrate(&mut tokens, old, new);
     }
+    if version < 6 {
+        // Zone de saisie des préréglages calqués : qui avait gardé ses marges de 16 suit le client (8).
+        let old = tokens.base.tokens_v5();
+        let new = tokens.base.tokens();
+        migrate(&mut tokens, old, new);
+    }
     Ok(tokens)
 }
 
@@ -154,7 +161,8 @@ fn parse_unguarded(text: &str, lang: Lang, skip: &[&str]) -> Result<Tokens, Them
 /// Version 1 : avant la refonte visuelle (lot E). Version 2 : avant les
 /// préréglages calqués sur le client de bureau (lot V1). Version 3 : avant les
 /// icônes de serveur en carré arrondi (lot « amis »). Version 4 : avant le
-/// fil des messages sans pastille de statut (lot « chatmp »).
+/// fil des messages sans pastille de statut (lot « chatmp »). Version 5 : avant
+/// la zone de saisie à 8 des bords (lot « profils »).
 fn migrate(tokens: &mut Tokens, mut old: Tokens, mut new: Tokens) {
     for ((cur, old), new) in tokens.fields_mut().into_iter().zip(old.fields_mut()).zip(new.fields_mut()) {
         match (cur.value, old.value, new.value) {
@@ -345,11 +353,19 @@ mod tests {
     /// avait réglé. Réécrit, il n'est plus touché.
     #[test]
     fn old_files_follow_the_new_presets() {
-        let v1_text = |t: &Tokens| export(t).replace("version = 5\n", "");
-        let v2_text = |t: &Tokens| export(t).replace("version = 5\n", "version = 2\n");
-        let v3_text = |t: &Tokens| export(t).replace("version = 5\n", "version = 3\n");
-        let v4_text = |t: &Tokens| export(t).replace("version = 5\n", "version = 4\n");
+        let v1_text = |t: &Tokens| export(t).replace("version = 6\n", "");
+        let v2_text = |t: &Tokens| export(t).replace("version = 6\n", "version = 2\n");
+        let v3_text = |t: &Tokens| export(t).replace("version = 6\n", "version = 3\n");
+        let v4_text = |t: &Tokens| export(t).replace("version = 6\n", "version = 4\n");
+        let v5_text = |t: &Tokens| export(t).replace("version = 6\n", "version = 5\n");
         for p in Preset::ALL {
+            // Version 5 : seules les marges de la zone de saisie restées celles du préréglage changent.
+            assert_eq!(parse(&v5_text(&p.tokens_v5())), Ok(p.tokens()), "{}", p.key());
+            let mut own = p.tokens_v5();
+            own.spacing.composer_x = 20.0;
+            let mut want = p.tokens();
+            want.spacing.composer_x = 20.0;
+            assert_eq!(parse(&v5_text(&own)), Ok(want), "{}", p.key());
             // Version 4 : seule la pastille de statut des messages restée affichée change.
             assert_eq!(parse(&v4_text(&p.tokens_v4())), Ok(p.tokens()), "{}", p.key());
             let mut kept = p.tokens_v4();
@@ -364,6 +380,7 @@ mod tests {
             // Réglé à la main : gardé ; le reste suit les versions suivantes (pastille de statut, saisie).
             let mut want = round.clone();
             (want.layout.status_dots, want.spacing.composer_inner_y) = (p.tokens().layout.status_dots, p.tokens().spacing.composer_inner_y);
+            (want.spacing.composer_x, want.spacing.composer_bottom) = (p.tokens().spacing.composer_x, p.tokens().spacing.composer_bottom);
             assert_eq!(parse(&v3_text(&round)), Ok(want), "{}", p.key());
             type Text<'a> = &'a dyn Fn(&Tokens) -> String;
             let cases: [(Tokens, Text<'_>); 2] = [(crate::theme::legacy::tokens(p), &v1_text), (p.tokens_v2(), &v2_text)];
@@ -383,7 +400,7 @@ mod tests {
                 assert_eq!(parse(&export(&old)), Ok(old), "{}", p.key());
             }
         }
-        for bad in ["version = 0\n", "version = 6\n","version = \"2\"\n"] {
+        for bad in ["version = 0\n", "version = 7\n","version = \"2\"\n"] {
             let e = parse(bad).expect_err(bad);
             assert_eq!(e.line, Some(1));
             assert!(e.message.contains("version"), "{e}");
@@ -512,7 +529,7 @@ mod tests {
         assert!(text.starts_with("# Thème Ferrocord."));
         assert!(text.contains("base = \"rouille\""));
         assert!(text.contains("[couleurs]\n# Fond 0"));
-        assert!(text.contains("version = 5\nbase = \"rouille\"\n"));
+        assert!(text.contains("version = 6\nbase = \"rouille\"\n"));
         assert!(text.contains("bg2 = \"#2b2d31\""));
         assert!(text.contains("body = 15\n"));
         assert!(text.contains("density = \"normal\""));

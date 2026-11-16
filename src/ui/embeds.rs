@@ -43,20 +43,33 @@ fn embed_text(ui: &mut egui::Ui, t: &Tokens, lang: Lang, msg: u64, index: usize,
 /// Embeds du message `m` ; `images` absent : mesure seule.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn embeds_ui<'a>(ui: &mut egui::Ui, t: &Tokens, lang: Lang, images: Option<&Images>, m: &'a Message, doc: &Doc, zones: &mut Zones, hot: &mut Hot<'a>) {
+    embeds_list(ui, t, lang, images, m.id, &m.embeds, doc, zones, hot);
+}
+
+/// Embeds `list` du message `msg` : les siens, ou ceux de l'instantané d'un
+/// message transféré (`doc` est alors le document de l'instantané). La clé
+/// d'une image porte l'empreinte de son adresse : les deux listes ne se
+/// confondent pas.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn embeds_list<'a>(ui: &mut egui::Ui, t: &Tokens, lang: Lang, images: Option<&Images>, msg: u64, list: &'a [Embed], doc: &Doc, zones: &mut Zones, hot: &mut Hot<'a>) {
     // Réglages « Texte et images » : aperçus des liens, puis images et vidéos des liens.
     let shown = super::attachments::shown(ui.ctx());
     if !shown.embeds {
         return;
     }
     let mut et = EmbedText { doc, zones };
-    for (i, e) in m.embeds.iter().enumerate() {
+    for (i, e) in list.iter().enumerate() {
         if e.is_bare_media() && !shown.link_media {
             continue;
         }
-        if e.is_bare_media() {
-            bare_media(ui, t, lang, images, m.id, i, e, hot);
+        if let Some(n) = e.safety_notice() {
+            // Notification du compte système de Discord : sa carte, sans les champs techniques.
+            let now_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
+            super::safety_card::card(ui, t, lang, images.is_some(), &n, now_ms, hot);
+        } else if e.is_bare_media() {
+            bare_media(ui, t, lang, images, msg, i, e, hot);
         } else {
-            card(ui, t, lang, images, m.id, i, e, &mut et, hot);
+            card(ui, t, lang, images, msg, i, e, &mut et, hot);
         }
     }
 }

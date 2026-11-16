@@ -28,12 +28,20 @@ fn mark(kind: SystemKind) -> Mark {
         ThreadCreated => Mark::Icon(Icon::Thread),
         PollResult => Mark::Icon(Icon::Poll),
         FollowAdd => Mark::Icon(Icon::Megaphone),
-        Call => Mark::Icon(Icon::Audio),
+        Call => Mark::Icon(Icon::Phone),
         ChannelName | ChannelIcon => Mark::Glyph(Glyph::Edit),
         RecipientRemove => Mark::Icon(Icon::Logout),
         AutoMod => Mark::Icon(Icon::Lock),
         _ => Mark::Icon(Icon::ArrowRight),
     }
+}
+
+/// Phrase d'un appel coupée autour du nom de son auteur : (avant, après).
+fn call_parts(m: &Message) -> Option<(&str, &str)> {
+    if m.author.is_empty() {
+        return None;
+    }
+    m.content.split_once(m.author.as_str())
 }
 
 /// Ligne d'un message système. `ts` : heure du message.
@@ -45,23 +53,60 @@ pub(super) fn system_line(ui: &mut egui::Ui, t: &Tokens, lang: Lang, m: &Message
     let target = target.filter(|r| r.channel_id.is_none_or(|c| acts.store.channel_exists(c)));
     let color = if target.is_some() { t.colors.text } else { t.colors.muted };
     let side = Tokens::icon_side(t.typography.body);
-    let paint = |ui: &egui::Ui, rect: egui::Rect| match mark(kind) {
-        Mark::Icon(i) => crate::theme::icons::paint(i, ui.painter(), rect, t.colors.faint),
-        Mark::Glyph(g) => msg_actions::paint_glyph(g, ui.painter(), rect, t.colors.faint),
+    // Appel : combiné vert, rouge quand je l'ai manqué (comme dans le client).
+    let call = kind == SystemKind::Call;
+    let missed = call && crate::state::system_msgs::call_missed(m, acts.store.me.as_ref().map(|u| u.id));
+    let ink = match (call, missed) {
+        (true, true) => t.colors.danger,
+        (true, false) => t.colors.online,
+        _ => t.colors.faint,
     };
-    let words = |ui: &mut egui::Ui| {
-        ui.label(RichText::new(&m.content).color(color));
-        ui.label(RichText::new(time::clock(lang, ts, true, h24)).small().color(t.colors.faint));
+    let paint = |ui: &egui::Ui, rect: egui::Rect| match mark(kind) {
+        Mark::Icon(i) => crate::theme::icons::paint(i, ui.painter(), rect, ink),
+        Mark::Glyph(g) => msg_actions::paint_glyph(g, ui.painter(), rect, ink),
+    };
+    // Rend le milieu de la première ligne de la phrase : egui lui donne la
+    // hauteur de la rangée (celle d'un contrôle) ; une étiquette simple y est
+    // centrée, la phrase composée d'un appel posée en bas.
+    let words = |ui: &mut egui::Ui| -> f32 {
+        let cursor = ui.cursor();
+        let line = ui.text_style_height(&egui::TextStyle::Body);
+        let high = cursor.height().max(line);
+        let mid = cursor.top() + if call_parts(m).is_some() && call { high - line / 2.0 } else { high / 2.0 };
+        match call_parts(m).filter(|_| call) {
+            // Le nom de l'auteur dans la police de son style de nom, le reste en gris.
+            // Une seule phrase (même ligne de base, renvoi à la ligne propre).
+            Some((before, after)) => {
+                let worn = super::cosmetics::author(ui.ctx(), m.author_id);
+                let body = egui::TextStyle::Body.resolve(ui.style());
+                let name = super::cosmetics::name_font(ui.ctx(), body.size, worn.look.name_style());
+                let rest = egui::TextFormat { font_id: body, color: t.colors.muted, ..Default::default() };
+                let mut job = egui::text::LayoutJob::default();
+                job.append(before, 0.0, rest.clone());
+                job.append(&m.author, 0.0, egui::TextFormat { font_id: name, color: super::cosmetics::author_color(ui.ctx(), t, m.author_id, &worn), ..Default::default() });
+                job.append(after, 0.0, rest);
+                // L'heure courte des messages (« 16:28 », « Hier à 00:04 »), à droite du texte.
+                let small = egui::TextStyle::Small.resolve(ui.style());
+                job.append(&time::message(lang, ts, h24), t.spacing.item_x, egui::TextFormat { font_id: small, color: t.colors.faint, ..Default::default() });
+                super::emoji::label_job(ui, job, false);
+            }
+            None => {
+                ui.label(RichText::new(&m.content).color(color));
+                ui.label(RichText::new(time::clock(lang, ts, true, h24)).small().color(t.colors.faint));
+            }
+        }
+        mid
     };
     // Avatars affichés : l'icône au milieu de leur colonne, la phrase (et ses
     // lignes renvoyées) sur la colonne du texte des messages.
     if t.message_avatars() {
         let origin = ui.cursor().min;
-        let line = ui.text_style_height(&egui::TextStyle::Body);
-        let at = origin + egui::vec2((t.layout.avatar_size - side) / 2.0, (line - side) / 2.0);
-        paint(ui, super::util::pixel_square(ui, at, side));
         egui::Frame::new().inner_margin(t.avatar_indent()).show(ui, |ui| {
-            let row = ui.horizontal_wrapped(words).response.rect;
+            let row = ui.horizontal_wrapped(words);
+            // L'icône à la hauteur de la première ligne de la phrase.
+            let at = egui::pos2(origin.x + (t.layout.avatar_size - side) / 2.0, row.inner - side / 2.0);
+            paint(ui, super::util::pixel_square(ui, at, side));
+            let row = row.response.rect;
             if let Some(r) = target {
                 acts.hits.push((row, Hit::Extra(ExtraHit::Target(r))));
             }

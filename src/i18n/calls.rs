@@ -20,6 +20,12 @@ pub mod t {
         RING = "Faire sonner", "Ring";
         UNAVAILABLE = "Appel indisponible (panne chez Discord)", "Call unavailable (Discord outage)";
         MUTED = "micro coupé", "muted";
+        DEAFENED = "casque coupé", "deafened";
+        JOIN_CALL = "Rejoindre l'appel", "Join Call";
+        MORE = "Plus d'options", "More Options";
+        CAMERA_MENU = "Options de la caméra", "Camera Options";
+        VIDEO_SETTINGS = "Paramètres vidéo", "Video Settings";
+        RESIZE = "Faire glisser pour changer la hauteur de l'appel", "Drag to resize the call";
         NOBODY = "Personne pour l'instant.", "Nobody here yet.";
         VOICE_ROOM = "Salon vocal", "Voice Channel";
         STAGE = "Conférence", "Stage";
@@ -75,6 +81,10 @@ pub mod f {
 
     templates! {
         calling_you(name) = "{name} vous appelle…", "{name} is calling you…";
+        person_ringing(name) = "{name}, sonnerie…", "{name}, ringing…";
+        person_state(name, state) = "{name}, {state}", "{name}, {state}";
+        leave_after(time) = "Raccrocher ({time})", "Disconnect ({time})";
+        others(n) = "+{n}", "+{n}";
         failed(action, reason) = "{action}\u{a0}: échec ({reason})", "{action} failed ({reason})";
         played(name, sound) = "{name} a joué «\u{a0}{sound}\u{a0}»", "{name} played “{sound}”";
     }

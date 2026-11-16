@@ -25,7 +25,15 @@
 //! processeur de chaque fil depuis le relevé précédent, en ms, voir
 //! [`threads`]) et `premier_salon` (image où le premier salon s'affiche au
 //! démarrage : ce n'est pas un changement de salon, caches froids).
+//!
+//! Lot « ram » (Windows) : `mem.etape.<nom>` (mémoire privée à chaque étape du
+//! démarrage), `mem.privee`, `mem.travail`, `mem.travail_privee` (compteurs du
+//! processus, quand ils bougent d'au moins 1 Mo) et `mem.carte.*` (à qui
+//! appartient la mémoire privée : modules, piles, tas engagé et alloué, reste ;
+//! voir [`memory`]). Pour ces lignes, la colonne `ms` porte des Mo.
 
+#[cfg(windows)]
+pub mod memory;
 #[cfg(windows)]
 pub mod process;
 pub mod threads;
@@ -167,6 +175,11 @@ impl Recorder {
     /// Étape du démarrage atteinte maintenant (ms depuis le début de `run`).
     pub fn stage(&self, name: &'static str) {
         self.record_key(Cow::Owned(format!("etape.{name}")), self.started.elapsed().as_secs_f64() * 1000.0);
+        // Mémoire privée à cette étape, en Mo (lot « ram ») : ce que chaque étape du démarrage engage.
+        #[cfg(windows)]
+        if let Some(u) = memory::usage() {
+            self.record_key(Cow::Owned(format!("mem.etape.{name}")), u.private as f64 / 1_048_576.0);
+        }
     }
 }
 
@@ -339,11 +352,12 @@ mod tests {
             let f: Vec<&str> = l.split(',').collect();
             assert_eq!(f.len(), 3, "{l}");
             assert!(f[0].parse::<f64>().is_ok(), "{l}");
-            assert!(keys.contains(&f[1]) || ["etape.", "cause.", "passerelle.", "entree.", "fil."].iter().any(|p| f[1].starts_with(p)), "{l}");
+            assert!(keys.contains(&f[1]) || ["etape.", "cause.", "passerelle.", "entree.", "fil.", "mem."].iter().any(|p| f[1].starts_with(p)), "{l}");
             assert!(f[2].parse::<f64>().is_ok(), "{l}");
             n += 1;
         }
-        assert_eq!(n, 7);
+        // Sous Windows, l'étape note aussi la mémoire privée (`mem.etape.*`, lot « ram »).
+        assert_eq!(n, if cfg!(windows) { 8 } else { 7 });
         assert!(text.contains("changement_de_salon,3.000"));
         assert!(text.contains(",cause.ui_mod.rs_387,1.000") && text.contains(",passerelle.differe.message_create,1.000") && text.contains(",etape.fenetre_et_opengl,"));
         // Rien d'autre que des chiffres, des types fixes et la ponctuation.

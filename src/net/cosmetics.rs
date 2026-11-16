@@ -20,13 +20,11 @@ use crate::state::cosmetics::{Asset, GuildTag, Look, NameEffect, NameStyle, Name
 use crate::state::model::ImageHash;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer};
-use serde_json::value::RawValue;
 
 /// Champ présent (même `null` ou illisible) : `Some`, avec sa valeur si
 /// elle se lit. Absent : `None` par `#[serde(default)]`.
 pub(super) fn de_present<'de, D: Deserializer<'de>, T: DeserializeOwned>(d: D) -> Result<Option<Option<T>>, D::Error> {
-    let raw = Box::<RawValue>::deserialize(d)?;
-    Ok(Some(serde_json::from_str::<T>(raw.get()).ok()))
+    super::raw::with_raw(d, |raw| Some(serde_json::from_str::<T>(raw).ok()))
 }
 
 #[derive(Deserialize)]

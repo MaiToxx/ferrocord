@@ -1,6 +1,6 @@
 [package]
 name = "ferrocord"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 # 1.88 suffit aux let-chains, mais eframe/egui 0.37 exigent 1.95.
 rust-version = "1.95"
@@ -10,12 +10,16 @@ description = "Client Discord natif et léger écrit en Rust (non officiel)"
 # ici ne concernent que ferrocord ; tools/signer reste un outil à part.
 [workspace]
 members = ["android"]
+# vendor/glutin-winit : copie modifiée, branchée par [patch.crates-io] plus bas.
+exclude = ["vendor"]
 
 [dependencies]
 chrono = "0.4.45"
 # Rendu OpenGL (glow) : beaucoup plus léger que wgpu pour une interface 2D simple.
 # Vérifié au lot « d3d » (docs/mesures-d3d.md) : wgpu sur Direct3D 12 coûte ici
 # +158 Mo de mémoire privée, +400 ms de démarrage et +4,5 Mo d'exécutable.
+# Lot « gl » : le contexte de glow vient d'ANGLE (Direct3D 11) quand ses bibliothèques sont
+# posées à côté de l'exécutable (src/rendu/angle.rs) : 60 à 130 Mo de moins que le pilote OpenGL.
 # Sans « links » : les liens sont ouverts par `install::browser` (lot C6), qui
 # retire `DISCORD_TOKEN` de l'environnement du navigateur ; webbrowser retiré.
 eframe = { version = "0.37.0", default-features = false, features = ["glow", "default_fonts", "clipboard"] }
@@ -117,11 +121,12 @@ winapi-util = "0.1.11"
 # Win32_Graphics_Gdi : ScreenToClient, barre de titre intégrée (lot V1, src/platform/caption.rs).
 # Win32_Security_Cryptography : DPAPI, clé de l'historique hors ligne (lot H, src/offline/dpapi.rs).
 # Win32_System_Memory : polices du système projetées en mémoire, pas copiées (lot C9, src/platform/mapped.rs).
+# Win32_System_ProcessStatus : compteurs de mémoire du processus pour le journal de performance (lot « ram », src/perf/memory.rs). Liaisons seules.
 # Globalization : fuseau horaire IANA du système (Calendar.GetTimeZone), pour net/identity.rs.
 # Win32_Graphics_Dwm, Win32_UI_Controls (structure MARGINS) : fond Mica ou acrylique de
 # Windows 11 (lot E5, `unsafe` isolé dans src/platform/backdrop.rs). Liaisons seules, aucune crate.
 # Win32_UI_Shell : raccourcis .lnk de l'installation (IShellLinkW, lot distrib, `unsafe` isolé dans src/install/shortcut.rs).
-windows = { version = "0.62.2", features = ["Data_Xml_Dom", "Foundation", "Media_Core", "Media_Playback", "Media_SpeechSynthesis", "UI_Notifications", "Devices_Enumeration", "Foundation_Collections", "Graphics_Imaging", "Media_Capture", "Media_Capture_Frames", "Media_MediaProperties", "Storage_Streams", "Win32_Foundation", "Win32_Media_Audio", "Win32_Media_MediaFoundation", "Win32_Security", "Win32_Security_Cryptography", "Win32_System_Com", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Com_StructuredStorage", "Win32_System_Ole", "Win32_System_Threading", "Win32_System_Variant", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_LibraryLoader", "Win32_System_Memory", "Globalization", "Win32_Graphics_Gdi", "Win32_Graphics_Dwm", "Win32_UI_Controls", "Win32_UI_Shell", "Wdk_System_Threading"] }
+windows = { version = "0.62.2", features = ["Data_Xml_Dom", "Foundation", "Media_Core", "Media_Playback", "Media_SpeechSynthesis", "UI_Notifications", "Devices_Enumeration", "Foundation_Collections", "Graphics_Imaging", "Media_Capture", "Media_Capture_Frames", "Media_MediaProperties", "Storage_Streams", "Win32_Foundation", "Win32_Media_Audio", "Win32_Media_MediaFoundation", "Win32_Security", "Win32_Security_Cryptography", "Win32_System_Com", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Com_StructuredStorage", "Win32_System_Ole", "Win32_System_Threading", "Win32_System_Variant", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_LibraryLoader", "Win32_System_Memory", "Win32_System_ProcessStatus", "Globalization", "Win32_Graphics_Gdi", "Win32_Graphics_Dwm", "Win32_UI_Controls", "Win32_UI_Shell", "Wdk_System_Threading", "Win32_Storage_FileSystem"] }
 # Nom et icône des notifications (clé AppUserModelId du registre de
 # l'utilisateur) : interface sûre des mêmes auteurs, sur les mêmes crates de base.
 windows-registry = "0.6.1"
@@ -144,6 +149,11 @@ windows-core = "0.62.2"
 # Rendu Direct3D 12 (lot « d3d », fonctionnalité « rendu-wgpu ») : le wgpu d'eframe,
 # nommé ici pour ne lui donner QUE le dorsal DX12 (ni Vulkan, ni Metal, ni GLES, ni WebGPU).
 wgpu = { version = "30.0.2", default-features = false, features = ["dx12"], optional = true }
+# Rendu ANGLE (lot « gl ») : déjà présente (eframe), nommée pour régler `PREFER_EGL` de
+# la copie modifiée (vendor/glutin-winit, voir [patch.crates-io]). Aucune nouvelle caisse.
+glutin-winit = { version = "0.5.0", default-features = false, features = ["egl", "wgl"] }
+# Déjà présente (eframe y écrit ses erreurs) : nommée pour reconnaître la perte du rendu (src/rendu.rs). Aucune nouvelle caisse.
+log = { version = "0.4.35", default-features = false }
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 # Accessibilité (lecteurs d'écran) : partout sauf Android, où eframe ne
@@ -186,6 +196,11 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.easyfft]
 opt-level = 3
+
+# Lot « gl » : glutin-winit avec « EGL d'abord » réglable (ANGLE, Direct3D 11) : eframe 0.37
+# impose WGL sous Windows. Une seule différence avec l'original : vendor/glutin-winit/LISEZMOI.md.
+[patch.crates-io]
+glutin-winit = { path = "vendor/glutin-winit" }
 
 [profile.release]
 opt-level = 3

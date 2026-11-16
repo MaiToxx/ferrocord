@@ -77,7 +77,7 @@ async fn gateway_reply_forward_and_reactions() {
     let m = s.client.store.find_message(GENERAL, FORWARD).cloned().unwrap_or_else(|| panic!("transfert absent"));
     let f = m.meta.forward.as_ref().unwrap_or_else(|| panic!("instantané absent"));
     assert!(f.content.starts_with("Réunion demain"), "{}", f.content);
-    assert_eq!(f.attachments, vec!["ordre-du-jour.txt".to_string()]);
+    assert_eq!(f.attachments.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), ["ordre-du-jour.txt"]);
     assert_eq!((f.channel_id, f.message_id), (Some(HORS_SUJET), Some(5000000000000000150)));
     assert!(m.meta.pinned);
 

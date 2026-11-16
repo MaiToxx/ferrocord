@@ -218,6 +218,44 @@ pub fn long_date_in<Tz: TimeZone>(lang: Lang, tz: &Tz, ms: i64) -> String {
     }
 }
 
+/// Mois abrégés comme dans le client (« 10 nov. 2019 », « Nov 10, 2019 »).
+const MONTHS_SHORT: [[&str; 12]; 2] = [
+    ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."],
+    ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+];
+
+/// Date au mois abrégé : « 10 nov. 2019 », « Nov 10, 2019 » (« Membre
+/// depuis » d'une carte de profil). Hors de la plage représentable : vide.
+pub fn medium_date(lang: Lang, ms: i64) -> String {
+    medium_date_in(lang, &Local, ms)
+}
+
+/// `medium_date` avec le fuseau en paramètre.
+pub fn medium_date_in<Tz: TimeZone>(lang: Lang, tz: &Tz, ms: i64) -> String {
+    let Some(day) = tz.timestamp_millis_opt(ms).single().map(|d| d.date_naive()) else { return String::new() };
+    let m = MONTHS_SHORT[lang.index()][day.month0() as usize % 12];
+    match lang {
+        Lang::Fr => format!("{} {m} {}", day.day(), day.year()),
+        Lang::En => format!("{m} {}, {}", day.day(), day.year()),
+    }
+}
+
+/// Jour d'une notification officielle : « Aujourd'hui », « Hier », sinon la
+/// date à mois abrégé.
+pub fn day_or_date(lang: Lang, ms: i64, now_ms: i64) -> String {
+    day_or_date_in(lang, &Local, ms, now_ms)
+}
+
+/// `day_or_date` avec le fuseau en paramètre.
+pub fn day_or_date_in<Tz: TimeZone>(lang: Lang, tz: &Tz, ms: i64, now_ms: i64) -> String {
+    let day = |ms: i64| tz.timestamp_millis_opt(ms).single().map(|d| d.date_naive());
+    match (day(ms), day(now_ms)) {
+        (Some(d), Some(today)) if d == today => t::TODAY.get(lang).to_string(),
+        (Some(d), Some(today)) if today.pred_opt() == Some(d) => t::YESTERDAY.get(lang).to_string(),
+        _ => medium_date_in(lang, tz, ms),
+    }
+}
+
 /// Date courte, sans l'année : « 16/11 » en français, « 11/16 » en anglais
 /// (échéance d'une quête). Hors de la plage représentable : vide.
 pub fn short_date(lang: Lang, ms: i64) -> String {

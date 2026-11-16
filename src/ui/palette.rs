@@ -412,16 +412,11 @@ impl App {
         }
     }
 
-    /// « Marquer tout comme lu » : chaque serveur, puis les conversations non lues.
+    /// « Marquer tout comme lu » : tous les serveurs et les conversations
+    /// non lues, dans un seul accusé groupé (lot « fiable » : avant, une
+    /// requête par serveur et une par conversation partaient ensemble).
     fn mark_everything_read(&mut self) {
-        let guilds: Vec<u64> = self.store.guilds.iter().map(|g| g.id).collect();
-        for g in guilds {
-            self.store.mark_guild_read(g);
-        }
-        let dms: Vec<u64> = self.store.dms.iter().map(|d| d.id).filter(|c| self.store.unread().contains(c)).collect();
-        for c in dms {
-            self.store.mark_read(c);
-        }
+        self.store.mark_all_read();
     }
 }
 

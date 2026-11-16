@@ -343,7 +343,19 @@ pub struct VoiceStates {
     pub codes: Option<VoiceCodes>,
     /// Micro ou sortie en panne pendant l'appel (message affiché).
     pub audio_problem: Option<String>,
+    /// Instants des dernières op 4 renvoyées d'elles-mêmes après une session
+    /// vocale expirée (lot « fiable » : jamais en boucle).
+    auto_rejoins: Vec<std::time::Instant>,
+    /// Compteur des changements de présence vocale (qui est où, qui partage) :
+    /// les listes qui en dépendent ne se refont qu'à son changement.
+    rev: u64,
 }
+
+/// Op 4 renvoyées sans geste après une session vocale expirée (codes 4006,
+/// 4009) : au plus [`AUTO_REJOIN_MAX`] par [`AUTO_REJOIN_WINDOW`] ; au-delà,
+/// l'appel s'arrête sur un message et c'est à l'utilisateur de rejoindre.
+pub const AUTO_REJOIN_MAX: usize = 3;
+pub const AUTO_REJOIN_WINDOW: std::time::Duration = std::time::Duration::from_secs(300);
 
 impl VoiceStates {
     /// Session vocale de la passerelle principale (aussi celle des directs).
@@ -353,7 +365,13 @@ impl VoiceStates {
 
     pub fn clear(&mut self) {
         let (mute, deaf) = (self.self_mute, self.self_deaf);
-        *self = VoiceStates { self_mute: mute, self_deaf: deaf, mute_choice: self.mute_choice, ..Default::default() };
+        *self = VoiceStates { self_mute: mute, self_deaf: deaf, mute_choice: self.mute_choice, rev: self.rev.wrapping_add(1), ..Default::default() };
+    }
+
+    /// Révision des présences vocales : change à chaque arrivée, départ,
+    /// déplacement ou changement d'état (muet, caméra, partage).
+    pub fn rev(&self) -> u64 {
+        self.rev
     }
 
     /// Salons vocaux d'un serveur, par position.
@@ -443,6 +461,7 @@ impl VoiceStates {
     }
 
     fn remove_user(&mut self, user_id: u64) {
+        self.rev = self.rev.wrapping_add(1);
         if let Some(old) = self.states.remove(&user_id)
             && let Some(list) = self.by_channel.get_mut(&old.channel_id)
         {
@@ -460,6 +479,7 @@ impl VoiceStates {
             self.remove_user(s.user_id);
             self.by_channel.entry(s.channel_id).or_default().push(s.user_id);
         }
+        self.rev = self.rev.wrapping_add(1);
         self.states.insert(s.user_id, s);
     }
 
@@ -497,6 +517,7 @@ impl VoiceStates {
     }
 
     fn upsert_channel(&mut self, c: VoiceChannel) {
+        self.rev = self.rev.wrapping_add(1);
         self.chan_guild.insert(c.id, c.guild_id);
         let list = self.channels.entry(c.guild_id).or_default();
         match list.iter_mut().find(|x| x.id == c.id) {
@@ -680,6 +701,16 @@ impl Store {
                 let Some(my) = v.me else { return };
                 v.speaking.clear();
                 v.codes = None;
+                // Une session qui expire sans cesse ne doit pas faire partir
+                // une op 4 à chaque fois : après quelques reprises, on s'arrête.
+                let now = std::time::Instant::now();
+                v.auto_rejoins.retain(|t| now.duration_since(*t) < AUTO_REJOIN_WINDOW);
+                if v.auto_rejoins.len() >= AUTO_REJOIN_MAX {
+                    v.server = None;
+                    v.conn = VoiceConnState::Failed(crate::i18n::tr(crate::i18n::table::voice::t::EXPIRED_LOOP).to_string());
+                    return;
+                }
+                v.auto_rejoins.push(now);
                 // Discord répond à l'op 4 par une session et un serveur neufs.
                 v.server = None;
                 v.conn = VoiceConnState::Joining;
@@ -1028,6 +1059,26 @@ mod tests {
         s.voice_set_mute(true);
         s.apply(Event::Voice(VoiceEvent::Reset));
         assert!(s.voice.channels(G).is_empty() && s.voice.self_mute);
+    }
+
+    #[test]
+    fn a_voice_session_that_keeps_expiring_stops_rejoining() {
+        let mut s = store(vec![]);
+        assert_eq!(s.voice_join(VOC), Ok(()));
+        voice_cmds(&mut s);
+        for _ in 0..AUTO_REJOIN_MAX {
+            s.apply(Event::Voice(VoiceEvent::Expired));
+            assert_eq!(voice_cmds(&mut s), vec![VoiceCmd::Join { guild_id: Some(G), channel_id: VOC }]);
+        }
+        // Une de plus dans la même fenêtre : plus aucune op 4, un message à la place.
+        s.apply(Event::Voice(VoiceEvent::Expired));
+        assert!(voice_cmds(&mut s).is_empty(), "pas de boucle d'op 4");
+        assert!(matches!(s.voice.conn, VoiceConnState::Failed(_)));
+        s.apply(Event::Voice(VoiceEvent::Expired));
+        assert!(voice_cmds(&mut s).is_empty());
+        // Le geste de l'utilisateur reste possible.
+        assert_eq!(s.voice_join(VOC), Ok(()));
+        assert_eq!(voice_cmds(&mut s), vec![VoiceCmd::Join { guild_id: Some(G), channel_id: VOC }]);
     }
 
     #[test]

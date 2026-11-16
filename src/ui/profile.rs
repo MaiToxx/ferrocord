@@ -79,7 +79,11 @@ pub(super) fn open_here(ctx: &egui::Context, user_id: u64, name: &str, anchor: e
 #[allow(clippy::too_many_arguments)]
 pub(super) fn hotspot(ui: &egui::Ui, lang: Lang, rect: egui::Rect, salt: impl Hash + std::fmt::Debug, user_id: u64, guild_id: Option<u64>, name: &str, avatar: Avatar) {
     let r = ui.interact(rect, Id::unique(("ferrocord.profils.zone", salt)), Sense::click());
-    let r = r.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(t::PROFILE_OPEN.get(lang));
+    // Pas d'infobulle, comme dans le client : elle apparaissait par-dessus les messages
+    // (« Voir le profil » en fondu, pris pour un bouton fantôme).
+    let label = t::PROFILE_OPEN.get(lang);
+    r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label));
+    let r = r.on_hover_cursor(egui::CursorIcon::PointingHand);
     if r.clicked() {
         open(ui.ctx(), user_id, guild_id, rect, name, avatar);
     }
@@ -135,6 +139,10 @@ pub(super) fn dm_dot(ui: &egui::Ui, t: &Tokens, avatar: egui::Rect, channel_id: 
     let (peer, status) = {
         let mut people = hub.lock();
         let Some(peer) = people.dm_peer(channel_id) else { return };
+        // Compte système de Discord : pas de pastille de statut, comme dans le client.
+        if peer == crate::state::store::official::DISCORD_SYSTEM_USER || people.user(peer).is_some_and(|u| u.system) {
+            return;
+        }
         (peer, people.status(peer))
     };
     // Comme dans le client : un correspondant hors ligne garde sa pastille (anneau gris).
@@ -340,6 +348,10 @@ impl App {
                 return close(&ctx);
             }
             Some(Action::Button(c)) => self.store.activity_button(card.user_id, &c.session_id, c.app_id, c.index),
+            Some(Action::ActivitySettings) => {
+                self.show_settings(super::settings::Page::Activity);
+                return close(&ctx);
+            }
             Some(Action::Edit) => {
                 self.open_profile_editor(card.guild_id.is_some());
                 return close(&ctx);
@@ -400,7 +412,7 @@ impl App {
             room(ui, max_height, |ui| egui::ScrollArea::vertical().id_salt("profil-carte").max_height(max_height).show(ui, |ui| {
                 egui::Frame::new().inner_margin(egui::Margin { top: 0, ..t.profile_margin() }).show(ui, |ui| {
                     ui.set_width(width - 2.0 * pad);
-                    self.card_body(ui, t, card.user_id, card.guild_id, &name, s, &mut action);
+                    self.card_body(ui, t, card.user_id, card.guild_id, &name, s, true, &mut action);
                     // Identifiant : mode développeur, et pas masqué par le mode streamer.
                     let copy_id = super::settings::local::copy_id_shown(ui.ctx(), &self.store);
                     if copy_id {
@@ -469,28 +481,35 @@ impl App {
     /// par la carte et le panneau de profil d'un MP. La note et la ligne de
     /// statut en texte n'y sont pas : la note est dans le profil complet, la
     /// pastille de l'avatar dit le statut.
+    /// `fold_bio` : bio repliée à quelques lignes (carte) ; entière sinon (panneau d'un MP).
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn card_body(&self, ui: &mut egui::Ui, t: &Tokens, user_id: u64, guild_id: Option<u64>, name: &str, s: &Shown, action: &mut Option<Action>) {
+    pub(super) fn card_body(&self, ui: &mut egui::Ui, t: &Tokens, user_id: u64, guild_id: Option<u64>, name: &str, s: &Shown, fold_bio: bool, action: &mut Option<Action>) {
         let lang = self.lang;
         let gap = t.spacing.item_x;
-        self.identity_ui(ui, t, name, s);
+        self.identity_card(ui, t, name, s);
         if let Some(tab) = self.mutuals_ui(ui, t, s) {
             *action = Some(Action::Full(tab));
         }
         if s.captcha() {
             ui.add(egui::Label::new(RichText::new(pt::CAPTCHA.get(lang)).color(t.colors.danger)).wrap());
         }
-        if let Some(p) = &s.presence
-            && let Some(b) = activities_ui(ui, t, lang, &self.images, p, self.h24(), false)
-        {
-            *action = Some(Action::Button(b));
-        }
         if let Some(bio) = s.profile.as_ref().and_then(Profile::bio) {
-            ui.add_space(gap);
-            self.bio_ui(ui, t, user_id, guild_id, bio);
+            ui.add_space(gap * 1.5);
+            if fold_bio {
+                self.bio_folded(ui, t, user_id, guild_id, bio);
+            } else {
+                self.bio_ui(ui, t, user_id, guild_id, bio);
+            }
         }
-        ui.add_space(gap);
+        ui.add_space(gap * 1.5);
         self.since_ui(ui, t, user_id, guild_id, s);
+        // Activités : après « Membre depuis », chacune dans sa carte.
+        match self.activity_cards(ui, t, s) {
+            Some(super::activity::CardClick::Button(b)) => *action = Some(Action::Button(b)),
+            Some(super::activity::CardClick::Settings) => *action = Some(Action::ActivitySettings),
+            Some(super::activity::CardClick::Full) => *action = Some(Action::Full(Tab::Activity)),
+            None => {}
+        }
         if let (Some(guild_id), Some(m)) = (guild_id, &s.member) {
             ui.add_space(gap);
             // Droit de gérer les rôles : une pastille « + » à la fin de la rangée (lot FF2, F24).
@@ -525,7 +544,8 @@ impl App {
         let accent = user.and_then(|u| u.accent.flatten()).or(s.profile.as_ref().and_then(|p| p.user.accent)).or(s.profile.as_ref().and_then(Profile::theme).map(|[a, _]| a)).map(cosmetics::rgb);
         let has_banner = banner.is_some() || h.banner.is_some();
         // Profil complet dans une fenêtre basse : la bannière cède la place au contenu.
-        let nominal = if h.full { t.profile_full_banner(has_banner) } else { t.profile_banner(has_banner) };
+        // Panneau d'un MP : la bande a la hauteur d'une bannière même sans image, comme dans le client.
+        let nominal = if h.full { t.profile_full_banner(has_banner) } else { t.profile_banner(has_banner || h.panel) };
         let height = if h.full { nominal.min((ui.ctx().content_rect().height() * 0.25).round()) } else { nominal };
         // Calée sur les pixels : une bannière nette ne chevauche pas deux pixels.
         let ppp = ui.pixels_per_point();
@@ -537,7 +557,12 @@ impl App {
         band.max = band.min + egui::vec2(on_pixels(width), on_pixels(height));
         let band_r = egui::CornerRadius { sw: 0, se: 0, ..t.r_card() };
         let play = cosmetics::profile_play(ui);
-        ui.painter().rect_filled(band, band_r, accent.unwrap_or(c.bg0));
+        let member_avatar = member.and_then(|(guild_id, m)| Some(ImageRef::MemberAvatar { guild_id, user_id, hash: m.avatar? }));
+        let base = user.map(|u| u.avatar).unwrap_or(fallback);
+        // Sans bannière ni couleur d'accent : la couleur moyenne de l'avatar, comme le
+        // client (connue dès que l'avatar est décodé ; d'ici là, la bande unie).
+        let tint = || member_avatar.or(base.image).and_then(|i| self.images.avatar_tint(i));
+        ui.painter().rect_filled(band, band_r, accent.or_else(tint).unwrap_or(c.bg0));
         // Image demandée à la hauteur nominale, même si une fenêtre basse en
         // montre moins (le milieu) : ni l'image fixe ni l'animation ne sont
         // redemandées à chaque taille de fenêtre, ce qui vidait la bande
@@ -554,12 +579,12 @@ impl App {
         }
         let side = if h.full { t.profile_full_avatar() } else { t.layout.profile_avatar };
         let ring = t.profile_ring();
-        let avatar_rect = pixel_square(ui, egui::pos2(top.x + pad, band.bottom() - side / 2.0), side);
+        // À cheval sur le bas de la bande ; dans le panneau d'un MP, un peu plus haut (mesuré sur le client).
+        let over = if h.panel { (side * 0.6).round() } else { side / 2.0 };
+        let avatar_rect = pixel_square(ui, egui::pos2(top.x + pad, band.bottom() - over), side);
         // Anneau de la couleur du fond à cet endroit (dégradé du thème compris).
         let ring_color = h.themed.map_or(c.bg1, |th| th.at(h.window_top.unwrap_or(top.y), avatar_rect.center().y.max(band.bottom())));
         ui.painter().rect_filled(avatar_rect.expand(ring), t.r_avatar(side + 2.0 * ring), ring_color);
-        let member_avatar = member.and_then(|(guild_id, m)| Some(ImageRef::MemberAvatar { guild_id, user_id, hash: m.avatar? }));
-        let base = user.map(|u| u.avatar).unwrap_or(fallback);
         let image = if h.avatar.is_some() { None } else { member_avatar.or(base.image) };
         match (h.avatar, image.map(|i| self.images.get_moving_still_first(i, side, play))) {
             (Some(sw), _) => {
@@ -582,7 +607,7 @@ impl App {
                 t.paint_status(ui.painter(), avatar_rect, p.status, ring_color);
             }
         }
-        let mut below = band.height() + side / 2.0 + ring;
+        let mut below = band.height() + side - over + ring;
         // Statut personnalisé en bulle de pensée, à droite de l'avatar.
         if h.bubble
             && let Some(a) = s.presence.as_ref().and_then(Presence::custom)
@@ -600,6 +625,18 @@ impl App {
     /// plus proche), étiquettes ; ligne « identifiant • pronoms » et tag de
     /// serveur ; ancien nom ; rangée de badges (`profile_parts`).
     pub(super) fn identity_ui(&self, ui: &mut egui::Ui, t: &Tokens, name: &str, s: &Shown) {
+        self.identity_impl(ui, t, name, s, false);
+    }
+
+    /// Identité d'une carte (carte de profil, panneau d'un MP, carte de mon
+    /// compte), comme dans le client : le nom, puis sur une même ligne
+    /// l'identifiant, les pronoms, le tag de serveur et les badges dans leur
+    /// capsule (six au plus, puis « +N ») ; pas d'ancien nom.
+    pub(super) fn identity_card(&self, ui: &mut egui::Ui, t: &Tokens, name: &str, s: &Shown) {
+        self.identity_impl(ui, t, name, s, true);
+    }
+
+    fn identity_impl(&self, ui: &mut egui::Ui, t: &Tokens, name: &str, s: &Shown, card: bool) {
         let lang = self.lang;
         let c = &t.colors;
         let user = s.user.as_ref();
@@ -609,19 +646,20 @@ impl App {
             // Nom en grand (20), comme dans le client.
             let size = (t.typography.title * 1.25).round();
             cosmetics::styled_name(ui, name, size, look.name_style(), c.bg1, c.text_strong);
-            if user.is_some_and(|u| u.bot) {
-                chip(ui, t, t::PROFILE_BOT.get(lang), c.accent, c.on_accent);
-            }
             if user.is_some_and(|u| u.system) {
-                chip(ui, t, t::PROFILE_SYSTEM.get(lang), c.accent, c.on_accent);
+                // Compte système de Discord : « ✓ OFFICIEL » à la place de « Bot » et « Système ».
+                super::official::tag(ui, t, lang, size);
+            } else if user.is_some_and(|u| u.bot) {
+                chip(ui, t, t::PROFILE_BOT.get(lang), c.accent, c.on_accent);
             }
         });
         let pronouns = s.profile.as_ref().and_then(Profile::pronouns);
         let tag = look.tag();
-        if user.is_some() || pronouns.is_some() || tag.is_some() {
+        let badges = card && self.has_badges(s);
+        if user.is_some() || pronouns.is_some() || tag.is_some() || badges {
             // Nom d'utilisateur, puis pronoms, séparés par un point médian ; le tag de serveur ensuite.
             ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing.x = t.spacing.item_y;
+                ui.spacing_mut().item_spacing = egui::vec2(t.spacing.item_y, t.spacing.item_y);
                 let size = t.typography.button;
                 if let Some(u) = user {
                     ui.label(RichText::new(u.handle()).size(size).color(c.text));
@@ -636,13 +674,19 @@ impl App {
                     ui.add_space(t.spacing.item_y);
                     cosmetics::tag_ui(ui, &self.images, t, &tag);
                 }
+                if badges {
+                    ui.add_space(t.spacing.item_y);
+                    self.badges_capsule(ui, t, s.id, s);
+                }
             });
         }
-        if let Some(l) = s.profile.as_ref().and_then(|p| p.legacy_username.as_deref()) {
-            ui.label(RichText::new(pf::legacy(lang, l)).small().color(c.faint));
+        if !card {
+            if let Some(l) = s.profile.as_ref().and_then(|p| p.legacy_username.as_deref()) {
+                ui.label(RichText::new(pf::legacy(lang, l)).small().color(c.faint));
+            }
+            ui.add_space(t.spacing.item_y);
+            self.badges_ui(ui, t, s.id, s);
         }
-        ui.add_space(t.spacing.item_y);
-        self.badges_ui(ui, t, s.id, s);
         // Sans badge de profil (pas encore reçu, ou compte bot) : ceux que disent les drapeaux.
         if s.profile.as_ref().is_none_or(|p| p.badges.is_empty()) {
             let flags = user.and_then(|u| u.flags).map(Badge::of).unwrap_or_default();
@@ -674,6 +718,57 @@ impl App {
         let mut zones = super::markdown::Zones::new();
         super::markdown::doc_ui(ui, t, self.lang, user_id, &doc, &[], false, &mut zones);
         super::markdown::zones_ui(ui, t, user_id, zones);
+    }
+
+    /// Bio d'une carte, repliée à quelques lignes comme dans le client ;
+    /// « Afficher la bio complète » la déplie (et la replie), sans rien
+    /// demander : l'état reste dans egui, par utilisateur.
+    pub(super) fn bio_folded(&self, ui: &mut egui::Ui, t: &Tokens, user_id: u64, guild_id: Option<u64>, bio: &str) {
+        let id = Id::unique(("ferrocord.profils.bio-dépliée", user_id));
+        let open = ui.data(|d| d.get_temp::<bool>(id)).unwrap_or(false);
+        let folded = BIO_ROWS * ui.text_style_height(&egui::TextStyle::Body);
+        let full = if open {
+            self.bio_ui(ui, t, user_id, guild_id, bio);
+            f32::INFINITY
+        } else {
+            let out = egui::ScrollArea::vertical().id_salt(("bio-repliée", user_id)).max_height(folded).scroll_source(egui::scroll_area::ScrollSource::NONE).scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden).show(ui, |ui| self.bio_ui(ui, t, user_id, guild_id, bio));
+            out.content_size.y
+        };
+        if full > folded + 1.0 {
+            let label = if open { pt::BIO_LESS } else { pt::BIO_MORE }.get(self.lang);
+            ui.add_space(t.spacing.item_y);
+            let resp = ui.add(egui::Label::new(RichText::new(label).small().color(t.colors.text_strong)).sense(Sense::click()));
+            resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label));
+            if resp.hovered() {
+                ui.painter().hline(resp.rect.x_range(), resp.rect.bottom() - 1.0, egui::Stroke::new(1.0, t.colors.text_strong));
+            }
+            if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                ui.data_mut(|d| d.insert_temp(id, !open));
+            }
+        }
+    }
+
+    /// Activités de `s` (hors statut personnalisé), chacune dans sa carte
+    /// (`activity::activity_card`) ; rend le clic fait dans l'une d'elles.
+    pub(super) fn activity_cards(&self, ui: &mut egui::Ui, t: &Tokens, s: &Shown) -> Option<super::activity::CardClick> {
+        let p = s.presence.as_ref()?;
+        let own = self.store.me.as_ref().is_some_and(|u| u.id == s.id);
+        let now = crate::state::store::now_ms();
+        let copy_app = super::settings::local::copy_id_shown(ui.ctx(), &self.store);
+        let mut click = None;
+        for a in p.activities.iter().filter(|a| a.kind != ActivityKind::Custom) {
+            ui.add_space(t.spacing.item_x * 1.5);
+            // Icône de l'application d'après la liste des jeux déjà chargée (aucune requête) :
+            // celle de l'activité, sinon, pour mon jeu détecté, celle du jeu.
+            let acts = &self.store.activity;
+            let icon = a.rich().and_then(|r| r.app_id).and_then(|id| Some(ImageRef::AppIcon { app_id: id, hash: acts.index.as_ref()?.app(id)?.icon? })).or_else(|| acts.current().filter(|g| own && g.name == a.name).and_then(|g| acts.icon(g)));
+            let resp = ui.scope(|ui| super::activity::activity_card(ui, t, self.lang, &self.images, a, icon, now, own, copy_app));
+            click = click.or(resp.inner);
+            if let Some(ms) = a.start_ms {
+                resp.response.on_hover_text(f::activity_since(self.lang, time::clock_mid(self.lang, ms, self.h24())));
+            }
+        }
+        click
     }
 
     /// Dates du compte : création (tirée de l'identifiant), Nitro, boost.
@@ -712,7 +807,10 @@ impl App {
     pub(super) fn since_ui(&self, ui: &mut egui::Ui, t: &Tokens, user_id: u64, guild_id: Option<u64>, s: &Shown) {
         let lang = self.lang;
         let c = &t.colors;
-        super::profile_parts::heading(ui, t, pt::MEMBER_SINCE.get(lang));
+        // Compte système : « Créé le » (il n'est membre de rien).
+        let system = s.user.as_ref().is_some_and(|u| u.system);
+        super::profile_parts::heading(ui, t, if system { pt::CREATED_ON } else { pt::MEMBER_SINCE }.get(lang));
+        ui.add_space(t.spacing.item_y);
         let joined = guild_id.zip(s.member.as_ref().and_then(|m| m.joined_at));
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing.x = t.spacing.item_y * 1.5;
@@ -722,7 +820,7 @@ impl App {
                 let (rect, _) = ui.allocate_exact_size(egui::Vec2::splat(side), Sense::hover());
                 crate::theme::icons::paint(crate::theme::icons::Icon::Chat, ui.painter(), rect, c.muted);
             }
-            ui.label(RichText::new(time::long_date(lang, snowflake_ms(user_id))).size(size).color(c.text));
+            ui.label(RichText::new(time::medium_date(lang, snowflake_ms(user_id))).size(size).color(c.text));
             if let Some((g, ms)) = joined {
                 ui.label(RichText::new("•").size(size).color(c.faint));
                 let (rect, _) = ui.allocate_exact_size(egui::Vec2::splat(side), Sense::hover());
@@ -730,7 +828,7 @@ impl App {
                 if !super::util::paint_image(ui, &self.images, rect, icon, t.r_row()) {
                     crate::theme::icons::paint(crate::theme::icons::Icon::Members, ui.painter(), rect, c.muted);
                 }
-                ui.label(RichText::new(time::long_date(lang, ms)).size(size).color(c.text));
+                ui.label(RichText::new(time::medium_date(lang, ms)).size(size).color(c.text));
             }
         });
     }
@@ -798,6 +896,8 @@ pub(super) enum Action {
     Roles(u64),
     /// Bouton d'une activité (lot C3).
     Button(super::activity::ButtonClick),
+    /// « … » de ma propre activité : la page Activités des Paramètres.
+    ActivitySettings,
     /// « Modifier le profil », sur ma propre carte.
     Edit,
     /// Bouton rond de la bannière : amitié, ou « … ».
@@ -864,6 +964,8 @@ pub(super) struct Header<'a> {
     pub(super) avatar: Option<Swap>,
     /// Statut personnalisé en bulle de pensée, à droite de l'avatar.
     pub(super) bubble: bool,
+    /// Panneau de profil d'un MP : bande haute même sans bannière, avatar remonté.
+    pub(super) panel: bool,
 }
 
 /// Couleurs de thème du profil affiché (celles du serveur d'abord), s'il en a.
@@ -880,6 +982,9 @@ pub(super) fn themed_background(p: &egui::Painter, th: &cosmetics::Themed, bg: e
     }
     p.set(bg, egui::Shape::Vec(shapes));
 }
+
+/// Lignes de bio montrées tant qu'elle est repliée.
+const BIO_ROWS: f32 = 4.0;
 
 /// Longueur d'un message tapé sur la carte (limite d'un message sans Nitro).
 const CARD_MESSAGE_MAX: usize = 2000;
@@ -955,7 +1060,12 @@ pub(super) fn custom_status_ui(ui: &mut egui::Ui, t: &Tokens, a: &Activity) {
 
 /// Hauteur du pied « Voir le profil complet » (bouton et marges).
 pub(super) fn full_button_height(t: &Tokens) -> f32 {
-    super::widgets::button_height(t) + t.profile_pad() + t.spacing.item_y
+    full_button_side(t) + t.profile_pad() + t.spacing.item_y
+}
+
+/// Hauteur du bouton « Voir le profil complet » : 40 pour des contrôles de 32, comme dans le client.
+fn full_button_side(t: &Tokens) -> f32 {
+    (t.spacing.control_height * 1.25).round()
 }
 
 /// « Voir le profil complet » : bouton sur toute la largeur `width` de la
@@ -965,7 +1075,7 @@ pub(super) fn full_button(ui: &mut egui::Ui, t: &Tokens, lang: Lang, width: f32)
     let m = t.profile_margin();
     egui::Frame::new()
         .inner_margin(egui::Margin { top: t.spacing.item_y.round() as i8, ..m })
-        .show(ui, |ui| super::widgets::button_wide(ui, t, super::widgets::Kind::Secondary, pt::FULL_PROFILE.get(lang), width - 2.0 * pad).clicked())
+        .show(ui, |ui| super::activity::bordered_button(ui, t, pt::FULL_PROFILE.get(lang), width - 2.0 * pad, full_button_side(t)).clicked())
         .inner
 }
 
@@ -1174,7 +1284,7 @@ mod tests {
         frame(&mut app, Vec::new());
         frame(&mut app, Vec::new());
         let text = frame(&mut app, Vec::new());
-        for want in ["Alice\n", "alice_fictive", "Développeur actif", "Joue à Jeu Fictif", "Membre depuis","1er mars 2024", "1er juin 2024", "Modo\n", "Membre\n", "Envoyer un message", "Copier l'identifiant", &ALICE.to_string()] {
+        for want in ["Alice\n", "alice_fictive", "Développeur actif", "Joue à", "Jeu Fictif", "Membre depuis", "1 mars 2024", "1 juin 2024", "Modo\n", "Membre\n", "Envoyer un message", "Copier l'identifiant", &ALICE.to_string()] {
             assert!(text.contains(want), "« {want} » manque :\n{text}");
         }
         assert!(text.find("Modo").unwrap_or(usize::MAX) < text.find("Membre\n").unwrap_or(0), "rôles par position décroissante");
@@ -1202,7 +1312,7 @@ mod tests {
         open(&app.ctx, ALICE, None, anchor, "Ali", Avatar::default_for(ALICE));
         frame(&mut app, Vec::new());
         let text = frame(&mut app, Vec::new());
-        assert!(text.contains("Ali\n") && text.contains("1er mars 2024"), "{text}");
+        assert!(text.contains("Ali\n") && text.contains("1 mars 2024"), "{text}");
         for absent in ["En ligne", "Hors ligne", "Inactif", "RÔLES", "MEMBRE DU SERVEUR", "alice_fictive"] {
             assert!(!text.contains(absent), "« {absent} » :\n{text}");
         }
@@ -1344,9 +1454,12 @@ mod tests {
         frame(&mut app, Vec::new());
         frame(&mut app, Vec::new());
         let text = frame(&mut app, Vec::new());
-        for want in ["elle", "Anciennement alice#1234", "HypeSquad Brilliance", "Abonné depuis", "Bio de serveur fictive.", "1 serveur en commun", "2 amis en commun", "Voir le profil complet"] {
+        for want in ["elle", "Bio de serveur fictive.", "1 serveur en commun", "2 amis en commun", "Voir le profil complet"] {
             assert!(text.contains(want), "« {want} » manque :\n{text}");
         }
+        // Badges en capsule d'icônes (description dans l'infobulle) ; pas d'ancien nom, comme dans le client.
+        assert!(app.has_badges(&app.shown(ALICE, Some(GUILD))));
+        assert!(!text.contains("Anciennement"), "{text}");
         // Déjà dans les tables : rien n'est demandé.
         assert!(app.store.take_commands().is_empty());
         // « 2 amis en commun » ouvre le profil complet sur cet onglet.

@@ -149,6 +149,8 @@ pub struct Rich {
     pub spotify: bool,
     /// Adresse d'un direct (`url`, Twitch ou YouTube).
     pub url: Option<String>,
+    /// Groupe (`party.size`) : joueurs présents, places.
+    pub party: Option<(u32, u32)>,
 }
 
 impl Activity {

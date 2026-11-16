@@ -211,6 +211,15 @@ impl App {
         &self.input.draft.text
     }
 
+    /// Ouvre la liste des commandes « / » dans une saisie vide ; un brouillon
+    /// déjà commencé est gardé tel quel.
+    pub(super) fn open_command_list(&mut self) {
+        if self.input.draft.text.trim().is_empty() {
+            self.set_composer_text("/");
+        }
+        self.ctx.memory_mut(|m| m.request_focus(composer_id()));
+    }
+
     /// Remplace le texte du champ et y met le curseur, à la fin (tests et
     /// aperçu : comme si l'utilisateur l'avait tapé).
     pub fn set_composer_text(&mut self, text: &str) {
@@ -286,6 +295,9 @@ impl App {
             // Message vocal en cours d'enregistrement (phase 6).
             self.voice_note_row(ui, cid);
         }
+        // « X écrit… » au-dessus de la carte (hauteur réservée) : la carte finit au ras
+        // de sa marge du bas, alignée sur le panneau utilisateur comme dans le client.
+        self.typing_row(ui, cid, &t);
         // Barre « Réponse à … » (lot T6), collée à la carte : ses coins du bas et
         // ceux du haut de la carte sont droits.
         let replying = self.reply_bar(ui, cid, id);
@@ -299,6 +311,8 @@ impl App {
                 let anchor = ui
                     .with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
                         // « + » (joindre) à gauche du champ, le reste à droite.
+                        // De gauche à droite, comme le client : GIF, autocollants, emojis, applications.
+                        self.apps_button(ui, &t);
                         let b = self.emoji_button(ui, &t);
                         // Autocollants et GIF à gauche de l'emoji, comme Discord (lot G).
                         self.sticker_button(ui, &t, cid);
@@ -312,6 +326,9 @@ impl App {
                             let above = ((side - row) / 2.0).max(0.0);
                             ui.vertical(|ui| {
                                 ui.spacing_mut().item_spacing.y = 0.0;
+                                // Le champ ne prend que sa ligne : la hauteur minimale des contrôles
+                                // (32 dans les préréglages calqués) grandissait la zone de 56 à 68.
+                                ui.spacing_mut().interact_size.y = row;
                                 ui.add_space(above);
                                 self.text_field(ui, cid, id, hint, &t);
                                 ui.add_space(above);
@@ -326,6 +343,8 @@ impl App {
                 let (icon, reason) = match b {
                     SendBlock::Timeout { until_ms } => (Icon::Hourglass, f::timed_out_composer(lang, i18n::time::until(lang, until_ms, self.h24()))),
                     SendBlock::NoPermission => (Icon::Lock, tx::NO_PERMISSION_TO_SEND.get(lang).to_string()),
+                    // MP officiel : la discussion y montre son bandeau à la place de cette saisie.
+                    SendBlock::Official => (Icon::ShieldLock, crate::i18n::table::messages::t::OFFICIAL_ONLY.get(lang).to_string()),
                 };
                 // Pas de champ de saisie : la raison est une étiquette
                 // dessinée dans la vraie couleur `muted` (une invite de
@@ -339,7 +358,6 @@ impl App {
                 });
             }
         });
-        self.typing_row(ui, cid, &t);
         if enter {
             self.submit();
             ui.memory_mut(|m| m.request_focus(id));

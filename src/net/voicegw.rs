@@ -14,7 +14,7 @@
 //! Resources › Channel (`user_limit`, types 2 et 13). Le jeton du serveur
 //! vocal n'est ni journalisé ni affiché (`state::voice::Secret`).
 
-use super::raw::{de_lenient, de_loose_id, Item, RawOverwrite, RawUser};
+use super::raw::{de_lenient, de_loose_id, Item, RawOverwrite, RawUser, Shared};
 use super::ratelimit::Route;
 use super::rest::{api_req, ApiError, Ctx};
 use super::Out;
@@ -157,12 +157,6 @@ impl RawGuildPart {
 }
 
 #[derive(Deserialize)]
-struct RawReady {
-    #[serde(default)]
-    guilds: Vec<Item<RawGuildPart>>,
-}
-
-#[derive(Deserialize)]
 struct RawServer {
     #[serde(default, deserialize_with = "de_lenient")]
     token: Option<String>,
@@ -173,17 +167,22 @@ struct RawServer {
 }
 
 /// Paquets de la passerelle qui intéressent ce lot.
+#[cfg(test)]
 pub(super) fn decode(kind: &str, d: &str) -> Vec<Event> {
+    decode_shared(kind, d, &Shared::of(kind, d))
+}
+
+/// Comme [`decode`], avec le découpage du READY ou du GUILD_CREATE déjà fait
+/// pour tous les décodeurs du paquet.
+pub(super) fn decode_shared(kind: &str, d: &str, shared: &Shared) -> Vec<Event> {
     let mut out = Vec::new();
     match kind {
         "READY" => {
             out.push(Event::Voice(VoiceEvent::Reset));
-            if let Ok(r) = serde_json::from_str::<RawReady>(d) {
-                out.extend(r.guilds.into_iter().filter_map(|g| g.0?.event()));
-            }
+            out.extend(shared.guilds().iter().filter_map(|g| g.read::<RawGuildPart>().ok()?.event()));
         }
         "GUILD_CREATE" => {
-            if let Some(e) = serde_json::from_str::<RawGuildPart>(d).ok().and_then(RawGuildPart::event) {
+            if let Some(e) = shared.guild().and_then(|g| g.read::<RawGuildPart>().ok()).and_then(RawGuildPart::event) {
                 out.push(e);
             }
         }
@@ -227,9 +226,9 @@ pub(super) fn decode(kind: &str, d: &str) -> Vec<Event> {
     out
 }
 
-pub(super) fn dispatch(kind: &str, d: &str, out: &Out) {
+pub(super) fn dispatch(kind: &str, d: &str, shared: &Shared, out: &Out) {
     if matches!(kind, "READY" | "GUILD_CREATE" | "GUILD_DELETE" | "CHANNEL_CREATE" | "CHANNEL_UPDATE" | "CHANNEL_DELETE" | "VOICE_STATE_UPDATE" | "VOICE_SERVER_UPDATE") {
-        decode(kind, d).into_iter().for_each(|e| out.send(e));
+        decode_shared(kind, d, shared).into_iter().for_each(|e| out.send(e));
     }
 }
 
@@ -285,6 +284,42 @@ pub(super) async fn run(ctx: Arc<Ctx>, cmd: VoiceCmd) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Le découpage partagé rend exactement ce que rendait la lecture du
+    /// texte entier (ancienne écriture, gardée ici comme référence).
+    #[test]
+    fn shared_split_reads_like_the_whole_text() {
+        fn whole(kind: &str, d: &str) -> Vec<Event> {
+            #[derive(Deserialize)]
+            struct RawReady {
+                #[serde(default)]
+                guilds: Vec<Item<RawGuildPart>>,
+            }
+            let mut out = Vec::new();
+            match kind {
+                "READY" => {
+                    out.push(Event::Voice(VoiceEvent::Reset));
+                    if let Ok(r) = serde_json::from_str::<RawReady>(d) {
+                        out.extend(r.guilds.into_iter().filter_map(|g| g.0?.event()));
+                    }
+                }
+                "GUILD_CREATE" => {
+                    if let Some(e) = serde_json::from_str::<RawGuildPart>(d).ok().and_then(RawGuildPart::event) {
+                        out.push(e);
+                    }
+                }
+                _ => {}
+            }
+            out
+        }
+        let mut events = 0;
+        for (kind, d) in super::super::raw::guild_texts() {
+            let got = decode(kind, &d);
+            events += got.len();
+            assert_eq!(format!("{got:?}"), format!("{:?}", whole(kind, &d)), "{kind} {d}");
+        }
+        assert!(events > 20, "{events} événements comparés");
+    }
 
     fn fixture(name: &str) -> String {
         let path = format!("{}/tests/fixtures/{name}.json", env!("CARGO_MANIFEST_DIR"));

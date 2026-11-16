@@ -70,7 +70,9 @@
 //!   `gifs` (sélecteur de GIF : favoris, tendances, catégories), `gifs-recherche`
 //!   (résultats de « chat »), `gifs-favoris` (favoris du compte ; lot G),
 //!   `super-reaction` (sélecteur de réaction d'un compte Nitro, super réaction active),
-//!   `selecteur` (sélecteur rapide ouvert sur « gen »), `boite` (boîte de
+//!   `selecteur` (sélecteur rapide ouvert sur « gen »), `boite` (boîte de réception : salons non lus en cartes),
+//!   `boite-cartes` (premières cartes repliées), `boite-programmes` (onglet « Programmés »),
+//!   `boite-mentions` (onglet « Mentions » de la boîte de
 //!   réception, mentions du jeu d'essai), `raccourcis` (fenêtre des raccourcis) ;
 //!   `applications` (boutons, listes, composants v2, « … réfléchit », échec
 //!   d'une commande, formulaire de /sondage), `modale` (fenêtre d'un robot) ;
@@ -86,6 +88,13 @@
 //!   `appel` (vue d'appel : 4 personnes dont 2 en caméra, mires animées),
 //!   `appel-direct` (direct d'Ève regardé et mis en avant), `appel-partage`
 //!   (barre de contrôle pendant un partage d'écran) : phase 5, lot M4 ;
+//!   `partage` (sélecteur de partage, onglet Applications), `partage-ecrans`,
+//!   `partage-appareils`, `partage-camera` (aperçu avant d'allumer la caméra),
+//!   `partage-qualite` (menu de l'engrenage) : sources et images inventées ;
+//!   `appel-mp` (appel d'un MP en bandeau au-dessus de la conversation),
+//!   `appel-sortant` (le correspondant n'a pas encore décroché),
+//!   `appel-groupe` (quatre personnes dont une qui sonne), `appel-mp-partage`
+//!   (bandeau agrandi par un partage d'écran) : lot « appel » ;
 //!   `entete` (en-tête de 48 px : sujet tronqué, Fils, cloche, épingles,
 //!   membres, recherche à loupe), `entete-sujet` (sujet affiché en entier),
 //!   `menu-serveur` (menu du serveur ouvert, lignes de menu du lot V1),
@@ -123,6 +132,8 @@
 //!   `--pointer x,y` sur un badge : son infobulle détaillée ;
 //! - `--scene panneau` et `panneau-menu` (lot profil) : panneau utilisateur du bas (ma plaque
 //!   en fond, ma décoration, mon nom stylé, manette, micro coupé) ; le menu du chevron du micro ouvert ;
+//! - `--scene jeu-detecte` et `jeu-detecte-appel` (lot « activité ») : un jeu fictif détecté, son encart
+//!   au-dessus du panneau utilisateur, la manette sous mon nom ; dans un vocal, le bouton de partage ;
 //! - `--scene parures` (lot P ; vues `guild` et `dm`, avec ou sans `--profile`
 //!   ou `--profile-full`) : décorations d'avatar, plaques, tags de serveur,
 //!   styles de nom, rôles en dégradé, bannière et avatar animés d'Alice, avec
@@ -130,21 +141,54 @@
 //!   la même, animations permises (deux captures successives diffèrent) ;
 //! - `--scene polices-nom` (lot polices) : planche des polices de nom, chacune sur un nom
 //!   uni, avec un effet, et sur un nom mêlant latin, emoji, cyrillique et chinois ;
+//! - `--sons <dossier>` (lot « sons ») : écrit chaque son d'interface en WAV dans ce dossier
+//!   (un fichier par événement, au nom accepté par le dossier des sons personnels), sans
+//!   ouvrir de fenêtre ni rien jouer ;
+//! - `--scene mp-systeme` et `transfert` (lot « messages » ; avec `--at 4000` pour laisser
+//!   les images arriver) : MP du compte officiel (bandeau à la place de la saisie, deux
+//!   cartes de notification), messages transférés avec image, fichier, embed et autocollant ;
 //! - `--bench` : banc de mesure des budgets (voir `bench/mod.rs`) sur un
 //!   magasin synthétique ; réglages `--bench-guilds N` (100), `--bench-channels N`
 //!   (50), `--bench-messages N` (500), `--bench-deep N` (2000), `--bench-frames N` (images par phase,
 //!   300), `--bench-quiet S` (observation au repos, 10 s), `--bench-out
 //!   rapport.json`, `--bench-label nom` ; la fenêtre se ferme seule ;
+//! - `--bench-cpu <secondes>` : banc du processeur (lot « cpu », voir
+//!   `bench/cpu.rs`) : démarrage d'un compte simulé, processeur consommé et
+//!   délai jusqu'au calme, puis repos sans et sous trafic pendant `secondes` ;
+//! - `--angle` (lot « gl ») : pose les deux bibliothèques d'ANGLE à côté de l'aperçu,
+//!   qui dessine alors par Direct3D 11 comme l'application installée (elles y restent ;
+//!   `FERROCORD_RENDU=opengl` revient au pilote OpenGL) ; le rapport des bancs nomme le
+//!   rendu (`rendu`) et les bibliothèques graphiques chargées (`pilotes`) ;
+//! - `--bench-long <visites>` : banc d'usage prolongé (lot « long », voir
+//!   `bench/long.rs`) : cinq tours de `visites` salons ouverts à la suite
+//!   (500 pour la mesure de référence), deux heures d'événements simulés et 25
+//!   reconnexions par tour ; relevé du tas vivant, de la mémoire privée, des
+//!   handles et des fils après chaque tour, verdicts « rien ne s'accumule »
+//!   (code de sortie 1 sinon) ;
+//! - `--bench-atlas-libre` (avec `--bench`) : sans la borne de l'atlas des
+//!   polices, pour comparer les temps d'image avec et sans elle dans le même
+//!   exécutable ;
 //! - `--bench-mem <scénario>` : mémoire du processus après 3 s d'une fenêtre
 //!   `vide`, `vide-sans-polices`, `vide-logiciel` (rendu OpenGL non
 //!   accéléré), `connexion` (écran de connexion), `app-sans-images` ou `app`
-//!   (magasin du banc), puis fermeture ;
+//!   (magasin du banc), puis fermeture ; `demarrage` (lot « ram ») rejoue le
+//!   démarrage d'un compte simulé (READY de 100 serveurs, 10 000 jeux
+//!   détectables, un salon affiché) et donne, étape par étape, les octets
+//!   vivants du tas, la mémoire privée et sa répartition (modules, piles, tas,
+//!   reste) ; `demarrage-demi` et `demarrage-double` changent la taille du
+//!   compte, `demarrage-parties` pèse chaque partie du magasin ; code de
+//!   sortie 1 si le tas vivant dépasse le seuil ; `FERROCORD_BANC_TRACE=<octets>`
+//!   nomme par pile d'appels les blocs survivants d'au moins cette taille ;
 //!
 //! Avatars et icônes viennent d'une source locale (images générées par le
 //! code) : l'aperçu ne contacte aucun réseau et n'écrit aucun cache disque.
 
 #[path = "bench/mod.rs"]
 mod bench;
+
+// Allocateur compteur (lot « ram ») : celui du système, plus des compteurs. Dans l'aperçu seulement.
+#[global_allocator]
+static HEAP: bench::alloc::Counting = bench::alloc::Counting;
 
 use eframe::egui;
 use ferrocord::images::{self, FetchFuture, Images, Source};
@@ -240,8 +284,90 @@ fn amis() -> bool {
     AMIS.load(std::sync::atomic::Ordering::Relaxed)
 }
 
+/// Scènes `vocal-*` (lot « vocal ») : des amis sont en vocal sur un serveur commun.
+static VOCAL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// Scène `mp-chat` : la scène `amis`, ouverte sur la conversation avec Alice.
 static MPCHAT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Scène « mp-activite » : Alice sans bannière ni thème, seulement sa couleur d'accent.
+static SANS_BANNIERE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Scène `mp-systeme` : le MP du compte officiel s'ajoute à ceux de la scène `amis`.
+static MPSYSTEME: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// MP du compte officiel (scène `mp-systeme`).
+const DM_SYSTEME: u64 = 4_000_000_000_000_000_090;
+
+/// Le compte officiel, tel que la passerelle le décrit (`system`).
+fn compte_officiel() -> Value {
+    serde_json::json!({ "id": ferrocord::state::store::official::DISCORD_SYSTEM_USER.to_string(), "username": "discord", "global_name": "Discord", "discriminator": "0", "avatar": null, "system": true })
+}
+
+/// Message d'aperçu, `minutes` avant maintenant ; `more` complète ou remplace ses champs.
+fn message_apercu(channel: u64, minutes: i64, author: Value, content: &str, more: Value) -> Vec<Event> {
+    let now = chrono::Utc::now().timestamp_millis();
+    let mut d = serde_json::json!({
+        "id": (((now - minutes * 60_000 - 1_420_070_400_000) as u64) << 22).to_string(), "channel_id": channel.to_string(), "author": author,
+        "content": content, "timestamp": "2025-01-15T10:06:00.000000+00:00", "edited_timestamp": null, "tts": false,
+        "mention_everyone": false, "mentions": [], "mention_roles": [], "attachments": [], "embeds": [], "components": [], "pinned": false, "type": 0, "flags": 0
+    });
+    if let (Some(d), Some(more)) = (d.as_object_mut(), more.as_object()) {
+        d.extend(more.clone());
+    }
+    packet(&serde_json::json!({ "t": "MESSAGE_CREATE", "d": d }))
+}
+
+/// Scène `mp-systeme` : un message du compte officiel, puis deux notifications
+/// (l'une d'aujourd'hui avec « En savoir plus », l'autre plus ancienne et sans lien).
+fn mp_systeme_events() -> Vec<Event> {
+    use serde_json::json;
+    let now = chrono::Utc::now().timestamp_millis() as f64 / 1000.0;
+    let field = |name: &str, value: String| json!({ "name": name, "value": value, "inline": false });
+    let notice = |header: &str, body: &str, days: f64, link: Option<&str>| {
+        let mut fields = vec![
+            field("client_version_message", "Mets à jour ton application pour voir ce message.".into()),
+            field("classification_id", "9000000000000000001".into()),
+            field("body", body.into()),
+            field("icon_type", "megaphone".into()),
+            field("header", header.into()),
+            field("timestamp", format!("{:.3}", now - days * 86_400.0)),
+            field("theme", "default".into()),
+            field("ctas", if link.is_some() { "learn_more_link" } else { "" }.into()),
+        ];
+        if let Some(link) = link {
+            fields.push(field("learn_more_link", link.into()));
+        }
+        json!({ "type": "safety_system_notification", "fields": fields })
+    };
+    let mut out = message_apercu(DM_SYSTEME, 3 * 24 * 60, compte_officiel(), "Bienvenue ! Ce fil rassemble les annonces qui concernent ton compte d'aperçu.", json!({}));
+    let embeds = json!([
+        notice("Le règlement de la communauté évolue", "Une nouvelle version entre en vigueur le mois prochain. Rien ne change pour ton compte d'ici là.", 2.0, None),
+        notice("Tes réglages de confidentialité ont été vérifiés", "Tout est en ordre. Tu peux les revoir à tout moment depuis les paramètres.", 0.0, Some("https://support.discord.com/hc/articles/360036118732")),
+    ]);
+    out.extend(message_apercu(DM_SYSTEME, 20, compte_officiel(), "", json!({ "embeds": embeds })));
+    out
+}
+
+/// Scène `transfert` : Alice transfère un message avec fichier, embed et autocollant, puis un autre avec image.
+fn transfert_events() -> Vec<Event> {
+    use serde_json::json;
+    let alice = json!({ "id": "1000000000000000002", "username": "alice_fictive", "global_name": "Alice", "discriminator": "0", "avatar": "a11ce0000000000000000000000000a1" });
+    let image = json!({ "id": "6000000000000000071", "filename": "croquis.png", "size": 184_000, "content_type": "image/png", "width": 960, "height": 600,
+        "url": "https://cdn.discordapp.com/attachments/1/6000000000000000071/croquis.png", "proxy_url": "https://media.discordapp.net/attachments/1/6000000000000000071/croquis.png" });
+    let snapshot = |message: Value| json!({ "message_reference": { "type": 1, "channel_id": GENERAL.to_string(), "message_id": "5000000000000000070" }, "message_snapshots": [{ "message": message }] });
+    let mut out = message_apercu(DM, 12, alice.clone(), "", snapshot(json!({
+        "content": "La version avec **les trois îles**, à valider avant samedi.", "type": 0, "flags": 0, "timestamp": "2025-01-14T18:00:00.000000+00:00",
+        "edited_timestamp": null, "mentions": [], "mention_roles": [], "attachments": [image], "embeds": []
+    })));
+    out.extend(message_apercu(DM, 13, alice, "", snapshot(json!({
+        "content": "", "type": 0, "flags": 0, "timestamp": "2025-01-14T18:05:00.000000+00:00", "edited_timestamp": null, "mentions": [], "mention_roles": [],
+        "attachments": [{ "id": "6000000000000000072", "filename": "legende.pdf", "size": 420_000, "content_type": "application/pdf",
+            "url": "https://cdn.discordapp.com/attachments/1/6000000000000000072/legende.pdf", "proxy_url": "https://media.discordapp.net/attachments/1/6000000000000000072/legende.pdf" }],
+        "embeds": [{ "type": "rich", "title": "Carnet de route", "description": "Étape 4 : traversée du col, puis descente vers le lac.", "color": 0x3ba55d }],
+        "sticker_items": [{ "id": "7000000000000000031", "name": "Bravo", "format_type": 1 }]
+    }))));
+    out
+}
 
 /// Scène `mp-chat` : échange avec Alice, aujourd'hui et hier ; une réponse à l'un de mes
 /// messages qui me mentionne (fond ambre), une autre sans mention (aucun fond).
@@ -302,6 +428,9 @@ fn amis_ready(v: &mut Value) {
     d["relationships"][1]["nickname"] = "Ma Lune \u{2764} 🩶".into();
     let bob = d["relationships"][1]["user"].clone();
     let mut dms = vec![json!({ "id": "4000000000000000019", "type": 1, "last_message_id": "5000000000000000090", "recipients": [bob] })];
+    if MPSYSTEME.load(std::sync::atomic::Ordering::Relaxed) {
+        dms.push(json!({ "id": DM_SYSTEME.to_string(), "type": 1, "last_message_id": null, "recipients": [compte_officiel()] }));
+    }
     let mut friends = Vec::new();
     for (i, (id, username, name)) in AMIS_FRIENDS.iter().enumerate() {
         let user = json!({ "id": id.to_string(), "username": username, "global_name": name, "discriminator": "0", "avatar": null });
@@ -335,7 +464,7 @@ fn amis_events() -> Vec<Event> {
     let alice_look = if mp_chat {
         json!({ "avatar": "a11ce0000000000000000000000000a1", "primary_guild": tag("CAT"), "display_name_styles": { "font_id": 3, "effect_id": 2, "colors": [0xc77dff, 0x7b5cf0] } })
     } else {
-        json!({ "avatar": "a11ce0000000000000000000000000a1", "primary_guild": tag("RUIN"), "avatar_decoration_data": { "asset": "a_dec0000000000000000000000000a11c", "sku_id": "7000000000000009001" } })
+        json!({ "avatar": "a11ce0000000000000000000000000a1", "primary_guild": tag("NOVA"), "avatar_decoration_data": { "asset": "a_dec0000000000000000000000000a11c", "sku_id": "7000000000000009001" } })
     };
     let nox_does = if mp_chat {
         json!([{ "type": 0, "name": "Honkai: Star Rail", "created_at": 1_700_000_000_000u64 }, custom("Je suis là")])
@@ -372,6 +501,27 @@ fn amis_events() -> Vec<Event> {
         } }),
     ];
     packets.iter().flat_map(packet).collect()
+}
+
+/// Scène `vocal-amis` (lot « vocal ») : Nox et Ewa rejoignent le salon vocal d'Alpha où
+/// Alice partage déjà son écran ; bjørn joue avec une présence enrichie depuis cinq heures.
+fn vocal_amis_events() -> Vec<Event> {
+    use serde_json::json;
+    let [nox, ewa, bjorn, _] = AMIS_FRIENDS;
+    let voice = |(id, username, name): (u64, &str, &str)| {
+        json!({ "t": "VOICE_STATE_UPDATE", "d": {
+            "guild_id": ALPHA.to_string(), "channel_id": "3000000000000000014", "user_id": id.to_string(),
+            "member": { "user": { "id": id.to_string(), "username": username, "global_name": name, "avatar": null, "discriminator": "0" }, "nick": null, "roles": [], "joined_at": "2024-06-01T12:00:00.000000+00:00", "deaf": false, "mute": false, "flags": 0 },
+            "session_id": format!("session-vocale-{username}"), "deaf": false, "mute": false, "self_deaf": false, "self_mute": false, "self_video": false, "self_stream": false, "suppress": false, "request_to_speak_timestamp": null
+        } })
+    };
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
+    let started = now.saturating_sub((5 * 3600 + 7 * 60 + 2) * 1000);
+    let playing = json!({ "t": "PRESENCE_UPDATE", "d": {
+        "user": { "id": bjorn.0.to_string(), "username": bjorn.1, "global_name": bjorn.2, "discriminator": "0" }, "status": "online", "client_status": { "desktop": "online" },
+        "activities": [{ "type": 0, "name": "Forge Lunaire", "application_id": "7000000000000004001", "details": "Exploration des Marais d'Ambre, troisième expédition", "state": "En solo", "created_at": started, "timestamps": { "start": started } }]
+    } });
+    [voice(nox), voice(ewa), playing].iter().flat_map(packet).collect()
 }
 
 /// Scènes `profil-edition*` (lot « profil rapide ») : le compte fictif a
@@ -790,6 +940,9 @@ fn activity_store(s: &mut Store) {
     let now = chrono::Utc::now().timestamp_millis();
     let mut p = fixture("presence_update_rich");
     p["d"]["user"] = fixture("rest_user");
+    if SANS_BANNIERE.load(std::sync::atomic::Ordering::Relaxed) {
+        p["d"]["user"]["banner"] = serde_json::Value::Null;
+    }
     p["d"]["activities"][0]["timestamps"] = serde_json::json!({ "start": (now - 75_000).to_string(), "end": (now + 135_000).to_string() });
     p["d"]["activities"][1]["timestamps"] = serde_json::json!({ "start": now - 47 * 60_000 });
     for e in packet(&p) {
@@ -807,6 +960,17 @@ fn activity_store(s: &mut Store) {
     let act = RpcActivity { name: "Donjon des Brumes".into(), details: Some("Étage 4".into()), state: Some("En groupe".into()), start_ms: Some(now - 25 * 60_000), party_size: Some((2, 4)), ..Default::default() };
     s.apply(rpc(RpcEvent::Activity { conn: 1, process: Some("Donjon".into()), activity: Some(Box::new(act)) }));
     s.apply(rpc(RpcEvent::Activity { conn: 2, process: Some("Lecteur".into()), activity: None }));
+}
+
+/// Lot « activité » : un jeu fictif de la liste, en cours depuis douze minutes.
+fn detected_game_store(s: &mut Store) {
+    use ferrocord::state::activity::{ActivityEvent, DetectableApp, GameIndex, RunningGame};
+    const ASTRAL: u64 = 6_000_000_000_000_000_060;
+    let now = chrono::Utc::now().timestamp_millis();
+    let icon = ferrocord::state::model::ImageHash::parse("a57a1d21f7000000000000000000c0de");
+    let apps = vec![DetectableApp { id: ASTRAL, name: "Astral Drift".into(), exes: vec!["astraldrift.exe".into()], icon }];
+    s.apply(Event::Activity(ActivityEvent::Detectable(std::sync::Arc::new(GameIndex::new(apps, now)))));
+    s.apply(Event::Activity(ActivityEvent::Running(vec![RunningGame { app_id: Some(ASTRAL), name: "Astral Drift".into(), start_ms: now - 12 * 60_000 - 20_000 }])));
 }
 
 /// Profils et présences : Alice complète (bannière, couleur, badges, rôles,
@@ -1018,6 +1182,80 @@ fn calls_store(s: &mut Store, scene: Option<Scene>) {
     }
 }
 
+/// Scènes `appel-mp`, `appel-sortant`, `appel-groupe` et `appel-mp-partage`
+/// (lot « appel ») : l'appel d'un MP en bandeau au-dessus de la conversation.
+/// À deux avec Alice qui parle ; Alice qui n'a pas encore décroché ; groupe à
+/// quatre (Bob micro coupé, Ève qui parle, Alice qui sonne) ; Alice qui
+/// partage son écran (mire). L'historique porte des messages d'appel.
+fn dm_call_store(s: &mut Store, scene: Scene) {
+    use ferrocord::state::calls::{Call, CallEvent};
+    use ferrocord::state::voice::{VoiceEvent, VoiceState};
+    const ALICE: u64 = 1_000_000_000_000_000_002;
+    const BOB: u64 = 1_000_000_000_000_000_003;
+    const EVE_MP: u64 = 1_000_000_000_000_000_004;
+    let now = chrono::Utc::now().timestamp_millis();
+    let flake = |ms: i64| (u64::try_from(ms - 1_420_070_400_000).unwrap_or(0)) << 22;
+    let channel = if scene == Scene::AppelGroupe { DM_GROUP } else { DM };
+    let state = |user_id: u64| VoiceState { channel_id: channel, user_id, ..Default::default() };
+    let (present, ringing, speaker) = match scene {
+        Scene::AppelSortant => (vec![state(ME)], vec![ALICE], None),
+        Scene::AppelGroupe => (vec![state(ME), VoiceState { self_mute: true, ..state(BOB) }, state(EVE_MP)], vec![ALICE], Some(EVE_MP)),
+        Scene::AppelMpPartage => (vec![state(ME), VoiceState { self_stream: true, ..state(ALICE) }], Vec::new(), None),
+        _ => (vec![state(ME), state(ALICE)], Vec::new(), Some(ALICE)),
+    };
+    // Historique : appels passés (durées en mots, appel manqué), puis celui en cours.
+    let started = now - 95_000;
+    let me = serde_json::json!({ "id": ME.to_string(), "username": "moi.fictif", "global_name": "Moi Fictif", "discriminator": "0", "avatar": null, "public_flags": 0 });
+    let alice = fixture("message_create_dm")["d"]["author"].clone();
+    let iso = |ms: i64| chrono::DateTime::from_timestamp_millis(ms).map(|d| d.to_rfc3339()).unwrap_or_default();
+    let call = |author: &Value, start: i64, lasted: Option<i64>, joined: bool| {
+        let mut people = vec![author["id"].clone()];
+        if joined {
+            people.push(serde_json::json!(ME.to_string()));
+        }
+        serde_json::json!({
+            "id": flake(start).to_string(), "channel_id": channel.to_string(), "author": author, "content": "", "timestamp": iso(start),
+            "edited_timestamp": null, "tts": false, "mention_everyone": false, "mentions": [], "mention_roles": [], "attachments": [], "embeds": [],
+            "components": [], "pinned": false, "type": 3, "flags": 0,
+            "call": { "participants": people, "ended_timestamp": lasted.map(|d| iso(start + d)) }
+        })
+    };
+    const MIN: i64 = 60_000;
+    let text = serde_json::json!({
+        "id": flake(now - 20 * MIN).to_string(), "channel_id": channel.to_string(), "author": alice, "content": "On s'appelle pour relire le plan ?", "timestamp": iso(now - 20 * MIN),
+        "edited_timestamp": null, "tts": false, "mention_everyone": false, "mentions": [], "mention_roles": [], "attachments": [], "embeds": [],
+        "components": [], "pinned": false, "type": 0, "flags": 0
+    });
+    // Du plus récent au plus ancien, comme la réponse de Discord.
+    let history = vec![
+        call(&me, started, None, true),
+        call(&alice, now - 12 * MIN, Some(4 * MIN + 20_000), true),
+        call(&alice, now - 16 * MIN, Some(25_000), false),
+        text,
+        call(&me, now - 3 * 60 * MIN, Some(75_000), true),
+        call(&alice, now - 26 * 60 * MIN, Some(125 * MIN), true),
+        call(&me, now - 27 * 60 * MIN, Some(8_000), true),
+    ];
+    let messages = decode_history(&Value::Array(history).to_string()).unwrap_or_default();
+    s.select_dms();
+    s.select_channel(channel);
+    s.apply(Event::History { channel_id: channel, before: None, messages });
+    s.voice_join_call(channel);
+    s.apply(Event::Calls(CallEvent::Upsert { call: Call { channel_id: channel, message_id: Some(flake(started)), region: None, ringing, unavailable: false }, voice_states: Some(present) }));
+    s.apply(Event::Voice(VoiceEvent::Connected));
+    if let Some(user_id) = speaker {
+        s.apply(Event::Voice(VoiceEvent::Speaking { user_id, speaking: true }));
+    }
+    if scene == Scene::AppelMpPartage {
+        use ferrocord::state::stream::{stream_key, StreamEvent};
+        let key = stream_key(None, DM, ALICE);
+        s.video_watch(&key);
+        s.apply(Event::Stream(StreamEvent::Create { key: key.clone(), rtc_server_id: None, rtc_channel_id: None, region: None, viewers: vec![ME], paused: false }));
+        s.apply(Event::Stream(StreamEvent::Connected { key }));
+    }
+    s.take_commands();
+}
+
 /// Réponses fictives du lot V6 : listes des jeux d'essai, actions acceptées.
 fn calls_reply(c: Cmd) -> Vec<Event> {
     use ferrocord::state::admin::expressions::{ExprCmd, Kind};
@@ -1148,6 +1386,13 @@ fn session_events(view: View) -> Vec<Event> {
         if amis() && *name == "ready_user_social" {
             amis_ready(&mut v);
         }
+        // Scène `vocal-amis` : Alpha reçoit un salon vocal, où des amis se retrouvent.
+        if VOCAL.load(std::sync::atomic::Ordering::Relaxed)
+            && *name == "ready_user_social"
+            && let Some(list) = v["d"]["guilds"][0]["channels"].as_array_mut()
+        {
+            list.push(serde_json::json!({ "id": "3000000000000000014", "type": 2, "name": "Veillée du Phare", "position": 2, "parent_id": "3000000000000000010", "permission_overwrites": [], "bitrate": 64000, "user_limit": 0, "rtc_region": null, "flags": 0 }));
+        }
         if view == View::Unknown && *name == "ready_user_roles" {
             // Mon membre retiré d'Alpha : ses permissions deviennent inconnues
             // et #modération, masqué dans la vue `masque`, reste affiché.
@@ -1217,6 +1462,89 @@ fn live_events() -> Vec<Event> {
     other["d"]["guild_id"] = GAMMA.to_string().into();
     out.extend(packet(&other));
     out
+}
+
+/// Serveurs et salons inventés de la scène `boite` (boîte de réception).
+const MAQUETTES: u64 = 2_000_000_000_000_000_071;
+const MAQUETTES_VITRINE: u64 = 3_000_000_000_000_000_712;
+const MAQUETTES_ROBOT: u64 = 3_000_000_000_000_000_713;
+const MAQUETTES_ENTRAIDE: u64 = 3_000_000_000_000_000_714;
+const CERCLE: u64 = 2_000_000_000_000_000_072;
+const CERCLE_LECTURES: u64 = 3_000_000_000_000_000_722;
+
+/// Paquet MESSAGE_CREATE inventé de la scène `boite` : `minutes` avant
+/// maintenant (l'identifiant porte l'heure), auteur (identifiant, nom, robot).
+fn boite_message(minutes: u64, channel: u64, guild: u64, author: (u64, &str, bool), content: &str, more: Value) -> Value {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
+    let id = (now.saturating_sub(ferrocord::state::model::DISCORD_EPOCH + minutes * 60_000)) << 22 | (minutes & 0xfff);
+    let mut v = fixture("message_create_simple");
+    let d = &mut v["d"];
+    d["id"] = id.to_string().into();
+    d["nonce"] = Value::Null;
+    d["channel_id"] = channel.to_string().into();
+    d["guild_id"] = guild.to_string().into();
+    d["author"] = serde_json::json!({ "id": author.0.to_string(), "username": author.1.to_lowercase().replace(' ', "_"), "global_name": author.1, "discriminator": "0", "avatar": null, "bot": author.2, "public_flags": 0 });
+    d["content"] = content.into();
+    if let Some(more) = more.as_object() {
+        for (k, x) in more {
+            d[k.as_str()] = x.clone();
+        }
+    }
+    v
+}
+
+/// Scène `boite` : deux serveurs inventés (dont un au nom très long), des
+/// salons non lus déjà en mémoire (texte mis en forme, embed d'un robot,
+/// image jointe) et un salon non lu sans historique en mémoire.
+fn boite_events() -> Vec<Event> {
+    use ferrocord::state::model::{Channel, ChannelKind, Guild};
+    use serde_json::json;
+    let chan = |id: u64, name: &str, kind, position, parent| Channel { id, name: name.into(), kind, position, parent, overwrites: Some(Vec::new()), slowmode: 0 };
+    let atelier = Guild::new(
+        MAQUETTES,
+        "Atelier des Maquettistes Ferroviaires et des Dioramas Miniatures du Grand Ouest".into(),
+        vec![
+            chan(3_000_000_000_000_000_711, "Vie de l'atelier", ChannelKind::Category, 0, None),
+            chan(MAQUETTES_ROBOT, "journal-du-dépôt", ChannelKind::Text, 0, Some(3_000_000_000_000_000_711)),
+            chan(MAQUETTES_VITRINE, "vitrine-des-réalisations-terminées", ChannelKind::Text, 1, Some(3_000_000_000_000_000_711)),
+            chan(MAQUETTES_ENTRAIDE, "entraide", ChannelKind::Text, 2, Some(3_000_000_000_000_000_711)),
+        ],
+    );
+    let cercle = Guild::new(CERCLE, "Cercle des Lecteurs Nocturnes".into(), vec![chan(3_000_000_000_000_000_721, "Salons", ChannelKind::Category, 0, None), chan(CERCLE_LECTURES, "lectures-du-mois", ChannelKind::Text, 0, Some(3_000_000_000_000_000_721))]);
+    let mut out = vec![Event::GuildCreate(atelier), Event::GuildCreate(cercle)];
+    // Historique (vide) en mémoire : les messages reçus ensuite y sont gardés. « entraide » n'en a pas.
+    for c in [MAQUETTES_VITRINE, MAQUETTES_ROBOT, CERCLE_LECTURES] {
+        out.push(Event::History { channel_id: c, before: None, messages: Vec::new() });
+    }
+    let (maelle, octave, robot) = ((1_000_000_000_000_000_071, "Maëlle Tisserand", false), (1_000_000_000_000_000_072, "Octave Brindille", false), (1_000_000_000_000_000_073, "Aiguilleur", true));
+    let embed = json!({ "embeds": [{ "type": "rich", "title": "Dépôt mis à jour : version 2.4", "description": "**Nouveautés**\n- signaux lumineux à trois feux\n- plaque tournante motorisée\n\nMerci à tous les testeurs 🎉", "color": 0x2ecc71, "fields": [{ "name": "Voies", "value": "12", "inline": true }, { "name": "Aiguillages", "value": "27", "inline": true }], "footer": { "text": "Journal automatique du dépôt" } }] });
+    let image = json!({ "attachments": [{ "id": "7000000000000000071", "filename": "gare-miniature.png", "size": 48211, "url": "https://cdn.discordapp.com/attachments/3000000000000000712/7000000000000000071/gare-miniature.png?ex=00000000&is=00000000&hm=00", "proxy_url": "https://media.discordapp.net/attachments/3000000000000000712/7000000000000000071/gare-miniature.png?ex=00000000&is=00000000&hm=00", "content_type": "image/png", "width": 640, "height": 360 }] });
+    let none = json!({});
+    for v in [
+        boite_message(52, MAQUETTES_VITRINE, MAQUETTES, maelle, "J'ai terminé la **gare de triage** ce week-end, avec l'éclairage intérieur.", image),
+        boite_message(51, MAQUETTES_VITRINE, MAQUETTES, maelle, "Il reste le ballast à patiner, *mais ça avance* <:ferris:6000000000000000001>", none.clone()),
+        boite_message(38, MAQUETTES_VITRINE, MAQUETTES, octave, "Superbe ! Tu as utilisé quelle échelle ?\n> avec l'éclairage intérieur\nÇa change tout.", none.clone()),
+        boite_message(31, MAQUETTES_VITRINE, MAQUETTES, maelle, "Du `HO`, comme d'habitude.", none.clone()),
+        boite_message(30, MAQUETTES_VITRINE, MAQUETTES, octave, "Je note. Je posterai mon pont tournant demain.", none.clone()),
+        boite_message(24, MAQUETTES_ROBOT, MAQUETTES, robot, "", embed),
+        boite_message(19, MAQUETTES_ENTRAIDE, MAQUETTES, octave, "Quelqu'un a un plan de câblage ?", none.clone()),
+        boite_message(12, CERCLE_LECTURES, CERCLE, octave, "Prochaine lecture : __Les Villes invisibles__. Rendez-vous <t:1893456000:R> ||(surprise)||", none),
+    ] {
+        out.extend(packet(&v));
+    }
+    out
+}
+
+/// Mentions récentes ajoutées à celles du jeu d'essai (scène `boite-mentions`) :
+/// serveur au nom très long, @everyone, texte mis en forme, emoji du serveur.
+fn boite_mentions() -> Vec<Message> {
+    use serde_json::json;
+    let me = json!({ "mentions": [{ "id": "1000000000000000001", "username": "moi_fictif", "global_name": "Moi Fictif", "discriminator": "0", "avatar": null, "public_flags": 0 }] });
+    let list = [
+        boite_message(64, MAQUETTES_VITRINE, MAQUETTES, (1_000_000_000_000_000_073, "Aiguilleur", true), "@everyone\n**Mise à jour du règlement** : les photos vont dans <#3000000000000000712> <:ferris:6000000000000000001>", json!({ "mention_everyone": true })),
+        boite_message(95, CERCLE_LECTURES, CERCLE, (1_000_000_000_000_000_072, "Octave Brindille", false), "<@1000000000000000001> tu présentes le livre *jeudi* ?", me),
+    ];
+    decode_history(&Value::Array(list.iter().map(|v| v["d"].clone()).collect()).to_string()).unwrap_or_default()
 }
 
 /// Page du jeu d'essai d'un salon : le décodage n'est fait que pour les
@@ -1297,7 +1625,7 @@ impl ferrocord::state::audio_prefs::AudioService for PreviewAudio {
     }
 }
 
-/// Service de capture de `--scene partage` : écrans, fenêtres et caméra
+/// Service de capture des scènes `partage…` : écrans, fenêtres et caméras
 /// inventés, images synthétiques (bureau en dégradé, fenêtres en blocs) ;
 /// rien n'est capturé.
 #[derive(Default)]
@@ -1328,29 +1656,32 @@ fn synthetic_capture(seed: u32, w: u32, h: u32) -> ferrocord::video::Frame {
 }
 
 impl ferrocord::state::share::CaptureService for PreviewCapture {
-    fn list(&mut self) {
+    fn watch(&mut self, tab: ferrocord::state::share::ShareTab) {
         use ferrocord::video::capture::{Source, SourceKind};
         let src = |id: &str, name: &str, kind| Source { id: id.into(), name: name.into(), kind };
-        self.queue.push(ferrocord::state::share::ShareEvent::Sources(ferrocord::state::share::SourceLists {
-            screens: vec![src("screen:1", "DELL U2720Q", SourceKind::Screen), src("screen:2", "Écran intégré", SourceKind::Screen)],
+        let lists = ferrocord::state::share::SourceLists {
+            screens: vec![src("screen:1", "Moniteur 27 pouces", SourceKind::Screen), src("screen:2", "Écran intégré", SourceKind::Screen)],
             windows: vec![
                 src("window:11", "Bloc-notes — liste des courses.txt", SourceKind::Window),
                 src("window:12", "Navigateur — Documentation de Rust", SourceKind::Window),
                 src("window:13", "Lecteur multimédia", SourceKind::Window),
                 src("window:14", "Explorateur de fichiers", SourceKind::Window),
+                src("window:15", "Tableur — budget du club de lecture.ods", SourceKind::Window),
+                src("window:16", "Les Cavernes de Sel — partie en cours", SourceKind::Window),
+                src("window:17", "Terminal", SourceKind::Window),
             ],
-            cameras: vec![src("camera:usb", "Webcam HD (USB)", SourceKind::Camera)],
-        }));
-    }
-    fn thumbnails(&mut self, sources: &[ferrocord::video::capture::Source]) {
-        for (i, s) in sources.iter().enumerate() {
+            cameras: vec![src("camera:usb", "Webcam HD (USB)", SourceKind::Camera), src("camera:int", "Caméra intégrée", SourceKind::Camera)],
+        };
+        let shown: Vec<Source> = lists.of(tab).iter().filter(|s| ferrocord::state::share::wants_thumbnail(s.kind)).cloned().collect();
+        self.queue.push(ferrocord::state::share::ShareEvent::Sources(lists));
+        for (i, s) in shown.iter().enumerate() {
             // La dernière fenêtre n'a pas d'image (réduite pendant la capture).
-            let frame = (i + 1 < sources.len()).then(|| synthetic_capture(i as u32, 320, 180));
+            let frame = (s.kind == SourceKind::Screen || i + 1 < shown.len()).then(|| synthetic_capture(i as u32, 480, 270));
             self.queue.push(ferrocord::state::share::ShareEvent::Thumbnail { id: s.id.clone(), frame });
         }
     }
     fn preview(&mut self, s: &ferrocord::video::capture::Source) {
-        self.queue.push(ferrocord::state::share::ShareEvent::Preview { id: s.id.clone(), frame: Ok(synthetic_capture(0, 640, 360)) });
+        self.queue.push(ferrocord::state::share::ShareEvent::Preview { id: s.id.clone(), frame: Ok(synthetic_capture(4, 960, 540)) });
     }
     fn cancel(&mut self) {
         self.queue.clear();
@@ -1373,6 +1704,10 @@ enum Scene {
     /// Carte de mon compte (lot « profil rapide ») : ouverte au-dessus du
     /// panneau utilisateur, statut personnalisé en place.
     MonCompte,
+    /// Carte de mon compte avec badges (« +N ») et activité en cours (lot « profils »).
+    MonCompteJeu,
+    /// MP dont le correspondant, sans bannière, joue (carte d'activité et ses boutons).
+    MpActivite,
     /// Carte de mon compte, profil sans couleurs de thème.
     MonCompteSobre,
     /// Carte de mon compte, profil à thème clair.
@@ -1466,8 +1801,14 @@ enum Scene {
     ParuresAnimees,
     /// Sélecteur rapide (Ctrl+K) ouvert sur « gen » (lot navigation).
     Selecteur,
-    /// Boîte de réception ouverte sur les mentions (lot navigation).
+    /// Boîte de réception : salons non lus en cartes (lot navigation, lot « boîte »).
     Boite,
+    /// Boîte de réception, premières cartes repliées (image jointe, embed d'un robot).
+    BoiteCartes,
+    /// Boîte de réception, onglet « Programmés » (plugin activé, deux messages).
+    BoiteProgrammes,
+    /// Boîte de réception, onglet « Mentions ».
+    BoiteMentions,
     /// Fenêtre « Raccourcis clavier » (Ctrl+/, lot navigation).
     Raccourcis,
     /// Fenêtre des notifications d'un serveur, avec deux exceptions (lot N).
@@ -1551,10 +1892,24 @@ enum Scene {
     PanneauMenu,
     /// Lot « amis » : page Amis et colonne des MP garnies comme l'accueil du client.
     Amis,
+    /// Lot « vocal » : page Amis de la scène `amis`, avec des amis en vocal sur un serveur
+    /// commun (ligne des MP, ligne d'ami, carte vocale de la colonne « En ligne ») et une
+    /// activité enrichie (carte en deux parties).
+    VocalAmis,
+    /// Lot « vocal » : rail de la scène `serveurs` avec des amis en vocal et en partage dans un
+    /// serveur sans icône du dossier déplié (pastille, infobulle à droite, acronyme, capsule).
+    VocalRail,
+    /// Lot « vocal » : salon vocal occupé (haut-parleur vert, boutons de survol), membres
+    /// rangés comme dans le client, étiquette EN DIRECT et carte d'aperçu d'un direct.
+    VocalSalon,
     /// Lot « chatmp » : conversation privée comparée au client (auteur au nom stylé et à
     /// tag, messages d'aujourd'hui et d'hier, réponse qui me mentionne, colonne des MP
     /// de la scène `amis` avec une activité doublée d'un statut).
     MpChat,
+    /// Lot « messages » : MP du compte officiel (bandeau à la place de la saisie, cartes de notification).
+    MpSysteme,
+    /// Lot « messages » : messages transférés avec image, fichier, embed et autocollant.
+    Transfert,
     /// Lot U (vue `amis`) : fenêtre « Pseudo d'ami ».
     PseudoAmi,
     /// Liste des salons (lot S) : catégorie repliée qui garde son salon non
@@ -1646,12 +2001,23 @@ enum Scene {
     ModerationMembre,
     /// Appel entrant d'Alice (lot V6) : fenêtre « Accepter / Refuser » et bandeau de l'appel dans son MP.
     Sonnerie,
+    /// Appel d'un MP en bandeau au-dessus de la conversation (lot « appel ») : à deux, Alice parle.
+    AppelMp,
+    /// Appel sortant : Alice n'a pas encore décroché (avatar estompé, points d'attente).
+    AppelSortant,
+    /// Appel de groupe à quatre : Bob micro coupé, Ève parle, Alice sonne encore.
+    AppelGroupe,
+    /// Appel d'un MP où Alice partage son écran : le bandeau s'agrandit.
+    AppelMpPartage,
     /// Salon de conférence en cours (lot V6) : sujet, orateurs, main levée, auditeurs, gestes du modérateur.
     Conference,
     /// Salon vocal où je suis (lot V6) : statut, son joué par Alice, tableau de sons ouvert.
     Sons,
-    /// Sélecteur de partage (lot M3) : écrans et fenêtres avec vignettes, premier écran choisi et son aperçu.
-    Partage,
+    /// Sélecteur de partage (lots M3 et « partage ») : barre d'onglets, grille de
+    /// vignettes, préréglage de qualité. 0 : `partage` (Applications) ;
+    /// 1 : `partage-ecrans` ; 2 : `partage-appareils` ; 3 : `partage-camera`
+    /// (aperçu avant d'allumer la caméra) ; 4 : `partage-qualite` (menu de l'engrenage).
+    Partage(u8),
     /// Accessibilité (lot C5) : mode streamer actif (bandeau), dernier
     /// message de #général choisi au clavier.
     Accessibilite,
@@ -1670,6 +2036,10 @@ enum Scene {
     Activite,
     /// Rich Presence locale (lot R) : ma carte de profil, avec l'activité reçue d'un jeu par le tube local.
     RichPresence,
+    /// Lot « activité » : un jeu (fictif) détecté, encart au-dessus du panneau utilisateur.
+    JeuDetecte,
+    /// Comme `JeuDetecte`, dans un salon vocal : le bouton de partage de l'encart est là.
+    JeuDetecteAppel,
     /// Connexion par QR code (lot C2, avec `--view login`) : QR affiché, compte à rebours.
     Qr,
     /// `Qr` après lecture sur le téléphone : « Connexion de Alice : confirmez ».
@@ -1840,6 +2210,9 @@ fn filled_store(view: View, scene: Option<Scene>) -> (Store, HashMap<u64, Vec<Me
     }
     // Historique (vide) de la conversation privée : le message en direct s'y ajoute.
     hist.insert(DM, Vec::new());
+    if scene == Some(Scene::MpSysteme) {
+        hist.insert(DM_SYSTEME, Vec::new());
+    }
     for (channel_id, messages) in hist.drain() {
         s.apply(Event::History { channel_id, before: None, messages });
     }
@@ -1869,19 +2242,41 @@ fn filled_store(view: View, scene: Option<Scene>) -> (Store, HashMap<u64, Vec<Me
         for e in profile_events() {
             s.apply(e);
         }
-        if matches!(scene, Some(Scene::Amis | Scene::MpChat)) {
+        if matches!(scene, Some(Scene::Amis | Scene::MpChat | Scene::MpActivite | Scene::VocalAmis | Scene::MpSysteme | Scene::Transfert)) {
             for e in amis_events() {
                 s.apply(e);
             }
         }
-        if scene == Some(Scene::MpChat) {
+        if scene == Some(Scene::VocalAmis) {
+            for e in vocal_amis_events() {
+                s.apply(e);
+            }
+        }
+        let extra = match scene {
+            Some(Scene::MpSysteme) => mp_systeme_events(),
+            Some(Scene::Transfert) => transfert_events(),
+            _ => Vec::new(),
+        };
+        for e in extra {
+            s.apply(e);
+        }
+        if matches!(scene, Some(Scene::MpChat | Scene::MpActivite)) {
             for e in mp_chat_events() {
                 s.apply(e);
             }
         }
     }
-    if matches!(scene, Some(Scene::Activite | Scene::RichPresence | Scene::Panneau | Scene::PanneauMenu)) {
+    if matches!(scene, Some(Scene::Activite | Scene::RichPresence | Scene::Panneau | Scene::PanneauMenu | Scene::MonCompteJeu | Scene::MpActivite)) {
         activity_store(&mut s);
+    }
+    if matches!(scene, Some(Scene::JeuDetecte | Scene::JeuDetecteAppel)) {
+        detected_game_store(&mut s);
+    }
+    // Boîte de réception : serveurs inventés, salons non lus avec et sans messages en mémoire.
+    if matches!(scene, Some(Scene::Boite | Scene::BoiteMentions | Scene::BoiteCartes)) {
+        for e in boite_events() {
+            s.apply(e);
+        }
     }
     if scene == Some(Scene::Nouveaux) {
         s.select_channel(GENERAL);
@@ -1995,8 +2390,11 @@ fn filled_store(view: View, scene: Option<Scene>) -> (Store, HashMap<u64, Vec<Me
             s.apply(Event::Account(AccountEvent::Profile(Ok(profile))));
         }
     }
-    if matches!(scene, Some(Scene::Vocal | Scene::VocalCodes | Scene::VoixE4(_))) {
+    if matches!(scene, Some(Scene::Vocal | Scene::VocalCodes | Scene::VoixE4(_) | Scene::JeuDetecteAppel | Scene::VocalSalon)) {
         voice_store(&mut s);
+        if scene == Some(Scene::VocalSalon) {
+            vocal_salon_store(&mut s);
+        }
         if scene == Some(Scene::VocalCodes) {
             voice_codes_store(&mut s);
         }
@@ -2008,8 +2406,11 @@ fn filled_store(view: View, scene: Option<Scene>) -> (Store, HashMap<u64, Vec<Me
     if matches!(scene, Some(Scene::Roles | Scene::Role | Scene::RolePermissions | Scene::Membres | Scene::MembreRoles)) {
         roles_store(&mut s);
     }
-    if matches!(scene, Some(Scene::Serveurs | Scene::ServeursAjouter | Scene::ServeursInviter | Scene::ServeursInvitations)) {
+    if matches!(scene, Some(Scene::Serveurs | Scene::ServeursAjouter | Scene::ServeursInviter | Scene::ServeursInvitations | Scene::VocalRail)) {
         servers_store(&mut s);
+    }
+    if scene == Some(Scene::VocalRail) {
+        vocal_rail_store(&mut s);
     }
     if matches!(scene, Some(Scene::Salons | Scene::SalonsPermissions | Scene::SalonsCreer | Scene::SalonsServeur)) {
         salons_store(&mut s);
@@ -2019,6 +2420,9 @@ fn filled_store(view: View, scene: Option<Scene>) -> (Store, HashMap<u64, Vec<Me
     }
     if matches!(scene, Some(Scene::Evenements | Scene::EvenementCreer | Scene::Bienvenue | Scene::Integration | Scene::ParametresIntegration | Scene::ParametresBienvenue)) {
         admin_store(&mut s);
+    }
+    if let Some(sc @ (Scene::AppelMp | Scene::AppelSortant | Scene::AppelGroupe | Scene::AppelMpPartage)) = scene {
+        dm_call_store(&mut s, sc);
     }
     if matches!(scene, Some(Scene::Sonnerie | Scene::Conference | Scene::Sons)) {
         calls_store(&mut s, scene);
@@ -2051,7 +2455,7 @@ fn filled_store(view: View, scene: Option<Scene>) -> (Store, HashMap<u64, Vec<Me
     }
     if view == View::Dm {
         s.select_dms();
-        s.select_channel(DM);
+        s.select_channel(if scene == Some(Scene::MpSysteme) { DM_SYSTEME } else { DM });
         s.take_commands();
     }
     if view == View::Friends {
@@ -2387,6 +2791,38 @@ fn servers_store(s: &mut Store) {
     s.apply(Event::Account(ev));
 }
 
+/// Scène `vocal-rail` (lot « vocal ») : le rail de la scène `serveurs`, où le serveur sans
+/// icône « Projet.cool » (dans le dossier déplié) accueille trois amis en vocal, dont une
+/// qui partage son écran, et une inconnue qui ne compte pas ; « Rétro gaming » (dossier
+/// replié) n'a que des inconnus en vocal : pas de pastille.
+fn vocal_rail_store(s: &mut Store) {
+    use ferrocord::state::model::Avatar;
+    use ferrocord::state::relations::{Person, RelKind, Relation, RelationsEvent};
+    use serde_json::json;
+    for (id, name, username) in [(1_000_000_000_000_000_002u64, "Alice", "alice_fictive"), (1_000_000_000_000_000_005, "Dana", "dana_fictive"), (1_000_000_000_000_000_006, "Ève", "eve_fictive")] {
+        let user = Person { id, name: name.into(), username: username.into(), avatar: Avatar::default_for(id) };
+        s.apply(Event::Relations(RelationsEvent::RelationAdd(Relation { id, kind: RelKind::Friend, nickname: None, ignored: false, user: Some(user) })));
+    }
+    let state = |user: u64, channel: u64, stream: bool| json!({ "user_id": user.to_string(), "channel_id": channel.to_string(), "session_id": format!("s-{user}"), "deaf": false, "mute": false, "self_deaf": false, "self_mute": false, "self_video": false, "self_stream": stream, "suppress": false, "request_to_speak_timestamp": null });
+    let voice = |id: u64, name: &str| json!({ "id": id.to_string(), "type": 2, "name": name, "position": 1, "parent_id": null, "permission_overwrites": [], "bitrate": 64000, "user_limit": 0, "rtc_region": null, "flags": 0 });
+    for (guild, name, text, vocal, states) in [
+        (2_000_000_000_000_000_104u64, "Projet.cool", 3_000_000_000_000_000_104u64, 3_000_000_000_000_000_204u64, vec![(1_000_000_000_000_000_002u64, false), (1_000_000_000_000_000_005, false), (1_000_000_000_000_000_006, true), (1_000_000_000_000_000_007, false)]),
+        (2_000_000_000_000_000_102, "Rétro gaming", 3_000_000_000_000_000_102, 3_000_000_000_000_000_202, vec![(1_000_000_000_000_000_007, true)]),
+    ] {
+        let mut g = fixture("guild_create_beta");
+        g["d"]["id"] = guild.to_string().into();
+        g["d"]["name"] = name.into();
+        g["d"]["channels"][0]["id"] = text.to_string().into();
+        if let Some(list) = g["d"]["channels"].as_array_mut() {
+            list.push(voice(vocal, "Atelier"));
+        }
+        g["d"]["voice_states"] = states.iter().map(|(u, live)| state(*u, vocal, *live)).collect::<Vec<_>>().into();
+        for e in packet(&g) {
+            s.apply(e);
+        }
+    }
+}
+
 /// Scènes `salons*` (lot A2) : un rôle Modération, #général refusé en
 /// écriture à @everyone et ouvert à Modération.
 fn salons_store(s: &mut Store) {
@@ -2425,6 +2861,28 @@ fn voice_store(s: &mut Store) {
     s.select_channel(3_000_000_000_000_000_050);
     s.take_commands();
     s.apply(Event::History { channel_id: 3_000_000_000_000_000_050, before: None, messages: Vec::new() });
+}
+
+/// Scène `vocal-salon` (lot « vocal ») : la scène `vocal`, où Ève diffuse un jeu depuis
+/// vingt-cinq minutes (étiquette EN DIRECT, carte d'aperçu au survol) et Dana porte un tag
+/// de serveur ; les membres sont rangés comme dans le client.
+fn vocal_salon_store(s: &mut Store) {
+    use serde_json::json;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
+    let started = now.saturating_sub((25 * 60 + 3) * 1000);
+    let packets = [
+        json!({ "t": "PRESENCE_UPDATE", "d": {
+            "guild_id": VOICE_GUILD.to_string(), "user": { "id": "1000000000000000006", "username": "eve_fictive", "global_name": "Ève", "discriminator": "0" }, "status": "online", "client_status": { "desktop": "online" },
+            "activities": [{ "type": 0, "name": "Forge Lunaire", "application_id": "7000000000000004001", "created_at": started, "timestamps": { "start": started } }]
+        } }),
+        json!({ "t": "PRESENCE_UPDATE", "d": {
+            "guild_id": VOICE_GUILD.to_string(), "status": "online", "client_status": { "desktop": "online" }, "activities": [],
+            "user": { "id": "1000000000000000005", "username": "dana_fictive", "global_name": "Dana", "discriminator": "0", "primary_guild": { "identity_guild_id": VOICE_GUILD.to_string(), "identity_enabled": true, "tag": "LUNE", "badge": "7a9000000000000000000000000000b9" } }
+        } }),
+    ];
+    for e in packets.iter().flat_map(packet) {
+        s.apply(e);
+    }
 }
 
 /// Serveur et salon vocaux des jeux d'essai (`guild_create_voice`).
@@ -2468,6 +2926,7 @@ fn spawn_test_patterns(sink: ferrocord::state::video::VideoSink, stop: bool) {
         (Tile::Camera(ME), (640, 360)),
         (Tile::Stream(ferrocord::state::stream::stream_key(Some(VOICE_GUILD), VOICE_ROOM, EVE)), (1280, 720)),
         (Tile::Stream(ferrocord::state::stream::stream_key(Some(VOICE_GUILD), VOICE_ROOM, ME)), (1280, 720)),
+        (Tile::Stream(ferrocord::state::stream::stream_key(None, DM, 1_000_000_000_000_000_002)), (1280, 720)),
     ];
     std::thread::spawn(move || {
         let started = Instant::now();
@@ -2684,7 +3143,13 @@ struct Offline {
     pages: HashMap<u64, Vec<Message>>,
     /// Pages servies (vers le passé, vers le présent), comptées pour le banc.
     served: Option<bench::Served>,
+    /// Banc d'usage prolongé : page d'un salon fabriquée à la demande
+    /// (salon, `before`), pour tout salon absent de `pages`.
+    make: Option<MakePage>,
 }
+
+/// Fabrique d'une page d'historique : salon, `before`.
+type MakePage = fn(u64, Option<u64>) -> Vec<Message>;
 
 /// Filtre des réveils publié par l'interface (`Backend::set_interest`), lu par le banc.
 static INTEREST: OnceLock<Arc<ferrocord::state::interest::Interest>> = OnceLock::new();
@@ -2783,6 +3248,7 @@ impl Backend for Offline {
                     }
                     let messages = match self.pages.get(&channel_id) {
                         Some(all) => serve_page(all, before, None),
+                        None if self.make.is_some() => self.make.map(|f| f(channel_id, before)).unwrap_or_default(),
                         None if before.is_none() => fixture_history(channel_id),
                         None => Vec::new(),
                     };
@@ -2817,7 +3283,11 @@ impl Backend for Offline {
                 // Mentions récentes : la page du jeu d'essai, une seule fois ; retrait accepté.
                 Cmd::Inbox(ferrocord::state::inbox::InboxCmd::Load { round, before, .. }) => {
                     let body = serde_json::to_string(&fixture("rest_recent_mentions")).unwrap_or_default();
-                    let messages = if before.is_none() { ferrocord::net::decode_mentions(&body).unwrap_or_default() } else { Vec::new() };
+                    let mut messages = if before.is_none() { ferrocord::net::decode_mentions(&body).unwrap_or_default() } else { Vec::new() };
+                    // Mentions inventées de la scène `boite-mentions` (serveur au nom très long).
+                    if before.is_none() {
+                        messages.extend(boite_mentions());
+                    }
                     self.push(Event::Inbox(ferrocord::state::inbox::InboxEvent::Page { round, before, messages }));
                 }
                 Cmd::Inbox(ferrocord::state::inbox::InboxCmd::Delete { message_id }) => self.push(Event::Inbox(ferrocord::state::inbox::InboxEvent::Deleted { message_id })),
@@ -3027,6 +3497,12 @@ impl Backend for Offline {
                             if EFFET.load(std::sync::atomic::Ordering::Relaxed) {
                                 v["user_profile"]["profile_effect"] = serde_json::json!({ "id": "6000000000000000001", "expires_at": null });
                             }
+                            if SANS_BANNIERE.load(std::sync::atomic::Ordering::Relaxed) {
+                                for part in ["user", "user_profile"] {
+                                    v[part]["banner"] = serde_json::Value::Null;
+                                }
+                                v["user_profile"]["theme_colors"] = serde_json::Value::Null;
+                            }
                             if carte() {
                                 // L'identifiant de l'effet seul (son SKU diffère) : il passe par le catalogue.
                                 v["user_profile"]["profile_effect"] = serde_json::json!({ "id": "6000000000000000301", "expires_at": null });
@@ -3067,11 +3543,15 @@ impl Backend for Offline {
                                 3 => serde_json::json!([0x1b0b33, 0x8200e0]),
                                 _ => serde_json::json!([0x3b2a6b, 0x12343b]),
                             };
+                            // Scène « mon-compte-jeu » : huit badges, pour la capsule repliée à six et son « +2 ».
+                            let icons = ["2ba85e8026a8614b640c2837bcdfe21b", "011940fd013da3f7fb926e4a1cd2e618", "3aa41de486fa12454c3761e8e223442e", "7d9ae358c8c5e118768335dbe68b4fb8"];
+                            let many = MY_THEME.load(std::sync::atomic::Ordering::Relaxed) == 4;
+                            let badges: Vec<serde_json::Value> = (0..if many { 8 } else { 0 }).map(|i| serde_json::json!({ "id": format!("badge_fictif_{i}"), "description": format!("Badge fictif n° {}", i + 1), "icon": icons[i % icons.len()] })).collect();
                             let v = serde_json::json!({
                                 "user": { "id": ME.to_string(), "username": "moi.fictif", "global_name": "Moi Fictif", "discriminator": "0", "avatar": null, "banner": null, "accent_color": 0x5865f2, "bio": "Profil d'aperçu, données fictives." },
                                 "user_profile": { "bio": "Profil d'aperçu, données fictives.", "pronouns": "il", "banner": null, "accent_color": 0x5865f2, "theme_colors": theme },
                                 "guild_member_profile": { "guild_id": ALPHA.to_string(), "pronouns": "", "bio": "Ici, je m'occupe des salons.", "banner": null, "accent_color": null, "theme_colors": null },
-                                "badges": [], "guild_badges": [], "mutual_guilds": [], "connected_accounts": [{ "type": "twitch", "id": "1", "name": "moi_fictif", "verified": true }, { "type": "youtube", "id": "UCfictif", "name": "Moi Fictif", "verified": false }],
+                                "badges": badges, "guild_badges": [], "mutual_guilds": [], "connected_accounts": [{ "type": "twitch", "id": "1", "name": "moi_fictif", "verified": true }, { "type": "youtube", "id": "UCfictif", "name": "Moi Fictif", "verified": false }],
                                 // Widgets de jeux (le dernier du jeu d'essai, de type inconnu, est laissé de côté).
                                 "widgets": fixture("nd/rest_widgets").as_array().map(|w| w[..4].to_vec())
                             });
@@ -3267,6 +3747,8 @@ struct Args {
     no_images: bool,
     /// Planche des fondations visuelles (lot V1) : icones, composants, fenetre.
     gallery: Option<String>,
+    /// Dossier où écrire les sons d'interface en WAV (rien n'est joué, aucune fenêtre).
+    sons: Option<PathBuf>,
     /// Position retenue de la fenêtre (comme dans `settings.toml`) ; la
     /// position obtenue est écrite sur la sortie d'erreur.
     position: Option<[f32; 2]>,
@@ -3276,6 +3758,12 @@ struct Args {
     bench: Option<bench::BenchCfg>,
     /// Scénario de mesure de la mémoire (`--bench-mem`).
     bench_mem: Option<String>,
+    /// Banc du processeur (`--bench-cpu <secondes de repos>`).
+    bench_cpu: Option<u64>,
+    /// Pose les bibliothèques d'ANGLE à côté de l'aperçu avant d'ouvrir la fenêtre (`--angle`).
+    angle: bool,
+    /// Banc d'usage prolongé (`--bench-long <salons visités par tour>`).
+    bench_long: Option<usize>,
     scene: Option<Scene>,
     /// Carte de profil d'Alice ouverte au départ (`--profile`).
     profile: bool,
@@ -3303,10 +3791,14 @@ fn args() -> Result<Args, String> {
         set: Vec::new(),
         no_images: false,
         gallery: None,
+        sons: None,
         position: None,
         size: None,
         bench: None,
         bench_mem: None,
+        bench_cpu: None,
+        angle: false,
+        bench_long: None,
         scene: None,
         profile: false,
         profile_full: false,
@@ -3372,6 +3864,7 @@ fn args() -> Result<Args, String> {
             "--set" => a.set.push(it.next().ok_or("--set attend section.clé=valeur")?),
             "--no-images" => a.no_images = true,
             "--gallery" => a.gallery = Some(it.next().ok_or("--gallery attend icones, composants ou fenetre")?),
+            "--sons" => a.sons = Some(it.next().ok_or("--sons attend un dossier")?.into()),
             "--position" => {
                 let v = it.next().ok_or("--position attend x,y")?;
                 let (x, y) = v.split_once(',').ok_or("--position attend x,y")?;
@@ -3432,9 +3925,16 @@ fn args() -> Result<Args, String> {
                     Some("effet-fixe") => Scene::EffetFixe,
                     Some("profil-carte") => Scene::ProfilCarte,
                     Some("panneau") => Scene::Panneau,
+                    Some("jeu-detecte") => Scene::JeuDetecte,
+                    Some("jeu-detecte-appel") => Scene::JeuDetecteAppel,
                     Some("panneau-menu") => Scene::PanneauMenu,
                     Some("amis") => Scene::Amis,
+                    Some("vocal-amis") => Scene::VocalAmis,
+                    Some("vocal-rail") => Scene::VocalRail,
+                    Some("vocal-salon") => Scene::VocalSalon,
                     Some("mp-chat") => Scene::MpChat,
+                    Some("mp-systeme") => Scene::MpSysteme,
+                    Some("transfert") => Scene::Transfert,
                     Some("pseudo-ami") => Scene::PseudoAmi,
                     Some("categories") => Scene::Categories,
                     Some("categories-muets") => Scene::CategoriesMuets,
@@ -3475,6 +3975,9 @@ fn args() -> Result<Args, String> {
                     Some("recherche") => Scene::Recherche,
                     Some("selecteur") => Scene::Selecteur,
                     Some("boite") => Scene::Boite,
+                    Some("boite-mentions") => Scene::BoiteMentions,
+                    Some("boite-programmes") => Scene::BoiteProgrammes,
+                    Some("boite-cartes") => Scene::BoiteCartes,
                     Some("raccourcis") => Scene::Raccourcis,
                     Some("notifs-serveur") => Scene::NotifsServeur,
                     Some("amis-ajouter") => Scene::AmisAjouter,
@@ -3536,9 +4039,17 @@ fn args() -> Result<Args, String> {
                     Some("appel-direct") => Scene::AppelDirect,
                     Some("appel-partage") => Scene::AppelPartage,
                     Some("sonnerie") => Scene::Sonnerie,
+                    Some("appel-mp") => Scene::AppelMp,
+                    Some("appel-sortant") => Scene::AppelSortant,
+                    Some("appel-groupe") => Scene::AppelGroupe,
+                    Some("appel-mp-partage") => Scene::AppelMpPartage,
                     Some("conference") => Scene::Conference,
                     Some("sons") => Scene::Sons,
-                    Some("partage") => Scene::Partage,
+                    Some("partage") => Scene::Partage(0),
+                    Some("partage-ecrans") => Scene::Partage(1),
+                    Some("partage-appareils") => Scene::Partage(2),
+                    Some("partage-camera") => Scene::Partage(3),
+                    Some("partage-qualite") => Scene::Partage(4),
                     Some("accessibilite") => Scene::Accessibilite,
                     Some("apparence-editeur") => Scene::ApparenceEditeur,
                     Some("theme-degrade") => Scene::ThemeDegrade,
@@ -3551,6 +4062,8 @@ fn args() -> Result<Args, String> {
                     Some("qr") => Scene::Qr,
                     Some("qr-lu") => Scene::QrLu,
                     Some("mon-compte") => Scene::MonCompte,
+                    Some("mon-compte-jeu") => Scene::MonCompteJeu,
+                    Some("mp-activite") => Scene::MpActivite,
                     Some("mon-compte-sobre") => Scene::MonCompteSobre,
                     Some("mon-compte-clair") => Scene::MonCompteClair,
                     Some("mon-compte-statut") => Scene::MonCompteStatut,
@@ -3568,11 +4081,18 @@ fn args() -> Result<Args, String> {
                 if a.scene == Some(Scene::Demandes) {
                     a.view = View::Friends;
                 }
-                if a.scene == Some(Scene::Amis) {
+                if a.scene == Some(Scene::VocalAmis) {
+                    VOCAL.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+                if matches!(a.scene, Some(Scene::Amis | Scene::VocalAmis)) {
                     AMIS.store(true, std::sync::atomic::Ordering::Relaxed);
                     a.view = View::Friends;
                 }
-                if a.scene == Some(Scene::MpChat) {
+                if a.scene == Some(Scene::MpActivite) {
+                    SANS_BANNIERE.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+                if matches!(a.scene, Some(Scene::MpChat | Scene::MpActivite | Scene::MpSysteme | Scene::Transfert)) {
+                    MPSYSTEME.store(a.scene == Some(Scene::MpSysteme), std::sync::atomic::Ordering::Relaxed);
                     AMIS.store(true, std::sync::atomic::Ordering::Relaxed);
                     MPCHAT.store(true, std::sync::atomic::Ordering::Relaxed);
                     a.view = View::Dm;
@@ -3593,12 +4113,17 @@ fn args() -> Result<Args, String> {
                     Some(Scene::MonCompteSobre) => 1,
                     Some(Scene::MonCompteClair) => 2,
                     Some(Scene::ProfilEdition | Scene::ProfilEditionStyle) => 3,
+                    Some(Scene::MonCompteJeu) => 4,
                     _ => 0,
                 }, std::sync::atomic::Ordering::Relaxed);
                 if matches!(a.scene, Some(Scene::ProfilEdition | Scene::ProfilEditionServeur | Scene::ProfilEditionStyle)) {
                     NITRO.store(true, std::sync::atomic::Ordering::Relaxed);
                 }
             }
+            "--bench-cpu" => a.bench_cpu = Some(num(it.next(), &arg)? as u64),
+            "--angle" => a.angle = true,
+            "--bench-long" => a.bench_long = Some(num(it.next(), &arg)?.max(20)),
+            "--bench-atlas-libre" => a.bench.get_or_insert_with(Default::default).free_atlas = true,
             "--bench-mem" => a.bench_mem = Some(it.next().ok_or("--bench-mem attend vide, vide-sans-polices, vide-logiciel, connexion, app-sans-images ou app")?),
             // Langue de l'interface, choisie avant de construire quoi que ce soit.
             "--lang" => ferrocord::i18n::set_language(match it.next().as_deref() {
@@ -3892,8 +4417,11 @@ impl eframe::App for Preview {
                 eprintln!("  image suivante : {:.2} ms", at.elapsed().as_secs_f64() * 1000.0);
             }
         }
-        // Sélecteur de partage : le premier écran est choisi dès que la liste est là.
-        if self.scene == Some(Scene::Partage) && !self.injected && self.app.share_select("screen:1") {
+        // Sélecteur de partage : la caméra choisie dès que la liste est là (son aperçu), ou le menu de l'engrenage.
+        if !self.injected && (self.scene == Some(Scene::Partage(3)) && self.app.share_select("camera:usb") || self.scene == Some(Scene::Partage(4)) && self.started.elapsed() > Duration::from_millis(400)) {
+            if self.scene == Some(Scene::Partage(4)) {
+                self.app.open_share_settings();
+            }
             self.injected = true;
             ui.ctx().request_repaint();
         }
@@ -4002,8 +4530,34 @@ fn main() -> eframe::Result {
             std::process::exit(2);
         }
     };
+    if let Some(dir) = args.sons.as_deref() {
+        return match write_sounds(dir) {
+            Ok(n) => {
+                println!("{n} sons écrits dans {}", dir.display());
+                Ok(())
+            }
+            Err(e) => {
+                eprintln!("--sons : {e}");
+                std::process::exit(1);
+            }
+        };
+    }
+    // Lot « gl » : l'application ne pose ANGLE que dans son dossier d'installation ; l'aperçu,
+    // sur demande, à côté de lui. Sans cela (ou avec FERROCORD_RENDU=opengl) : pilote OpenGL.
+    if args.angle
+        && let Some(dir) = ferrocord::rendu::angle::exe_dir()
+        && let Err(e) = ferrocord::rendu::angle::install(&dir)
+    {
+        eprintln!("--angle : {e}");
+    }
     if let Some(scenario) = args.bench_mem.as_deref() {
         return bench::run_mem(scenario);
+    }
+    if let Some(quiet) = args.bench_cpu {
+        return bench::cpu::run(quiet);
+    }
+    if let Some(visits) = args.bench_long {
+        return bench::long::run(bench::long::LongCfg { visits });
     }
     if let Some(cfg) = args.bench {
         return bench::run(cfg);
@@ -4060,7 +4614,7 @@ fn main() -> eframe::Result {
             }
             let inject: Arc<Mutex<Vec<Event>>> = Arc::default();
             let (store, pages) = filled_store(args.view, args.scene);
-            let backend = Offline { connected, queue, wake: None, next_id: 5_000_000_000_000_001_000, view: args.view, inject: Some(inject.clone()), pages, served: None };
+            let backend = Offline { connected, queue, wake: None, next_id: 5_000_000_000_000_001_000, view: args.view, inject: Some(inject.clone()), pages, served: None, make: None };
             let images = if args.no_images {
                 Images::disabled(cc.egui_ctx.clone())
             } else {
@@ -4240,6 +4794,10 @@ fn main() -> eframe::Result {
             if matches!(args.scene, Some(Scene::Panneau | Scene::PanneauMenu)) {
                 app.user_panel_preview(args.scene == Some(Scene::PanneauMenu));
             }
+            // Jeu détecté dans un vocal : le sélecteur de partage est relié, son bouton se montre.
+            if args.scene == Some(Scene::JeuDetecteAppel) {
+                app.enable_share_picker();
+            }
             if let Some(Scene::VoixE4(n)) = args.scene {
                 app.voice_e4_preview(n);
             }
@@ -4268,7 +4826,7 @@ fn main() -> eframe::Result {
                 app.open_reaction_picker(5_000_000_000_000_000_950, eframe::egui::pos2(500.0, 120.0), true);
             }
             match args.scene {
-                Some(Scene::Serveurs) => {
+                Some(Scene::Serveurs | Scene::VocalRail) => {
                     app.unfold_rail_folders();
                 }
                 Some(Scene::ServeursAjouter) => {
@@ -4441,6 +4999,19 @@ fn main() -> eframe::Result {
             // Appels, conférences, sons (lot V6).
             match args.scene {
                 Some(Scene::Sonnerie) => app.open(None, DM),
+                Some(Scene::AppelMp | Scene::AppelSortant) => {
+                    app.enable_share_picker();
+                    app.open(None, DM);
+                }
+                Some(Scene::AppelGroupe) => {
+                    app.enable_share_picker();
+                    app.open(None, DM_GROUP);
+                }
+                Some(Scene::AppelMpPartage) => {
+                    app.enable_share_picker();
+                    app.open(None, DM);
+                    spawn_test_patterns(app.video_sink(), args.screenshot.is_some());
+                }
                 Some(Scene::Conference) => app.open_voice_room(CLUB, CLUB_SCENE),
                 Some(Scene::Sons) => {
                     app.open_voice_room(CLUB, CLUB_VOCAL);
@@ -4449,10 +5020,15 @@ fn main() -> eframe::Result {
                 _ => {}
             }
             // Sélecteur de partage (lot M3) : sources et images synthétiques.
-            if args.scene == Some(Scene::Partage) {
+            if let Some(Scene::Partage(n)) = args.scene {
+                use ferrocord::state::share::ShareTab;
                 app.open(Some(ALPHA), GENERAL);
                 app.attach_capture(Box::new(PreviewCapture::default()));
-                app.open_share_picker(ferrocord::state::share::ShareTab::Screens);
+                app.open_share_picker(match n {
+                    1 => ShareTab::Screens,
+                    2 | 3 => ShareTab::Cameras,
+                    _ => ShareTab::Windows,
+                });
             }
             if args.scene == Some(Scene::Recherche) {
                 app.open(Some(ALPHA), GENERAL);
@@ -4470,7 +5046,23 @@ fn main() -> eframe::Result {
                     app.open(Some(ALPHA), GENERAL);
                     app.toggle_inbox();
                 }
-                Some(Scene::MonCompte | Scene::MonCompteSobre | Scene::MonCompteClair) => {
+                Some(Scene::BoiteCartes) => {
+                    app.open(Some(ALPHA), GENERAL);
+                    app.toggle_inbox();
+                    for c in [DM, GAMMA_SALON, HORS_SUJET] {
+                        app.inbox_fold(c);
+                    }
+                }
+                Some(Scene::BoiteProgrammes) => {
+                    app.open(Some(ALPHA), GENERAL);
+                    app.scheduled_preview(false, false);
+                    app.show_inbox_tab("programmes");
+                }
+                Some(Scene::BoiteMentions) => {
+                    app.open(Some(ALPHA), GENERAL);
+                    app.show_inbox_tab("mentions");
+                }
+                Some(Scene::MonCompte | Scene::MonCompteSobre | Scene::MonCompteClair | Scene::MonCompteJeu) => {
                     app.open(Some(ALPHA), GENERAL);
                     app.open_account_card();
                 }
@@ -4703,4 +5295,16 @@ fn main() -> eframe::Result {
             }))
         }),
     )
+}
+
+/// Écrit chaque son d'interface intégré en WAV dans `dir` (créé au besoin) :
+/// pour les écouter sans lancer Ferrocord. Rien n'est joué.
+fn write_sounds(dir: &std::path::Path) -> std::io::Result<usize> {
+    use ferrocord::audio::sons;
+    std::fs::create_dir_all(dir)?;
+    for kind in ferrocord::state::notify::Kind::ALL {
+        let name = sons::perso::noms(kind)[0];
+        std::fs::write(dir.join(format!("{name}.wav")), sons::synth::wav(&sons::integre(kind)))?;
+    }
+    Ok(ferrocord::state::notify::Kind::ALL.len())
 }

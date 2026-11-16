@@ -46,6 +46,11 @@ pub mod t {
         NO = "Non", "No";
         // Carte de profil (lot profil) : infobulle des badges, boutons de la bannière.
         MEMBER_SINCE = "Membre depuis", "Member Since";
+        CREATED_ON = "Créé le", "Created on";
+        BIO_MORE = "Afficher la bio complète", "View Full Bio";
+        BIO_LESS = "Réduire la bio", "Collapse bio";
+        BADGES_MORE = "Afficher tous les badges", "Show all badges";
+        GAME_COLLECTION = "Collection de jeux", "Game Collection";
         ROLES = "Rôles", "Roles";
         BADGE_ACCOUNT_AGE = "Ancienneté du compte", "Account Age";
         BADGE_SUBSCRIBER_SINCE = "Abonné depuis", "Subscriber since";

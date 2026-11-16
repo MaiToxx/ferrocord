@@ -11,6 +11,8 @@ use std::collections::{HashMap, VecDeque};
 /// Invitations gardées au plus : les plus anciennes partent d'abord (une
 /// invitation partie peut être redemandée si son message revient à l'écran).
 pub const MAX_INVITES: usize = 128;
+/// Invitations demandées en même temps (lot « fiable »).
+pub const MAX_IN_FLIGHT: usize = 4;
 /// Longueur d'un code d'invitation acceptée (les codes de Discord font de 2
 /// à 32 caractères, lettres, chiffres et tirets).
 const CODE_MAX: usize = 32;
@@ -81,6 +83,11 @@ impl Invites {
     /// `true` si le code est nouveau (à demander).
     pub(super) fn want(&mut self, code: &str) -> bool {
         if self.map.contains_key(code) {
+            return false;
+        }
+        // Un écran plein d'invitations ne fait pas partir des dizaines de
+        // requêtes d'un coup : les suivantes partent quand les premières reviennent.
+        if self.map.values().filter(|s| matches!(s, InviteState::Loading)).count() >= MAX_IN_FLIGHT {
             return false;
         }
         self.set(code, InviteState::Loading);
@@ -169,8 +176,21 @@ mod tests {
         let mut c = Invites::default();
         for i in 0..(MAX_INVITES + 5) {
             assert!(c.want(&format!("c{i}")));
+            c.set(&format!("c{i}"), InviteState::Invalid);
         }
         assert!(!c.want(&format!("c{}", MAX_INVITES + 4)), "une requête par code");
         assert!(c.get("c0").is_none() && c.get("c5").is_some());
+    }
+    #[test]
+    fn only_a_few_invites_are_asked_at_once() {
+        let mut c = Invites::default();
+        for i in 0..MAX_IN_FLIGHT {
+            assert!(c.want(&format!("c{i}")));
+        }
+        assert!(!c.want("suivante"), "les premières ne sont pas revenues");
+        assert!(c.get("suivante").is_none(), "elle sera redemandée par sa carte");
+        c.set("c0", InviteState::Invalid);
+        assert!(c.want("suivante"), "une place s'est libérée");
+        assert!(!c.want("encore"));
     }
 }

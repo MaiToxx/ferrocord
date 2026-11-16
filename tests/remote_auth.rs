@@ -59,6 +59,8 @@ struct Seen {
     exchanges: AtomicUsize,
     origin: Mutex<Option<String>>,
     fingerprint: Mutex<String>,
+    /// En-têtes reçus à l'ouverture du WebSocket (noms en minuscules).
+    ws_headers: Mutex<Vec<(String, String)>>,
 }
 
 fn b64url(data: &[u8]) -> String {
@@ -88,6 +90,7 @@ async fn fake(script: Script, seen: Arc<Seen>) -> RemoteAuthEndpoints {
         let cb = move |req: &Request, resp: Response| {
             let origin = req.headers().get("Origin").and_then(|v| v.to_str().ok()).map(str::to_string);
             *s2.origin.lock().unwrap() = origin.clone();
+            *s2.ws_headers.lock().unwrap() = req.headers().iter().map(|(n, v)| (n.as_str().to_ascii_lowercase(), v.to_str().unwrap_or_default().to_string())).collect();
             if req.uri().query() != Some("v=2") || (script == Script::OriginChecked && origin.as_deref() != Some("https://discord.com")) {
                 let mut r = tokio_tungstenite::tungstenite::handshake::server::ErrorResponse::new(None);
                 *r.status_mut() = StatusCode::FORBIDDEN;
@@ -212,8 +215,14 @@ struct Run {
 
 /// Une tentative complète face au faux serveur : tous ses événements et son journal.
 async fn run(script: Script) -> Run {
+    run_as(script, Default::default()).await
+}
+
+/// Comme [`run`], avec l'identité annoncée donnée.
+async fn run_as(script: Script, identity: ferrocord::net::identity::Config) -> Run {
     let seen = Arc::new(Seen::default());
     let mut ep = fake(script, seen.clone()).await;
+    ep.identity = identity;
     let log = Arc::new(Mutex::new(Vec::new()));
     let l = log.clone();
     ep.log = Arc::new(move |line: &str| l.lock().unwrap().push(line.to_string()));
@@ -329,4 +338,26 @@ async fn dropping_the_attempt_closes_the_connection() {
     let before = seen.heartbeats.load(Ordering::SeqCst);
     tokio::time::sleep(Duration::from_millis(1500)).await;
     assert_eq!(seen.heartbeats.load(Ordering::SeqCst), before);
+}
+
+/// Mode bureau (lot « fiable ») : le WebSocket de la connexion par QR code
+/// annonce le même `User-Agent` et la même langue que la passerelle
+/// principale ; en identité Ferrocord, aucune langue n'est annoncée.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_qr_socket_announces_what_the_main_gateway_announces() {
+    use ferrocord::net::identity::{Config, Machine, Versions};
+    let machine = Machine { os_version: "10.0.26100".into(), os_sdk_version: "26100".into(), os_arch: "x64", app_arch: "x64", system_locale: "fr-FR".into(), timezone: Some("Europe/Paris".into()) };
+    let desktop = Config::desktop(Versions::embedded(), machine);
+    let expected = desktop.ws_headers();
+    let r = run_as(Script::Cancel, desktop).await;
+    let seen = r.seen.ws_headers.lock().unwrap().clone();
+    let get = |name: &str| seen.iter().find(|(n, _)| n == name).map(|(_, v)| v.clone());
+    for (name, value) in expected {
+        assert_eq!(get(&name.to_ascii_lowercase()), Some(value), "{name}");
+    }
+    assert!(get("user-agent").is_some_and(|ua| ua.contains("Electron/") && !ua.contains("reqwest") && !ua.contains("Ferrocord")));
+
+    let plain = run(Script::Cancel).await;
+    let seen = plain.seen.ws_headers.lock().unwrap().clone();
+    assert!(!seen.iter().any(|(n, _)| n == "accept-language"), "identité Ferrocord : comme avant");
 }

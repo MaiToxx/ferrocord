@@ -45,7 +45,13 @@ pub mod t {
 
         // Sons par événement (F11).
         SOUNDS_SECTION = "Sons", "Sounds";
-        SOUNDS_TIP = "Un interrupteur par son. Ce sont les sons de Windows\u{a0}; le volume et l'interrupteur général sont réglés plus haut.", "One switch per sound. These are Windows sounds; the volume and the main switch are set above.";
+        SOUNDS_TIP = "Un interrupteur par son\u{a0}; le volume et l'interrupteur général sont réglés plus haut. Ce sont les sons de Ferrocord\u{a0}: pour en remplacer un, déposez dans le dossier des sons un fichier .wav, .mp3 ou .ogg qui porte son nom (la liste est dans le dossier).", "One switch per sound; the volume and the main switch are set above. These are Ferrocord's own sounds: to replace one, drop a .wav, .mp3 or .ogg file with its name in the sounds folder (the list is in the folder).";
+        SOUNDS_FOLDER = "Ouvrir le dossier des sons", "Open sounds folder";
+        SOUND_CUSTOM = "personnalisé", "custom";
+        SOUND_BAD_FILE = "fichier illisible", "unreadable file";
+        SOUND_BAD_FILE_TIP = "Le fichier déposé pour ce son est illisible, trop gros ou dans un format non pris en charge\u{a0}: le son de Ferrocord est joué.", "The file dropped for this sound is unreadable, too big or in an unsupported format: Ferrocord's sound is played.";
+        SND_CONNECT = "Connexion au salon vocal", "Voice Connected";
+        SND_DISCONNECT = "Déconnexion du salon vocal", "Voice Disconnected";
         SND_MESSAGE = "Message", "Message";
         SND_MENTION = "Mention", "Mention";
         SND_DEAFEN = "Casque coupé", "Deafen";

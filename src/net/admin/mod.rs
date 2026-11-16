@@ -36,10 +36,10 @@ pub(super) fn dispatch(kind: &str, d: &str, out: &Out) {
 /// Seconde moitié, appelée après READY et GUILD_CREATE (le serveur doit
 /// être connu du magasin) : modération, AutoMod, journal d'audit, sécurité
 /// (lots A4 et A5), événements programmés, fonctions du serveur (lot A7).
-pub(super) fn dispatch_after(kind: &str, d: &str, out: &Out) {
+pub(super) fn dispatch_after(kind: &str, d: &str, shared: &super::raw::Shared, out: &Out) {
     moderation::dispatch(kind, d, out);
     events::dispatch(kind, d, out);
-    community::dispatch(kind, d, out);
+    community::dispatch(kind, d, shared, out);
 }
 
 /// Fonctions d'un serveur reçu (READY, GUILD_CREATE) qui agrandissent les

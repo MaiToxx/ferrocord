@@ -40,6 +40,8 @@ pub mod t {
         SYS_INVITE_REMINDER = "Invitez vos amis pour faire vivre ce serveur.", "Invite your friends to bring this server to life.";
         SYS_AUTOMOD = "AutoMod a bloqué un message.", "AutoMod blocked a message.";
         FEW_SECONDS = "quelques secondes", "a few seconds";
+        ONE_MINUTE = "une minute", "a minute";
+        ONE_HOUR = "une heure", "an hour";
         PUBLISH = "Publier", "Publish";
         PUBLISHED = "Publié", "Published";
         PUBLISHED_OK = "Message publié dans les salons qui suivent celui-ci.", "Message published to the following channels.";
@@ -82,9 +84,9 @@ pub mod f {
         recipient_add(name, target) = "{name} a ajouté {target} au groupe.", "{name} added {target} to the group.";
         recipient_remove(name, target) = "{name} a retiré {target} du groupe.", "{name} removed {target} from the group.";
         recipient_left(name) = "{name} a quitté le groupe.", "{name} left the group.";
-        call_started(name) = "{name} a lancé un appel.", "{name} started a call.";
-        call_lasted(name, duration) = "{name} a lancé un appel qui a duré {duration}.", "{name} started a call that lasted {duration}.";
-        call_missed(name) = "Vous avez manqué un appel de {name}.", "You missed a call from {name}.";
+        call_started(name) = "{name} a commencé un appel.", "{name} started a call.";
+        call_lasted(name, duration) = "{name} a commencé un appel qui a duré {duration}.", "{name} started a call that lasted {duration}.";
+        call_missed(name) = "Appel manqué de {name}.", "Missed call from {name}.";
         channel_name(name, value) = "{name} a renommé le salon\u{a0}: {value}", "{name} changed the channel name: {value}";
         channel_icon(name) = "{name} a changé l'icône du groupe.", "{name} changed the group icon.";
         pinned(name) = "{name} a épinglé un message dans ce salon.", "{name} pinned a message to this channel.";

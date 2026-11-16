@@ -167,9 +167,19 @@ impl App {
         self.desk.backend.save_prefs(p);
     }
 
-    /// « Essayer » d'un son de la section « Sons ».
+    /// « Écouter » d'un son de la section « Sons ».
     pub(super) fn desk_test_sound(&mut self, kind: Kind, volume: u8) {
         self.desk.backend.sound(kind, volume);
+    }
+
+    /// Fait taire un son encore en cours (sonnerie d'un appel décroché ou fini).
+    pub(super) fn desk_silence(&mut self, kind: Kind) {
+        self.desk.backend.silence(kind);
+    }
+
+    /// Le bureau branché lit le dossier des sons personnels (ni aperçu, ni test).
+    pub(super) fn desk_custom_sounds(&self) -> bool {
+        self.desk.backend.custom_sounds()
     }
 
     /// Appel entrant (lot V6) : notification (`alert`, à la première

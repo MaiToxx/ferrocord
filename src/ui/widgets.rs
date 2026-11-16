@@ -335,6 +335,22 @@ fn modal_impl<R, F: FnOnce(&mut Ui)>(ctx: &egui::Context, t: &Tokens, id: Id, wi
     ModalOut { closed: cross || shown.should_close(), veil_clicked: shown.backdrop_response.clicked(), inner: shown.inner }
 }
 
+/// Fenêtre nue, de taille fixe : même fond, même bord, même voile que [`modal`],
+/// sans titre ni croix (sélecteur de partage, à la façon du client). Elle se
+/// ferme par Échap ou par un clic hors d'elle ; `name` est son nom pour les
+/// lecteurs d'écran. `body` reçoit le rectangle intérieur (marges retirées).
+pub(crate) fn pane<R>(ctx: &egui::Context, t: &Tokens, id: Id, size: Vec2, name: &str, body: impl FnOnce(&mut Ui, Rect) -> R) -> ModalOut<R> {
+    let frame = egui::Frame::new().fill(t.colors.bg2).stroke(t.border()).corner_radius(t.r_card()).shadow(t.shadow(Elevation::Window));
+    let shown = egui::Modal::new(id).frame(frame).show(ctx, |ui| {
+        let (rect, resp) = ui.allocate_exact_size(size, Sense::hover());
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Dialog, true, name));
+        let inner = rect.shrink(t.spacing.card_pad);
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(Layout::top_down(Align::Min)));
+        body(&mut child, inner)
+    });
+    ModalOut { closed: shown.should_close(), veil_clicked: shown.backdrop_response.clicked(), inner: shown.inner }
+}
+
 fn px(v: f32) -> i8 {
     v.round().clamp(0.0, f32::from(i8::MAX)) as i8
 }

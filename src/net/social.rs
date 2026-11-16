@@ -31,19 +31,17 @@ const PINS_PAGE: usize = 50;
 /// Champ lu à part : `None` s'il est absent ou d'une forme inattendue (le
 /// message reste lisible).
 fn lenient<'de, D: Deserializer<'de>, T: DeserializeOwned>(d: D) -> Result<Option<T>, D::Error> {
-    let raw = Box::<RawValue>::deserialize(d)?;
-    Ok(serde_json::from_str(raw.get()).ok())
+    super::raw::with_raw(d, |raw| serde_json::from_str(raw).ok())
 }
 
 /// Identifiant obligatoire, en chaîne : sinon l'événement est illisible.
 fn req_id<'de, D: Deserializer<'de>>(d: D) -> Result<u64, D::Error> {
-    String::deserialize(d)?.parse().map_err(serde::de::Error::custom)
+    super::raw::de_id(d)
 }
 
 /// Identifiant en chaîne (forme documentée) ; `None` sinon.
 fn loose_id<'de, D: Deserializer<'de>>(d: D) -> Result<Option<u64>, D::Error> {
-    let raw = Box::<RawValue>::deserialize(d)?;
-    Ok(serde_json::from_str::<String>(raw.get()).ok().and_then(|s| s.parse().ok()))
+    super::raw::with_raw(d, |raw| serde_json::from_str::<String>(raw).ok().and_then(|s| s.parse().ok()))
 }
 
 /// Champ présent, même `null` : `Some(brut)`. Absent : `None` (par défaut).
@@ -137,20 +135,20 @@ struct RawNick {
     nick: Option<String>,
 }
 
-#[derive(Deserialize)]
-struct RawFile {
-    #[serde(default)]
-    filename: String,
-}
-
+/// Message d'un instantané (documentation « Message Snapshot » : `content`,
+/// `attachments`, `embeds`, `sticker_items`, `mentions`…). Pièces jointes,
+/// embeds et autocollants sont lus comme ceux d'un message, chacun à part :
+/// un élément illisible est ignoré, le reste de l'instantané s'affiche.
 #[derive(Deserialize)]
 struct RawSnapMessage {
     #[serde(default)]
     content: String,
-    #[serde(default, deserialize_with = "lenient")]
-    attachments: Option<Vec<RawFile>>,
-    #[serde(default, deserialize_with = "lenient")]
-    embeds: Option<Vec<serde::de::IgnoredAny>>,
+    #[serde(default, deserialize_with = "super::media::de_items")]
+    attachments: Vec<super::media::RawAttachment>,
+    #[serde(default, deserialize_with = "super::media::de_items")]
+    embeds: Vec<super::media::RawEmbed>,
+    #[serde(default, deserialize_with = "super::raw::de_lenient")]
+    sticker_items: Option<Vec<super::raw::Item<super::stickers::RawSticker>>>,
     #[serde(default, deserialize_with = "lenient")]
     mentions: Option<Vec<RawUser>>,
 }
@@ -213,8 +211,9 @@ pub(super) fn meta(raw: RawMeta) -> MessageMeta {
                 let s = s.message;
                 m.forward = Some(Box::new(Forward {
                     content: s.content,
-                    attachments: s.attachments.unwrap_or_default().into_iter().map(|a| a.filename).collect(),
-                    embeds: s.embeds.map_or(0, |e| e.len()),
+                    attachments: super::media::attachments(s.attachments),
+                    embeds: super::media::embeds(s.embeds),
+                    stickers: super::stickers::items(s.sticker_items),
                     channel_id: reference.channel_id,
                     guild_id: reference.guild_id,
                     message_id: reference.message_id,
@@ -331,7 +330,8 @@ pub(super) fn take_emojis(g: &mut super::raw::RawGuild, into: &mut Vec<(u64, Vec
     if !g.unavailable
         && let Some(list) = g.emoji_list()
     {
-        let list = list.into_iter().map(|e| GuildEmoji { id: e.id, name: e.name, animated: e.animated, available: e.available }).collect();
+        let mut list: Vec<GuildEmoji> = list.into_iter().map(|e| GuildEmoji { id: e.id, name: e.name, animated: e.animated, available: e.available }).collect();
+        list.shrink_to_fit();
         into.push((g.id, list));
     }
 }
@@ -664,12 +664,35 @@ mod tests {
         let m = meta_of(
             r#"{ "id": "1", "channel_id": "2", "author": { "id": "3" }, "flags": 16384,
                  "message_reference": { "type": 1, "message_id": "9", "channel_id": "8", "guild_id": "7" },
-                 "message_snapshots": [ { "message": { "content": "transféré", "attachments": [{ "filename": "a.png" }], "embeds": [{}], "type": 0, "timestamp": "2025-01-01T00:00:00+00:00" } } ] }"#,
+                 "message_snapshots": [ { "message": { "content": "transféré", "type": 0, "timestamp": "2025-01-01T00:00:00+00:00",
+                   "attachments": [
+                     { "id": "40", "filename": "paysage-fictif.png", "content_type": "image/png", "width": 1600, "height": 900, "size": 1234,
+                       "url": "https://cdn.discordapp.com/attachments/8/40/paysage-fictif.png?ex=0a&is=0b&hm=0c",
+                       "proxy_url": "https://media.discordapp.net/attachments/8/40/paysage-fictif.png?ex=0a&is=0b&hm=0c" },
+                     { "filename": "sans-adresse.png" },
+                     { "id": "41", "filename": "notes.txt", "size": 12, "url": "https://cdn.discordapp.com/attachments/8/41/notes.txt" } ],
+                   "embeds": [ {}, { "type": "rich", "title": "Carte fictive", "description": "Texte de la carte" }, 7 ],
+                   "sticker_items": [ { "id": "50", "name": "Salut", "format_type": 1 }, { "name": "sans identifiant" } ] } } ] }"#,
         );
         let f = m.forward.unwrap_or_else(|| panic!("transfert attendu"));
-        assert_eq!((f.content.as_str(), f.attachments.as_slice(), f.embeds), ("transféré", ["a.png".to_string()].as_slice(), 1));
+        assert_eq!(f.content, "transféré");
+        // Pièces jointes lues comme celles d'un message ; l'illisible est ignorée.
+        use crate::state::model::MediaKind;
+        let files: Vec<(&str, MediaKind, u32, u32)> = f.attachments.iter().map(|a| (a.name.as_str(), a.kind, a.width, a.height)).collect();
+        assert_eq!(files, [("paysage-fictif.png", MediaKind::Image, 1600, 900), ("notes.txt", MediaKind::File, 0, 0)]);
+        assert!(f.attachments[0].fetch_url().starts_with("https://media.discordapp.net/"), "image demandée au proxy média");
+        // Embed vide ou illisible : ignoré.
+        assert_eq!(f.embeds.iter().map(|e| e.title.as_deref()).collect::<Vec<_>>(), [Some("Carte fictive")]);
+        assert_eq!(f.stickers.iter().map(|s| (s.id, s.name.as_str())).collect::<Vec<_>>(), [(50, "Salut")]);
         assert_eq!((f.channel_id, f.guild_id, f.message_id), (Some(8), Some(7), Some(9)));
         assert!(m.reply.is_none());
+        // Instantané réduit à son texte, ou aux listes de forme inattendue : toujours lisible.
+        let m = meta_of(
+            r#"{ "id": "1", "channel_id": "2", "author": { "id": "3" }, "message_reference": { "type": 1 },
+                 "message_snapshots": [ { "message": { "content": "seul", "attachments": "x", "embeds": null, "sticker_items": 3 } } ] }"#,
+        );
+        let f = m.forward.unwrap_or_else(|| panic!("transfert attendu"));
+        assert!(f.content == "seul" && f.attachments.is_empty() && f.embeds.is_empty() && f.stickers.is_empty());
     }
 
     #[test]

@@ -347,6 +347,22 @@ impl GwConn {
         .await
     }
 
+    /// Attend la fermeture WebSocket du client et rend son code (`None` :
+    /// connexion coupée sans trame de fermeture, ou trame sans code).
+    pub async fn closed_with(&mut self) -> Option<u16> {
+        let ws = &mut self.ws;
+        within("fermeture par le client", async {
+            loop {
+                match ws.next().await {
+                    Some(Ok(WsMsg::Close(f))) => return f.map(|f| u16::from(f.code)),
+                    Some(Err(_)) | None => return None,
+                    Some(Ok(_)) => {}
+                }
+            }
+        })
+        .await
+    }
+
     /// Attend que le client abandonne la connexion (fermeture ou coupure).
     pub async fn expect_closed(&mut self) {
         let ws = &mut self.ws;
@@ -689,6 +705,9 @@ pub struct Client {
     notify: Arc<Notify>,
     pub store: Store,
     pub effects: Vec<Effect>,
+    /// `Some` : texte de débogage de chaque événement reçu (lot « fiable » :
+    /// ce qu'un journal pourrait contenir).
+    pub record: Option<Vec<String>>,
 }
 
 impl Client {
@@ -696,7 +715,7 @@ impl Client {
         let notify = Arc::new(Notify::new());
         let n = notify.clone();
         let conn = net::connect(&tokio::runtime::Handle::current(), token.into(), ep, Arc::new(move || n.notify_one()));
-        Self { conn, notify, store: Store::new(), effects: Vec::new() }
+        Self { conn, notify, store: Store::new(), effects: Vec::new(), record: None }
     }
 
     async fn next_event(&mut self) -> Event {
@@ -727,6 +746,9 @@ impl Client {
     }
 
     fn apply(&mut self, e: Event) {
+        if let Some(r) = &mut self.record {
+            r.push(format!("{e:?}"));
+        }
         if let Some(eff) = self.store.apply(e) {
             self.effects.push(eff);
         }
@@ -750,6 +772,11 @@ impl Client {
         let nonce = NEXT.fetch_add(1, Ordering::SeqCst);
         self.send(Cmd::Send { channel_id, content: text.into(), nonce });
         nonce
+    }
+
+    /// Compteurs de la connexion (lot « fiable »).
+    pub fn health(&self) -> net::health::Snapshot {
+        self.conn.health.snapshot()
     }
 
     /// Événements déjà arrivés, appliqués sans attendre.

@@ -108,7 +108,7 @@ couleur `text_strong`. Code : Consolas, redescendue d'une fraction de sa taille
 
 **Polices de nom.** Un nom au style de nom de Discord
 (`display_name_styles.font_id`) est dessiné dans la police que Discord
-utilise, quand elle est libre : douze polices sous SIL Open Font License 1.1
+utilise, quand elle est libre : quatorze polices sous SIL Open Font License 1.1
 sont embarquées (`assets/fonts/noms/<famille>/`, fichier de licence à côté de
 chaque police, texte complet dans Paramètres › À propos). Table unique
 `fonts::NAMES` (`ui/fonts.rs`), lue par le rendu (`fonts::styled`) et par le
@@ -122,12 +122,12 @@ sélecteur « Style du pseudonyme », qui écrit chaque choix dans sa police.
 | 4 | Jellybean | Chicle | `Chicle-Regular.ttf` | Angel Koziupa et Alejandro Paul | SIL Open Font License 1.1 |
 | 5 (retiré) | Compagnon | Compagnon | `Compagnon-Bold.otf` | non nommé dans le fichier de licence ; d'après le fichier de police : Chloé Lozano, Velvetyne Type Foundry | SIL Open Font License 1.1 |
 | 6 | Modern | MuseoModerno | `MuseoModerno[wght].ttf`, graisse 700 | The MuseoModerno Project Authors | SIL Open Font License 1.1 |
-| 7 | Medieval | Néo-Castel | aucun : Georgia grasse de Windows | — | — |
+| 7 | Medieval | Néo-Castel | aucun (publiée sur Gumroad seulement, sans licence libre) : Palatino Linotype de Windows, ou le fichier de l'utilisateur | — | — |
 | 8 | 8Bit | Pixelify Sans | `PixelifySans[wght].ttf`, graisse 700 | The Pixelify Sans Project Authors | SIL Open Font License 1.1 |
-| 9 (retiré) | Ribes | Ribes | aucun : Segoe Print grasse de Windows | — | — |
-| 10 | Vampyre | Sinistre | aucun : Georgia grasse de Windows | — | — |
+| 9 (retiré) | Ribes | Ribes | `Ribes-Black.otf` | Collletttivo (Luigi Gorlero, d'après le fichier de police) | SIL Open Font License 1.1 |
+| 10 | Vampyre | Sinistre | `Sinistre-Bold.otf` | Collletttivo (Jules Durand, d'après le fichier de police) | SIL Open Font License 1.1 |
 | 11 | gg Sans | gg sans (propriétaire) | aucun : demi-grasse de l'interface | — | — |
-| 12 | Tempo | Zilla Slab | `ZillaSlab-Bold.ttf` | The Mozilla Foundation | SIL Open Font License 1.1 |
+| 12 | Tempo | Zilla Slab | `ZillaSlab-SemiBold.ttf` (demi-grasse, 600) | The Mozilla Foundation | SIL Open Font License 1.1 |
 | 13 | Monkey Bars | Playpen Sans | `PlaypenSans[wght].ttf`, graisse 700 | The Playpen Sans Project Authors | SIL Open Font License 1.1 |
 | 14 | Mainframe | Orbitron | `Orbitron[wght].ttf`, graisse 700 | The Orbitron Project Authors | SIL Open Font License 1.1 |
 | 15 | Headbang | New Rocker | `NewRocker-Regular.ttf` | Pablo Impallari, Brenda Gallo et Rodrigo Fuenzalida | SIL Open Font License 1.1 |
@@ -138,7 +138,20 @@ Association identifiant → police : relue le 2026-11-15 sur la source
 y correspond pour les seize identifiants (1 à 12 dans l'ordre de l'énumération,
 13 Playpen Sans, 14 Orbitron, 15 New Rocker, 16 Kalam).
 
-Chargement à la demande : les fichiers sont dans l'exécutable (3 351 732
+Graisses des fichiers statiques : la source ne les donne pas. Zilla Slab est
+en demi-grasse (600) ; Ribes (Light, Regular, Black) en « Black » et Sinistre
+(Regular, Bold, Dark) en « Bold », par cohérence avec les autres polices de
+nom (graisse 700), sans confirmation par une source.
+
+Néo-Castel (7) n'est publiée que sur la page Gumroad de son auteur
+(maxlilllo.gumroad.com/l/neo-castel), sans licence libre : elle n'est pas
+embarquée. Qui l'a obtenue de son auteur peut poser le fichier dans
+`%APPDATA%\ferrocord\polices\7.otf` (ou `7.ttf`) : lu au démarrage par le
+fil des polices (`fonts::read_names`), il remplace Palatino Linotype pour ce
+style. Mêmes contrôles que pour toute police lue sur le disque (8 Mo au plus,
+en-tête TrueType ou OpenType).
+
+Chargement à la demande : les fichiers sont dans l'exécutable (3 509 384
 octets en tout, dont 1 567 080 pour Playpen Sans, gardée entière faute d'outil
 de sous-ensemble), mais egui ne connaît une police de nom qu'à partir de la
 première image qui dessine un nom la portant (ou de l'ouverture du

@@ -1,6 +1,7 @@
 //! API REST : appels HTTP passés par le limiteur de débit par compartiment
 //! (`ratelimit`), tâche de commandes.
 
+use super::health::{Health, Refusal, Refusals};
 use super::ratelimit::{self, Outcome, RateLimits, Refused, Route};
 use super::raw::RawMessage;
 use super::{wall_clock_ms, Out};
@@ -29,6 +30,19 @@ mod relations;
 mod upload;
 // Interactions avec options pièce jointe (lot fin-texte-restes).
 pub(super) use upload::multipart_in_memory;
+
+/// Longueur maximale d'un message d'erreur du serveur gardé pour l'affichage.
+const SERVER_MESSAGE_MAX: usize = 300;
+
+/// Message d'erreur du serveur, tel qu'il peut être affiché ou journalisé :
+/// borné, et sans le jeton (un serveur ou un intermédiaire qui renverrait
+/// l'en-tête `Authorization` dans sa réponse ne le fait pas entrer dans un
+/// journal).
+fn server_message(message: &str, token: &str) -> String {
+    let bare = token.strip_prefix("Bot ").unwrap_or(token);
+    let clean = if bare.is_empty() { message.to_string() } else { message.replace(bare, "<jeton masqué>") };
+    clean.chars().take(SERVER_MESSAGE_MAX).collect()
+}
 
 pub(super) enum ApiError {
     Unauthorized,
@@ -66,6 +80,32 @@ impl ApiError {
 
 /// Nombre d'essais d'une requête refusée pour limite de débit (429).
 const ATTEMPTS: u32 = 3;
+/// Nouveaux essais d'une LECTURE après une coupure ou un 500, 502, 503, 504.
+/// Les écritures ne sont jamais retentées d'elles-mêmes : un message garde
+/// son `nonce` et c'est l'utilisateur qui réessaie (pas de doublon).
+const TRANSIENT_RETRIES: u32 = 2;
+const RETRY_BASE: Duration = Duration::from_millis(500);
+const RETRY_CAP: Duration = Duration::from_secs(4);
+/// Taille maximale lue d'une réponse de l'API (la plus grosse attendue, une
+/// page de 100 messages avec leurs intégrations, pèse quelques centaines de Kio).
+const MAX_BODY: usize = 16 << 20;
+/// Ouverture d'une connexion HTTP : au-delà, échec (et non 30 s d'attente).
+pub(super) const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Redirections de l'API : suivies seulement vers le même hôte (même schéma,
+/// même port), cinq au plus. Vers un autre hôte, la réponse 3xx est rendue
+/// telle quelle : `X-Super-Properties`, la langue et le fuseau ne partent
+/// jamais chez un tiers (reqwest ne retire de lui-même que `Authorization`).
+pub(super) fn same_host_redirects() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        let same = attempt.previous().last().is_some_and(|from| same_origin(from, attempt.url()));
+        if same && attempt.previous().len() <= 5 { attempt.follow() } else { attempt.stop() }
+    })
+}
+
+fn same_origin(a: &reqwest::Url, b: &reqwest::Url) -> bool {
+    a.scheme() == b.scheme() && a.host_str() == b.host_str() && a.port_or_known_default() == b.port_or_known_default()
+}
 /// Attente maximale d'une page d'historique avant de partir : au-delà,
 /// l'échec est annoncé tout de suite (l'utilisateur peut réessayer).
 const HISTORY_MAX_WAIT: Duration = Duration::from_secs(10);
@@ -102,9 +142,18 @@ pub(super) struct Ctx {
     limits: Arc<RateLimits>,
     /// En-têtes du client annoncé (`net::identity`).
     identity: Arc<super::identity::Identity>,
+    /// Compteurs de la connexion (4xx, 429, nouveaux essais…).
+    health: Arc<Health>,
+    /// Lectures refusées récemment (403, 404) : pas redemandées en boucle.
+    refusals: std::sync::Mutex<Refusals>,
 }
 
 impl Ctx {
+    fn refusals(&self) -> std::sync::MutexGuard<'_, Refusals> {
+        // Verrou empoisonné : la table reste cohérente (chaque opération est d'un bloc).
+        self.refusals.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     /// Compte bot : les points d'API réservés aux comptes utilisateur ne sont pas appelés.
     pub(super) fn is_bot(&self) -> bool {
         self.token.starts_with("Bot ")
@@ -159,7 +208,19 @@ pub(super) async fn api_req(
     cancel: impl Future<Output = ()>,
 ) -> Result<String, ApiError> {
     tokio::pin!(cancel);
-    for _ in 0..ATTEMPTS {
+    // Lecture sans effet de bord : seule sorte de requête retentée d'elle-même
+    // après une coupure ou un 5xx, et seule retenue par la mémoire négative.
+    let read = matches!(method, reqwest::Method::GET | reqwest::Method::HEAD);
+    if read && let Some(refusal) = ctx.refusals().lookup(url, Instant::now()) {
+        // Déjà refusée il y a peu : même réponse, sans requête.
+        ctx.health.spared();
+        return Err(match refusal {
+            Refusal::Forbidden => ApiError::Forbidden,
+            Refusal::NotFound(p) => ApiError::NotFound(p),
+        });
+    }
+    let (mut limited, mut transient) = (0u32, 0u32);
+    loop {
         let slot = match ctx.limits.acquire(route, max_wait, cancel.as_mut()).await {
             Ok(s) => s,
             Err(Refused::Cancelled) => return Err(ApiError::Cancelled),
@@ -167,18 +228,55 @@ pub(super) async fn api_req(
             Err(Refused::TooLong | Refused::Full) => return Err(ApiError::Other(Problem::TooManyRequests)),
         };
         let req = build(ctx.identity.rest(ctx.http.request(method.clone(), url).header("Authorization", &ctx.token), &method).timeout(REQUEST_TIMEOUT));
+        ctx.health.request();
         // En cas d'erreur réseau, `slot` est rendu sans rien apprendre (et
         // compte comme consommé).
-        let resp = req.send().await.map_err(network_error)?;
-        let status = resp.status().as_u16();
-        let headers = ratelimit::Headers::read(|n| resp.headers().get(n).and_then(|v| v.to_str().ok()));
-        let server_ms = resp.headers().get(reqwest::header::DATE).and_then(|v| v.to_str().ok()).and_then(http_date_ms);
-        let retry_header = resp
-            .headers()
-            .get(reqwest::header::RETRY_AFTER)
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| http_retry_after(v, server_ms.unwrap_or_else(|| chrono::Utc::now().timestamp_millis())));
-        let text = resp.text().await.map_err(network_error)?;
+        let answer = async {
+            let mut resp = req.send().await?;
+            let status = resp.status().as_u16();
+            let headers = ratelimit::Headers::read(|n| resp.headers().get(n).and_then(|v| v.to_str().ok()));
+            let server_ms = resp.headers().get(reqwest::header::DATE).and_then(|v| v.to_str().ok()).and_then(http_date_ms);
+            let retry_header = resp
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| http_retry_after(v, server_ms.unwrap_or_else(|| chrono::Utc::now().timestamp_millis())));
+            // Corps borné : une réponse sans fin ne remplit pas la mémoire.
+            let mut body = Vec::new();
+            let mut whole = true;
+            while let Some(chunk) = resp.chunk().await? {
+                if body.len() + chunk.len() > MAX_BODY {
+                    whole = false;
+                    break;
+                }
+                body.extend_from_slice(&chunk);
+            }
+            Ok::<_, reqwest::Error>((status, headers, server_ms, retry_header, whole.then_some(body)))
+        }
+        .await;
+        let (status, headers, server_ms, retry_header, body) = match answer {
+            Ok(a) => a,
+            Err(e) => {
+                drop(slot);
+                // Lecture coupée (pas un délai dépassé : attendre 30 s de plus
+                // n'aiderait personne) : nouvel essai, après un recul.
+                if read && !e.is_timeout() && transient < TRANSIENT_RETRIES {
+                    transient += 1;
+                    ctx.health.retry();
+                    if !pause(retry_wait(transient), cancel.as_mut()).await {
+                        return Err(ApiError::Cancelled);
+                    }
+                    continue;
+                }
+                return Err(network_error(e));
+            }
+        };
+        ctx.health.status(status);
+        let Some(body) = body else {
+            drop(slot);
+            return Err(ApiError::Other(Problem::Http(status)));
+        };
+        let text = String::from_utf8_lossy(&body).into_owned();
         let mut outcome = Outcome { status, headers, ..Outcome::default() };
         if status == 429 {
             (outcome.retry_after, outcome.global_body, outcome.api_body) = parse_429(&text);
@@ -192,14 +290,39 @@ pub(super) async fn api_req(
             ctx.out.send(Event::ServerTime(ms));
         }
         match status {
-            200..=299 => return Ok(text),
+            200..=299 => {
+                if read {
+                    ctx.refusals().forget(url);
+                } else {
+                    // Une écriture a pu changer ce qui était refusé (serveur
+                    // rejoint, rôle donné, note créée…).
+                    ctx.refusals().clear();
+                }
+                return Ok(text);
+            }
             // Code 60003 : A2F exigée, soit par le serveur pour ses modérateurs
             // (403), soit comme vérification de cette action (401, le jeton reste
             // bon ; docs.discord.food, « Authentication › Multi-Factor
             // Authentication »). Un seul chemin : à faire dans l'application officielle.
             401 | 403 if mfa_required(&text) => return Err(ApiError::Other(Problem::MfaRequired)),
+            // 401, 403 : jamais de nouvel essai automatique.
             401 => return Err(ApiError::Unauthorized),
-            403 => return Err(ApiError::Forbidden),
+            403 => {
+                if read {
+                    ctx.refusals().note(url, Refusal::Forbidden, Instant::now());
+                }
+                return Err(ApiError::Forbidden);
+            }
+            // Panne passagère de Discord (ou de son pare-feu) sur une lecture :
+            // deux nouveaux essais au plus, avec recul. Une écriture n'est
+            // jamais renvoyée d'elle-même (elle a pu être exécutée).
+            500 | 502 | 503 | 504 if read && transient < TRANSIENT_RETRIES => {
+                transient += 1;
+                ctx.health.retry();
+                if !pause(retry_wait(transient), cancel.as_mut()).await {
+                    return Err(ApiError::Cancelled);
+                }
+            }
             429 => {
                 // Ne devrait jamais arriver en usage normal : le limiteur attend
                 // avant d'envoyer. Journalisé sans jeton ni identifiant.
@@ -220,6 +343,10 @@ pub(super) async fn api_req(
                 }
                 // Le nouvel essai attend dans le limiteur la fin indiquée par
                 // Discord ; après le dernier refus, l'échec est annoncé tout de suite.
+                limited += 1;
+                if limited >= ATTEMPTS {
+                    return Err(ApiError::Other(Problem::TooManyRequests));
+                }
             }
             _ => {
                 let v = serde_json::from_str::<serde_json::Value>(&text).ok();
@@ -228,15 +355,31 @@ pub(super) async fn api_req(
                 }
                 // Refus d'une écriture du profil (limite de changements, image trop lourde, Nitro) : dit en clair.
                 let msg = super::account::refusal(route.template, status, v.as_ref())
-                    .unwrap_or_else(|| v.and_then(|v| v["message"].as_str().map(|m| Problem::Api(m.to_string()))).unwrap_or(Problem::Http(status)));
+                    .unwrap_or_else(|| v.and_then(|v| v["message"].as_str().map(|m| Problem::Api(server_message(m, &ctx.token)))).unwrap_or(Problem::Http(status)));
                 if status == 404 {
+                    if read {
+                        ctx.refusals().note(url, Refusal::NotFound(msg.clone()), Instant::now());
+                    }
                     return Err(ApiError::NotFound(msg));
                 }
                 return Err(ApiError::Other(msg));
             }
         }
     }
-    Err(ApiError::Other(Problem::TooManyRequests))
+}
+
+/// Attente avant le `n`-ième nouvel essai d'une lecture (1, 2…) : 0,5 s puis
+/// 1 s, avec gigue, 4 s au plus.
+fn retry_wait(n: u32) -> Duration {
+    super::backoff::retry_delay(RETRY_BASE, n.saturating_sub(1), RETRY_CAP, super::backoff::unit())
+}
+
+/// Attend `d` ; `false` si `cancel` se termine avant (salon quitté…).
+async fn pause(d: Duration, cancel: impl Future<Output = ()>) -> bool {
+    tokio::select! {
+        _ = tokio::time::sleep(d) => true,
+        _ = cancel => false,
+    }
 }
 
 /// Se termine quand l'utilisateur affiche un autre salon que `channel`.
@@ -405,8 +548,9 @@ pub(super) async fn command_task(
     mut rx: tmpsc::UnboundedReceiver<Cmd>,
     out: Out,
     identity: Arc<super::identity::Identity>,
+    health: Arc<Health>,
 ) {
-    let ctx = Arc::new(Ctx { http, token, api_root, out, limits: Arc::new(RateLimits::default()), identity });
+    let ctx = Arc::new(Ctx { http, token, api_root, out, limits: Arc::new(RateLimits::default()), identity, health, refusals: Default::default() });
     let (focus, _) = watch::channel(None::<u64>);
     let mut queues: HashMap<u64, SendQueue> = HashMap::new();
     let cancels = upload::Cancels::default();

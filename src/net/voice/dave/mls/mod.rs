@@ -286,7 +286,7 @@ impl Group {
         let tree_hash = tree.tree_hash();
         Group {
             group_id: self.group_id.clone(),
-            epoch: self.epoch + 1,
+            epoch: self.epoch.wrapping_add(1),
             interim: interim_of(&confirmed, tag),
             tree,
             exts: self.exts.clone(),
@@ -382,7 +382,7 @@ impl Group {
             leaf.sign(&self.sig, &self.group_id, self.me)?;
             t.nodes[me_x] = Some(Node::Leaf(leaf.clone()));
             keys.push((me_x, Arc::new(leaf_key)));
-            let prov = context_bytes(&self.group_id, self.epoch + 1, &t.tree_hash(), &self.confirmed, &self.exts);
+            let prov = context_bytes(&self.group_id, self.epoch.wrapping_add(1), &t.tree_hash(), &self.confirmed, &self.exts);
             let joiner_nodes: Vec<usize> = joiners.iter().map(|(i, _)| leaf_node(*i)).collect();
             let mut nodes = Vec::new();
             for (i, &(_, c)) in fdp.iter().enumerate() {
@@ -441,7 +441,7 @@ impl Group {
             w.u16(WF_PUBLIC).raw(&content).vec(&signature);
         }));
         let confirmed = crypto::hash(&cth);
-        let ctx = context_bytes(&self.group_id, self.epoch + 1, &t.tree_hash(), &confirmed, &self.exts);
+        let ctx = context_bytes(&self.group_id, self.epoch.wrapping_add(1), &t.tree_hash(), &confirmed, &self.exts);
         let s = schedule(&self.init_secret, &commit_secret, &ctx);
         let tag = crypto::mac(&s.confirm, &confirmed);
         let auth = build(|w| {
@@ -573,7 +573,7 @@ impl Group {
                     return Err(Error("hachage parent du chemin invalide"));
                 }
                 t.nodes[sender_x] = Some(Node::Leaf(leaf));
-                let prov = context_bytes(&self.group_id, self.epoch + 1, &t.tree_hash(), &self.confirmed, &self.exts);
+                let prov = context_bytes(&self.group_id, self.epoch.wrapping_add(1), &t.tree_hash(), &self.confirmed, &self.exts);
                 let joiner_nodes: Vec<usize> = joiners.iter().map(|(i, _)| leaf_node(*i)).collect();
                 let i = fdp.iter().position(|&(_, cp)| in_subtree(me_x, cp)).ok_or(Error("hors du chemin"))?;
                 let res: Vec<usize> = old_tree.resolution(fdp[i].1).into_iter().filter(|y| !joiner_nodes.contains(y)).collect();
@@ -609,7 +609,7 @@ impl Group {
             w.u16(WF_PUBLIC).raw(c.content).vec(&c.signature);
         }));
         let confirmed = crypto::hash(&cth);
-        let ctx = context_bytes(&self.group_id, self.epoch + 1, &t.tree_hash(), &confirmed, &self.exts);
+        let ctx = context_bytes(&self.group_id, self.epoch.wrapping_add(1), &t.tree_hash(), &confirmed, &self.exts);
         let s = schedule(&self.init_secret, &commit_secret, &ctx);
         if !crypto::ct_eq(&crypto::mac(&s.confirm, &confirmed), &c.tag) {
             return Err(Error("étiquette de confirmation invalide"));

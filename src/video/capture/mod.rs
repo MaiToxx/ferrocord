@@ -272,6 +272,16 @@ pub fn windows() -> Vec<Source> {
     Vec::new()
 }
 
+/// Les vignettes peuvent être reprises sans rien montrer à l'écran : Windows
+/// sait capturer sans son cadre jaune (Windows 11). Faux : chaque capture
+/// ferait clignoter le cadre, les vignettes ne sont prises qu'une fois.
+pub fn quiet_snapshots() -> bool {
+    #[cfg(windows)]
+    return screen::borderless();
+    #[cfg(not(windows))]
+    false
+}
+
 /// Une image de la source, en BGRA, large d'au plus `max_w` pixels.
 pub fn thumbnail(s: &Source, max_w: u32) -> Option<Frame> {
     snapshot(s, max_w).ok()

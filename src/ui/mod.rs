@@ -13,6 +13,7 @@
 mod accounts;
 // Activité de jeu et présence enrichie (lot C3).
 mod activity;
+mod game_card;
 // Rich Presence locale : réglage et applications branchées (lot R).
 mod rpc;
 mod appearance;
@@ -38,8 +39,10 @@ pub mod fonts;
 pub mod setup;
 mod stickers;
 mod friends;
+mod friends_active;
 // Navigation : sélecteur rapide, boîte de réception, raccourcis (lot navigation).
 mod inbox;
+mod inbox_cards;
 mod keys;
 // Liens Discord, instance unique, démarrage et mises à jour (lot C6).
 mod links;
@@ -54,6 +57,10 @@ mod markdown;
 mod members;
 mod message;
 mod msg_actions;
+/// MP du compte système de Discord : étiquette « OFFICIEL », bandeau (lot « messages »).
+mod official;
+/// Carte d'une notification du compte système de Discord (lot « messages »).
+mod safety_card;
 mod pins;
 // Page « Plugins » et publication de l'état des plugins (lot P0).
 mod plugins;
@@ -71,6 +78,7 @@ mod quick_profile;
 mod cosmetics;
 mod rail;
 mod rail_dnd;
+mod rail_voice;
 mod guild_create;
 // Fenêtre « Paramètres du serveur » (phase 3).
 pub mod guild_settings;
@@ -110,6 +118,7 @@ mod browse;
 mod voice;
 // Appels privés, conférences, tableau de sons (lot V6).
 mod call;
+mod call_band;
 mod soundboard;
 mod stage;
 // Vue d'appel, vidéo et directs (phase 5, lot M4).
@@ -1259,6 +1268,8 @@ impl App {
 impl eframe::App for App {
     /// Disposition mobile hors Android : la souris touche comme un doigt (phase 7).
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
+        // Toutes les fenêtres partagent l'atlas des glyphes : même borne partout (lot « ram »).
+        fonts::limit_atlas(raw);
         // Fenêtre secondaire (incrustation « qui parle », lot E4) : ni doigt
         // simulé ni barre de titre.
         if raw.viewport_id != egui::ViewportId::ROOT {
@@ -1375,7 +1386,6 @@ impl App {
             let frame = egui::Frame::new().fill(t.colors.bg1).inner_margin(t.side_panel_margin());
             egui::Panel::right("group_panel").frame(frame).default_size(t.layout.channels_width).show(ui, |ui| self.group_panel(ui));
         }
-        self.dm_profile_panel(ui);
         // Accueil des messages privés sans conversation choisie : la page Amis.
         let home = self.store.guild.is_none() && self.store.channel.is_none();
         let chat = egui::CentralPanel::default().frame(chat_frame).show(ui, |ui| {
@@ -1474,6 +1484,7 @@ mod tests {
         ("i18n/admin.rs", include_str!("../i18n/admin.rs")),
         ("ui/keys.rs", include_str!("keys.rs")),
         ("ui/inbox.rs", include_str!("inbox.rs")),
+        ("ui/inbox_cards.rs", include_str!("inbox_cards.rs")),
         ("ui/quick_switcher.rs", include_str!("quick_switcher.rs")),
         ("ui/util.rs", include_str!("util.rs")),
         ("ui/accounts.rs", include_str!("accounts.rs")),
@@ -1628,7 +1639,7 @@ mod tests {
     }
 
     /// Connexion factice : toujours connectée, rien n'est envoyé ni reçu.
-    struct Offline;
+    pub(super) struct Offline;
 
     impl super::Backend for Offline {
         fn set_wake(&mut self, _: crate::net::Wake) {}
@@ -2110,8 +2121,8 @@ mod tests {
         assert_eq!(wakes.load(Ordering::Relaxed), 1, "seule la tuile affichée réveille");
         h.frame();
         assert_eq!(h.app.video_textures(), 1);
-        // Discussion ouverte à la place de l'appel : plus de tuile, plus de texture.
-        h.app.video_ui.chat_open.insert(50);
+        // Autre écran que l'appel : plus de tuile, plus de texture.
+        h.app.store.channel = None;
         h.frame();
         assert_eq!(h.app.video_textures(), 0);
         assert!(!sink.is_visible(&Tile::Camera(7)));

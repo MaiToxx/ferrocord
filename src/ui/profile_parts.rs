@@ -37,6 +37,8 @@ const BLOCK_TINT: f32 = 0.07;
 const BUBBLE_ROWS: usize = 3;
 /// Avatars empilés devant « N amis en commun », au plus.
 const STACKED: usize = 3;
+/// Badges montrés dans la capsule d'une carte avant « +N ».
+const CAPSULE: usize = 6;
 
 /// Fond translucide d'un bloc posé sur la carte.
 pub(super) fn tint(t: &Tokens) -> Color32 {
@@ -470,18 +472,85 @@ impl App {
         }
     }
 
-    fn badge_ui(&self, ui: &mut egui::Ui, t: &Tokens, user_id: u64, s: &Shown, b: &ProfileBadge) -> egui::Response {
-        let side = t.profile_badge();
-        let icon = b.icon.map(|hash| ImageRef::BadgeIcon { hash });
-        let resp = match icon.map(|i| self.images.get(i, side)) {
-            Some(Image::Ready(tex)) => {
-                let (rect, resp) = ui.allocate_exact_size(egui::Vec2::splat(side), Sense::click());
-                ui.painter().add(images::textured(rect, egui::CornerRadius::ZERO, tex));
-                resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Image, true, &b.description));
-                resp
+    /// La carte de `s` a-t-elle une capsule de badges à montrer ?
+    pub(super) fn has_badges(&self, s: &Shown) -> bool {
+        s.profile.as_ref().is_some_and(|p| !p.badges.is_empty()) || s.presence.as_ref().is_some_and(on_mobile)
+    }
+
+    /// Capsule des badges d'une carte, posée dans la ligne de l'identifiant
+    /// comme dans le client : une seule rangée, [`CAPSULE`] badges au plus puis
+    /// « +N », dont le clic les montre tous (sur plusieurs rangées au besoin).
+    /// Elle passe à la ligne entière si elle ne tient pas au bout de celle-ci.
+    pub(super) fn badges_capsule(&self, ui: &mut egui::Ui, t: &Tokens, user_id: u64, s: &Shown) {
+        let lang = self.lang;
+        let badges = s.profile.as_ref().map(|p| p.badges.as_slice()).unwrap_or_default();
+        let mobile = s.presence.as_ref().filter(|p| on_mobile(p));
+        let lead = usize::from(mobile.is_some());
+        if badges.is_empty() && lead == 0 {
+            return;
+        }
+        let open_id = Id::unique(("ferrocord.profils.badges-dépliés", user_id));
+        let open = ui.data(|d| d.get_temp::<bool>(open_id)).unwrap_or(false);
+        let shown = if open || badges.len() <= CAPSULE { badges.len() } else { CAPSULE };
+        let more = badges.len() - shown;
+        let (side, m, gap) = (t.profile_badge(), t.profile_chip_margin(), t.spacing.item_y);
+        let plus = (more > 0).then(|| ui.painter().layout_no_wrap(format!("+{more}"), crate::ui::fonts::demi_font(t.typography.small + 1.0), t.colors.text));
+        let plus_w = plus.as_ref().map_or(0.0, |g| g.size().x + gap + t.spacing.item_y);
+        let n = shown + lead;
+        // Rangées : une seule tant que tout tient dans la carte.
+        let room = (ui.max_rect().width() - m.sum().x - plus_w).max(side);
+        let per_row = (((room + gap) / (side + gap)).floor() as usize).clamp(1, n.max(1));
+        let rows = n.div_ceil(per_row).max(1);
+        let cols = n.min(per_row);
+        let size = egui::vec2(cols as f32 * side + cols.saturating_sub(1) as f32 * gap + plus_w + m.sum().x, rows as f32 * side + (rows - 1) as f32 * gap + m.sum().y);
+        if size.x > ui.available_size_before_wrap().x {
+            ui.end_row();
+        }
+        let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
+        if !ui.is_rect_visible(rect) {
+            return;
+        }
+        ui.painter().rect(rect, t.r_row(), tint(t), Stroke::new(t.shapes.border.max(1.0), t.hairline(false)), egui::StrokeKind::Inside);
+        let slot = |i: usize| Rect::from_min_size(rect.min + m.left_top() + egui::vec2((i % per_row) as f32 * (side + gap), (i / per_row) as f32 * (side + gap)), egui::Vec2::splat(side));
+        if let Some(p) = mobile {
+            let at = slot(0);
+            paint_phone(ui.painter(), at.shrink(side * 0.08), t.status_color(p.status), None);
+            let resp = ui.interact(at, ui.scope_id().with("badge-mobile"), Sense::hover());
+            resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Image, true, pt::ON_MOBILE.get(lang)));
+            resp.on_hover_text(pt::ON_MOBILE.get(lang));
+        }
+        for (i, b) in badges.iter().take(shown).enumerate() {
+            let at = slot(i + lead);
+            let resp = ui.interact(at, ui.scope_id().with(("badge", i)), Sense::click());
+            match b.icon.map(|hash| self.images.get(ImageRef::BadgeIcon { hash }, side)) {
+                Some(Image::Ready(tex)) => {
+                    ui.painter().add(images::textured(at, egui::CornerRadius::ZERO, tex));
+                }
+                // Icône pas encore là : sa place, la description reste dans l'infobulle.
+                _ => {
+                    ui.painter().rect_filled(at.shrink(side * 0.12), t.r_row().at_most(4), t.colors.bg3);
+                }
             }
-            _ => ui.add(egui::Label::new(RichText::new(&b.description).small().color(t.colors.text)).sense(Sense::click())),
-        };
+            resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Image, true, &b.description));
+            self.badge_hover(ui, t, user_id, s, b, resp);
+        }
+        if let Some(g) = plus {
+            // « +N » : au bout de la rangée, centré sur sa hauteur.
+            let last = slot(n - 1);
+            let at = Rect::from_min_size(egui::pos2(last.right() + gap, last.top()), egui::vec2(g.size().x + t.spacing.item_y, side));
+            let resp = ui.interact(at, ui.scope_id().with("badges-plus"), Sense::click());
+            let tip = pt::BADGES_MORE.get(lang);
+            resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
+            let ink = if resp.hovered() || resp.has_focus() { t.colors.text_strong } else { t.colors.text };
+            ui.painter().galley(egui::pos2(at.left(), at.center().y - g.size().y / 2.0), g, ink);
+            if resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                ui.data_mut(|d| d.insert_temp(open_id, true));
+            }
+        }
+    }
+
+    /// Infobulle détaillée d'un badge, et son lien au clic.
+    fn badge_hover(&self, ui: &egui::Ui, t: &Tokens, user_id: u64, s: &Shown, b: &ProfileBadge, resp: egui::Response) -> egui::Response {
         let resp = resp.on_hover_ui(|ui| {
             let tip = badge_tip(self.lang, b, user_id, s.profile.as_ref(), self.store.now());
             badge_tip_ui(ui, t, &self.images, b, &tip);
@@ -496,6 +565,21 @@ impl App {
             }
             None => resp,
         }
+    }
+
+    fn badge_ui(&self, ui: &mut egui::Ui, t: &Tokens, user_id: u64, s: &Shown, b: &ProfileBadge) -> egui::Response {
+        let side = t.profile_badge();
+        let icon = b.icon.map(|hash| ImageRef::BadgeIcon { hash });
+        let resp = match icon.map(|i| self.images.get(i, side)) {
+            Some(Image::Ready(tex)) => {
+                let (rect, resp) = ui.allocate_exact_size(egui::Vec2::splat(side), Sense::click());
+                ui.painter().add(images::textured(rect, egui::CornerRadius::ZERO, tex));
+                resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Image, true, &b.description));
+                resp
+            }
+            _ => ui.add(egui::Label::new(RichText::new(&b.description).small().color(t.colors.text)).sense(Sense::click())),
+        };
+        self.badge_hover(ui, t, user_id, s, b, resp)
     }
 
     /// « avatars empilés + N amis en commun • N serveurs en commun », en
@@ -525,7 +609,7 @@ impl App {
             }
         };
         // Les deux parties sur une ligne, séparées par un point ; si la carte est trop
-        // étroite : deux lignes, sans point (jamais de point seul en fin ou en début de ligne).
+        // étroite : deux lignes, le point au bout de la première.
         let gap = t.spacing.item_y * 1.5;
         let side = Tokens::icon_side(t.typography.body);
         let step = (side * 0.7).round();
@@ -550,9 +634,9 @@ impl App {
             }
             if let Some(n) = servers {
                 if friends.is_some() {
-                    if one_line {
-                        ui.label(RichText::new("•").small().color(t.colors.faint));
-                    } else {
+                    // Le point reste au bout de la première ligne, comme dans le client.
+                    ui.label(RichText::new("•").small().color(t.colors.faint));
+                    if !one_line {
                         ui.end_row();
                     }
                 }

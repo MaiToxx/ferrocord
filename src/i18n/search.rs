@@ -50,6 +50,7 @@ pub mod f {
         ambiguous_channel(name) = "Plusieurs salons s'appellent «\u{a0}{name}\u{a0}»\u{a0}: choisissez dans la liste.", "Several channels are called “{name}”: pick from the list.";
         bad_date(value) = "Date illisible\u{a0}: «\u{a0}{value}\u{a0}» (AAAA-MM-JJ).", "Unreadable date: “{value}” (YYYY-MM-DD).";
         bad_value(key, value) = "Valeur inconnue pour {key}\u{a0}: «\u{a0}{value}\u{a0}».", "Unknown value for {key}: “{value}”.";
+        search_in(name) = "Rechercher {name}", "Search {name}";
         page_of(page, pages) = "Page {page} sur {pages}", "Page {page} of {pages}";
     }
 }

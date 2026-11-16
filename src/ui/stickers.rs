@@ -29,7 +29,12 @@ pub(super) fn paint(ui: &egui::Ui, t: &Tokens, rect: Rect, s: &StickerItem) {
 
 /// Autocollants du message `m`, chacun dans un carré de `t.markdown.sticker`.
 pub(super) fn stickers_ui(ui: &mut egui::Ui, t: &Tokens, lang: Lang, m: &Message) {
-    for s in &m.meta.stickers {
+    stickers_list(ui, t, lang, &m.meta.stickers);
+}
+
+/// Autocollants `list` (ceux d'un message, ou de l'instantané d'un message transféré).
+pub(super) fn stickers_list(ui: &mut egui::Ui, t: &Tokens, lang: Lang, list: &[StickerItem]) {
+    for s in list {
         let side = t.markdown.sticker;
         let (rect, resp) = ui.allocate_exact_size(egui::vec2(side, side), Sense::hover());
         paint(ui, t, rect, s);

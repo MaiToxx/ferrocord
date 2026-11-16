@@ -45,6 +45,9 @@ async fn fake_game_on_a_local_pipe_reaches_op3() {
     assert_eq!(read(&mut game).await["cmd"], "SET_ACTIVITY");
     s.client.until("activité", |e| rpc(e, |r| matches!(r, RpcEvent::Activity { activity: Some(_), .. }))).await;
 
+    // L'écart entre deux présences est tiré entre 4 et 7 s : on laisse passer
+    // 3 s avant l'attente, elle-même bornée à 5 s.
+    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
     let p = s.conn.recv_op(3).await;
     let rich = p["d"]["activities"].as_array().and_then(|a| a.iter().find(|a| a["application_id"] == "6000000000000000040").cloned());
     let rich = rich.unwrap_or_else(|| panic!("activité Rich Presence dans l'op 3 : {p}"));

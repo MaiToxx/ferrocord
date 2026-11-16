@@ -10,6 +10,10 @@
 //!   typées qui ne gardent que les champs affichés.
 
 mod account;
+// Attentes avec gigue (lot « fiable »).
+pub mod backoff;
+// Compteurs de la connexion et mémoire négative (lot « fiable »).
+pub mod health;
 // Administration des serveurs (phase 3).
 mod admin;
 /// Décodeurs des réponses de modération (aperçu) : lus comme le réseau les lit.
@@ -22,7 +26,7 @@ mod gateway;
 mod games;
 /// Statut « inactif » automatique (lot FF).
 pub mod idle;
-pub use games::decode_detectable_list;
+pub use games::{decode_detectable_list, decode_detectable_to_index};
 mod guilds;
 mod gwlimit;
 // Identité annoncée à Discord : bureau ou Ferrocord (décision du 14 novembre 2026).
@@ -260,6 +264,12 @@ impl Replay {
         (Replay { out: Out { tx, wake, people: PeopleHub::default(), watch: Arc::default(), interest }, resume: None, me }, rx)
     }
 
+    /// Répertoire des personnes que remplit le décodage (à donner au magasin
+    /// par `Event::PeopleHub`, comme le fait la connexion).
+    pub fn people(&self) -> PeopleHub {
+        self.out.people.clone()
+    }
+
     /// Un paquet : son type (`MESSAGE_UPDATE`…) et son champ `d` en JSON.
     pub fn dispatch(&mut self, kind: &str, d: &str) {
         gateway::dispatch(kind, d, ResumeHosts::Discord, &mut self.resume, &mut self.me, &self.out);
@@ -280,7 +290,8 @@ pub struct Endpoints {
     pub api: String,
     /// Délai avant une reconnexion ; doublé à chaque échec consécutif (×32 au plus).
     pub reconnect_base: Duration,
-    /// Attente après une session invalidée (op 9), avant de se reconnecter.
+    /// Attente minimale après une session invalidée (op 9) ; l'attente réelle
+    /// est tirée au hasard entre cette durée et cinq fois plus (1 à 5 s).
     pub invalid_session_wait: Duration,
     /// Adresses de reprise (`resume_gateway_url`, reçue du réseau) acceptées.
     pub resume_hosts: ResumeHosts,
@@ -312,7 +323,7 @@ impl Default for Endpoints {
             gateway: "wss://gateway.discord.gg".into(),
             api: "https://discord.com/api/v10".into(),
             reconnect_base: Duration::from_secs(1),
-            invalid_session_wait: Duration::from_secs(2),
+            invalid_session_wait: Duration::from_secs(1),
             resume_hosts: ResumeHosts::Discord,
             cdn: "https://cdn.discordapp.com".into(),
             cdn_hosts: cdn::CdnHosts::Discord,
@@ -365,6 +376,8 @@ impl ResumeHosts {
 pub struct Connection {
     pub cmd: tmpsc::UnboundedSender<Cmd>,
     pub events: mpsc::Receiver<Event>,
+    /// Compteurs de cette connexion (4xx, 429, nouveaux essais, reconnexions).
+    pub health: Arc<health::Health>,
     tasks: Vec<JoinHandle<()>>,
 }
 
@@ -408,10 +421,11 @@ pub fn connect_filtered(rt: &Handle, token: Token, endpoints: Endpoints, wake: W
     // Tube local de la Rich Presence (lot R) : fermé tant que le magasin ne l'ouvre pas.
     let (rpc_tx, rpc_rx) = tokio::sync::watch::channel(None::<String>);
     let bot = token.starts_with("Bot ");
+    let health = health::Health::start();
     // Une identité par connexion, la même pour la passerelle et l'API.
     let who = Arc::new(identity::Identity::new(&endpoints.identity, bot));
     let ws_headers = if who.is_desktop() { endpoints.identity.ws_headers() } else { Vec::new() };
-    let subs = gateway::Subs::new(sub_rx, &token).with_voice(voice_rx).with_video(video_rx).with_presence(presence_rx).with_identity(who.clone(), ws_headers);
+    let subs = gateway::Subs::new(sub_rx, &token).with_voice(voice_rx).with_video(video_rx).with_presence(presence_rx).with_identity(who.clone(), ws_headers).with_health(health.clone());
     let out = Out { tx, wake, people: PeopleHub::default(), watch, interest };
     // Premier événement : le magasin adopte les tables de cette connexion.
     out.send(Event::PeopleHub(out.people.clone()));
@@ -420,6 +434,12 @@ pub fn connect_filtered(rt: &Handle, token: Token, endpoints: Endpoints, wake: W
         // Une variable HTTP(S)_PROXY ne doit pas détourner les requêtes qui
         // portent le jeton. Les proxys ne sont pas pris en charge pour l'instant.
         .no_proxy()
+        // Ouverture plafonnée : sans cela, un réseau qui avale les paquets
+        // retient chaque requête jusqu'à son délai entier.
+        .connect_timeout(rest::CONNECT_TIMEOUT)
+        // Une redirection ne sort jamais de l'hôte demandé : les en-têtes
+        // d'identité ne suivent pas vers un tiers (lot « fiable »).
+        .redirect(rest::same_host_redirects())
         .build()
         // Échoue seulement si la pile TLS ne s'initialise pas : rien à voir avec les données reçues.
         .expect("client HTTP");
@@ -429,7 +449,7 @@ pub fn connect_filtered(rt: &Handle, token: Token, endpoints: Endpoints, wake: W
     let rpc_out = out.clone();
     let mut tasks = vec![
         rt.spawn(gateway::gateway_task(token.clone(), endpoints.clone(), out.clone(), subs)),
-        rt.spawn(rest::command_task(http, token, endpoints.api, rest_rx, out, who.clone())),
+        rt.spawn(rest::command_task(http, token, endpoints.api, rest_rx, out, who.clone(), health.clone())),
         rt.spawn(async move {
             while let Some(c) = cmd_rx.recv().await {
                 match c {
@@ -467,7 +487,7 @@ pub fn connect_filtered(rt: &Handle, token: Token, endpoints: Endpoints, wake: W
     if let Some(r) = refresh {
         tasks.push(rt.spawn(r));
     }
-    Connection { cmd, events, tasks }
+    Connection { cmd, events, health, tasks }
 }
 
 /// Décode un paquet de passerelle (`t`, `d`) en événements, sans connexion

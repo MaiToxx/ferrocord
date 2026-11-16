@@ -176,6 +176,19 @@ pub fn system_language() -> Lang {
     *SYSTEM.get_or_init(|| Lang::from_locale(&sys_locale::get_locale().unwrap_or_default()))
 }
 
+/// Langue choisie explicitement dans les réglages (`None` : celle du système).
+pub fn chosen_language() -> Option<Lang> {
+    #[cfg(test)]
+    let choice = TEST_CHOICE.with(std::cell::Cell::get).map_or(Choice::System, Choice::from_u8);
+    #[cfg(not(test))]
+    let choice = Choice::from_u8(CHOICE.load(Ordering::Relaxed));
+    match choice {
+        Choice::System => None,
+        Choice::Fr => Some(Lang::Fr),
+        Choice::En => Some(Lang::En),
+    }
+}
+
 /// Langue des textes affichés en ce moment : une lecture atomique.
 pub fn language() -> Lang {
     #[cfg(test)]

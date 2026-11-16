@@ -42,6 +42,17 @@ fn covers(domain: &str, host: &str) -> bool {
     host == domain || host.strip_suffix(domain).is_some_and(|rest| rest.ends_with('.'))
 }
 
+/// Lien `https` vers un domaine de Discord, sans identifiants ni port : le
+/// seul qu'un bouton d'une notification officielle ouvre d'un clic.
+pub(super) fn own_https(url: &str) -> bool {
+    let Ok(u) = reqwest::Url::parse(url.trim()) else { return false };
+    u.scheme() == "https"
+        && u.username().is_empty()
+        && u.password().is_none()
+        && u.port().is_none()
+        && u.host_str().map(str::to_ascii_lowercase).is_some_and(|h| OWN_DOMAINS.iter().any(|d| covers(d, &h)))
+}
+
 fn valid_domain(d: &str) -> bool {
     !d.is_empty() && d.len() <= 253 && d.contains('.') && d.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'.')
 }

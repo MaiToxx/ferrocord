@@ -113,7 +113,7 @@ pub mod t {
         STATUS_IDLE = "Inactif", "Idle";
         STATUS_DND = "Ne pas déranger", "Do Not Disturb";
         STATUS_INVISIBLE = "Invisible", "Invisible";
-        SHOW_GAME = "Afficher l'activité en cours", "Share your activity";
+        SHOW_GAME = "Partager l'activité détectée avec les autres", "Share your detected activity with others";
         SHOW_GAME_TIP = "Montrer le jeu ou l'application en cours dans votre statut", "Show the game or app you're using in your status";
         CUSTOM_STATUS = "Statut personnalisé", "Custom status";
         CUSTOM_STATUS_NONE = "Aucun statut personnalisé.", "No custom status.";

@@ -96,3 +96,9 @@ mod gifs;
 // Effets de profil et quêtes (lot ND, routes non documentées).
 #[path = "e2e/nd.rs"]
 mod nd;
+// Fiabilité et cohérence de ce qui est envoyé (lot « fiable »).
+#[path = "e2e/fiable.rs"]
+mod fiable;
+// MP du compte système : aucune écriture (lot « messages »).
+#[path = "e2e/official.rs"]
+mod official;

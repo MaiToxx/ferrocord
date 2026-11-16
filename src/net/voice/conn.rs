@@ -37,6 +37,11 @@ const SPEAKING_MICROPHONE: u64 = 1;
 /// sortant, les routeurs (NAT) oublient la correspondance UDP et plus rien
 /// n'arrive pendant les silences.
 const KEEPALIVE: Duration = Duration::from_secs(5);
+/// Ouverture du WebSocket vocal (TCP, TLS, poignée de main) : au-delà, échec.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+/// Attente du Hello (op 8) après l'ouverture : sans lui, aucun battement ne
+/// part et une connexion muette ne serait jamais détectée.
+const HELLO_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub(super) async fn run(p: VoiceParams, mut e2ee: Box<dyn FrameCrypto>, cfg: VoiceConfig, mut ctl: mpsc::Receiver<VoiceCtl>, ev: mpsc::Sender<VoiceEvent>) {
     let reason = drive(&p, e2ee.as_mut(), &cfg, &mut ctl, &ev).await;
@@ -93,9 +98,11 @@ async fn drive(p: &VoiceParams, e2ee: &mut dyn FrameCrypto, cfg: &VoiceConfig, c
     loop {
         let ws_cfg = WebSocketConfig::default().max_message_size(Some(MAX_MESSAGE)).max_frame_size(Some(MAX_MESSAGE));
         let end = match crate::net::identity::ws_request(url.as_str(), &cfg.ws_headers) {
-            Ok(req) => match tokio_tungstenite::connect_async_with_config(req, Some(ws_cfg), false).await {
-                Ok((ws, _)) => session(ws, &mut cx, ctl).await,
-                Err(_) => End::Lost,
+            // Ouverture plafonnée : une poignée de main qui ne répond plus ne
+            // doit pas laisser l'appel « en cours de connexion » sans fin.
+            Ok(req) => match tokio::time::timeout(CONNECT_TIMEOUT, tokio_tungstenite::connect_async_with_config(req, Some(ws_cfg), false)).await {
+                Ok(Ok((ws, _))) => session(ws, &mut cx, ctl).await,
+                Ok(Err(_)) | Err(_) => End::Lost,
             },
             Err(_) => End::Lost,
         };
@@ -109,7 +116,8 @@ async fn drive(p: &VoiceParams, e2ee: &mut dyn FrameCrypto, cfg: &VoiceConfig, c
         if failures > cfg.max_resumes {
             return CloseReason::Unreachable;
         }
-        let wait = cfg.reconnect_base.saturating_mul(1 << (failures - 1).min(5));
+        // Attente doublée à chaque échec, avec gigue (jamais à heure fixe).
+        let wait = crate::net::backoff::equal_jitter(cfg.reconnect_base.saturating_mul(1 << (failures - 1).min(5)), crate::net::backoff::unit());
         // Pendant l'attente, l'audio à envoyer est jeté ; une demande d'arrêt est servie.
         let deadline = Instant::now() + wait;
         loop {
@@ -192,6 +200,7 @@ async fn session(mut ws: Ws, cx: &mut Ctx<'_>, ctl: &mut mpsc::Receiver<VoiceCtl
     let mut hb: Option<Heartbeat> = None;
     let mut disc: Option<Discovery> = None;
     let mut buf = vec![0u8; 2048];
+    let hello_by = Instant::now() + HELLO_TIMEOUT;
     loop {
         let hb_at = hb.as_ref().map(|h| h.next);
         let disc_at = disc.as_ref().map(|d| d.next);
@@ -208,6 +217,8 @@ async fn session(mut ws: Ws, cx: &mut Ctx<'_>, ctl: &mut mpsc::Receiver<VoiceCtl
                 Some(Err(_)) | None => Err(End::Lost),
             },
             _ = sleep_opt(hb_at) => cx.heartbeat(&mut ws, &mut hb).await,
+            // Pas de Hello : connexion muette, à reprendre.
+            _ = tokio::time::sleep_until(hello_by), if hb.is_none() => Err(End::Lost),
             _ = sleep_opt(disc_at) => cx.retry_discovery(&mut disc).await,
             // La trame de silence n'est jamais chiffrée de bout en bout.
             _ = sleep_opt(keep_at) => {

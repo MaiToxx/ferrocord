@@ -126,14 +126,23 @@ pub struct Names<'a> {
     pub guild: Option<&'a str>,
 }
 
-fn duration(lang: Lang, ms: i64) -> String {
-    let minutes = ms / 60_000;
-    match minutes {
-        m if m < 1 => t::FEW_SECONDS.get(lang).to_string(),
-        m if m < 60 => p::minutes(lang, m as u64),
-        m if m < 48 * 60 => p::hours(lang, (m / 60) as u64),
-        m => p::days(lang, (m / (24 * 60)) as u64),
+/// Durée d'un appel en mots, comme dans le client : « quelques secondes »,
+/// « une minute », « N minutes », « une heure », « N heures ».
+pub fn call_duration(lang: Lang, ms: i64) -> String {
+    let s = ms.max(0) / 1000;
+    match s {
+        0..60 => t::FEW_SECONDS.get(lang).to_string(),
+        60..120 => t::ONE_MINUTE.get(lang).to_string(),
+        120..3600 => p::minutes(lang, (s / 60) as u64),
+        3600..7200 => t::ONE_HOUR.get(lang).to_string(),
+        _ => p::hours(lang, (s / 3600) as u64),
     }
+}
+
+/// Appel terminé auquel `me` n'a pas pris part (ni lancé, ni rejoint) : « Appel manqué ».
+pub fn call_missed(m: &Message, me: Option<u64>) -> bool {
+    let Some(call) = m.meta.extra.as_deref().and_then(|e| e.call.as_ref()) else { return false };
+    call.ended_ms.is_some() && !me.is_some_and(|me| me == m.author_id || call.participants.contains(&me))
 }
 
 /// Phrase d'un message système ; `m.content` est son texte d'origine.
@@ -164,15 +173,11 @@ pub fn text(lang: Lang, kind: SystemKind, m: &Message, names: Names) -> String {
             Some((id, n)) if *id != m.author_id => f::recipient_remove(lang, name, n),
             _ => f::recipient_left(lang, name),
         },
-        Call => {
-            let call = extra.and_then(|e| e.call.as_ref());
-            let me_in = names.me.is_some_and(|me| me == m.author_id || call.is_some_and(|c| c.participants.contains(&me)));
-            match call.and_then(|c| c.ended_ms) {
-                Some(_) if !me_in => f::call_missed(lang, name),
-                Some(end) => f::call_lasted(lang, name, duration(lang, end - snowflake_ms(m.id))),
-                None => f::call_started(lang, name),
-            }
-        }
+        Call => match extra.and_then(|e| e.call.as_ref()).and_then(|c| c.ended_ms) {
+            Some(_) if call_missed(m, names.me) => f::call_missed(lang, name),
+            Some(end) => f::call_lasted(lang, name, call_duration(lang, end - snowflake_ms(m.id))),
+            None => f::call_started(lang, name),
+        },
         ChannelName => f::channel_name(lang, name, value),
         ChannelIcon => f::channel_icon(lang, name),
         Pinned => f::pinned(lang, name),
@@ -285,15 +290,41 @@ mod tests {
         assert_eq!(variants.len(), 8);
     }
 
+    /// Durée d'un appel en mots, dans les deux langues.
+    #[test]
+    fn call_durations_in_words() {
+        for (ms, fr, en) in [
+            (-5, "quelques secondes", "a few seconds"),
+            (0, "quelques secondes", "a few seconds"),
+            (59_999, "quelques secondes", "a few seconds"),
+            (60_000, "une minute", "a minute"),
+            (119_000, "une minute", "a minute"),
+            (120_000, "2 minutes", "2 minutes"),
+            (59 * 60_000 + 59_000, "59 minutes", "59 minutes"),
+            (3_600_000, "une heure", "an hour"),
+            (7_199_000, "une heure", "an hour"),
+            (7_200_000, "2 heures", "2 hours"),
+            (30 * 3_600_000, "30 heures", "30 hours"),
+        ] {
+            assert_eq!(call_duration(Lang::Fr, ms), fr, "{ms}");
+            assert_eq!(call_duration(Lang::En, ms), en, "{ms}");
+        }
+    }
+
     #[test]
     fn calls_and_poll_results() {
         let n = Names { me: Some(9), guild: None };
         let mut m = sys(1 << 22, "", Vec::new());
         let start = snowflake_ms(m.id);
         m.meta.extra = Some(Box::new(Extra { call: Some(Call { participants: vec![3, 9], ended_ms: Some(start + 5 * 60_000) }), ..Extra::default() }));
-        assert_eq!(text(Lang::Fr, SystemKind::Call, &m, n), "Bob a lancé un appel qui a duré 5 minutes.");
+        assert_eq!(text(Lang::Fr, SystemKind::Call, &m, n), "Bob a commencé un appel qui a duré 5 minutes.");
+        m.meta.extra = Some(Box::new(Extra { call: Some(Call { participants: vec![3, 9], ended_ms: None }), ..Extra::default() }));
+        assert_eq!(text(Lang::Fr, SystemKind::Call, &m, n), "Bob a commencé un appel.");
+        assert!(!call_missed(&m, n.me), "appel en cours : pas manqué");
         m.meta.extra = Some(Box::new(Extra { call: Some(Call { participants: vec![3], ended_ms: Some(start + 1000) }), ..Extra::default() }));
-        assert_eq!(text(Lang::En, SystemKind::Call, &m, n), "You missed a call from Bob.");
+        assert_eq!(text(Lang::En, SystemKind::Call, &m, n), "Missed call from Bob.");
+        assert_eq!(text(Lang::Fr, SystemKind::Call, &m, n), "Appel manqué de Bob.");
+        assert!(call_missed(&m, n.me) && !call_missed(&m, Some(3)), "l'auteur ne manque pas son appel");
         let result = PollResult { question: "Pizza ?".into(), winner: Some(("Oui".into(), None)), winner_votes: 3, total: 5 };
         m.meta.extra = Some(Box::new(Extra { result: Some(result), ..Extra::default() }));
         assert_eq!(text(Lang::En, SystemKind::PollResult, &m, n), "Bob's poll has closed (“Pizza ?”): Oui won with 3 votes of 5.");

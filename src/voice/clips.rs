@@ -98,6 +98,29 @@ pub(super) fn allowed(url: &str) -> bool {
     url.starts_with("https://cdn.discordapp.com/") || url.starts_with("https://media.discordapp.net/") || (cfg!(test) && url.starts_with("http://127.0.0.1:"))
 }
 
+/// User-Agent des téléchargements : celui de l'identité annoncée (le même
+/// que sur l'API, le CDN des images et le vocal), sinon celui de Ferrocord.
+/// Avant le lot « fiable », ces requêtes vers le CDN de Discord partaient
+/// SANS User-Agent : aucun client ne fait cela.
+pub(super) fn clip_user_agent(ws_headers: &[(&'static str, String)]) -> String {
+    ws_headers.iter().find(|(n, _)| n.eq_ignore_ascii_case("user-agent")).map_or_else(|| crate::net::identity::FERROCORD_UA.to_string(), |(_, v)| v.clone())
+}
+
+/// Client des sons et fichiers joints : mêmes règles que le CDN des images
+/// (`net::cdn`) : pas de proxy d'environnement, aucune redirection suivie,
+/// délais bornés.
+pub(super) fn clip_client(user_agent: &str) -> reqwest::Client {
+    crate::platform::http_builder()
+        .user_agent(user_agent)
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
+        .referer(false)
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .read_timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap_or_default()
+}
+
 pub(super) async fn download(client: reqwest::Client, url: &str, max: usize) -> Result<Vec<u8>, String> {
     let lang = crate::i18n::language();
     let mut r = client.get(url).send().await.map_err(|e| e.without_url().to_string())?;
@@ -133,7 +156,8 @@ impl Voice {
 
     /// Client HTTP des téléchargements (sons courts, fichiers joints).
     pub(super) fn http(&mut self) -> reqwest::Client {
-        self.clips.http.get_or_insert_with(|| crate::platform::http_builder().build().unwrap_or_default()).clone()
+        let agent = clip_user_agent(&self.opts.voice.ws_headers);
+        self.clips.http.get_or_insert_with(|| clip_client(&agent)).clone()
     }
 
     pub(super) fn clip_play(&mut self, p: ClipPlay) {
@@ -156,8 +180,9 @@ impl Voice {
                 None => match download(client, &p.url, MAX_DOWNLOAD).await {
                     Ok(bytes) => {
                         let lang = crate::i18n::language();
-                        match tokio::task::spawn_blocking(move || clip::decode(bytes)).await {
-                            Ok(Ok(pcm)) => {
+                        // Son venu du réseau : une panique du décodeur devient un son illisible.
+                        match tokio::task::spawn_blocking(move || crate::panics::contain(|| clip::decode(bytes))).await {
+                            Ok(Some(Ok(pcm))) => {
                                 locked(&cache).insert(p.url.clone(), pcm.clone());
                                 Ok(pcm)
                             }
@@ -393,4 +418,46 @@ impl Clips {
 /// Lâche une capture hors de la boucle (la fermeture attend le fil audio).
 fn close_streams(s: Box<dyn AudioStreams>) {
     let _ = std::thread::Builder::new().name("ferrocord-voix-arret".into()).spawn(move || drop(s));
+}
+
+#[cfg(test)]
+mod fiable_tests {
+    use super::*;
+
+    /// Les téléchargements de sons annoncent le même User-Agent que le reste
+    /// de la session (avant : aucun).
+    #[test]
+    fn clips_announce_the_session_user_agent() {
+        let ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) discord/1.0.9268".to_string();
+        assert_eq!(clip_user_agent(&[("Origin", "https://discord.com".into()), ("User-Agent", ua.clone())]), ua);
+        assert_eq!(clip_user_agent(&[]), crate::net::identity::FERROCORD_UA);
+    }
+
+    /// Reçu par un vrai serveur local : l'en-tête part bien, et une
+    /// redirection n'est pas suivie.
+    #[tokio::test]
+    async fn clip_downloads_carry_a_user_agent() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let (mut s, _) = listener.accept().await.unwrap();
+            let mut seen = Vec::new();
+            let mut buf = [0u8; 2048];
+            while !seen.windows(4).any(|w| w == b"\r\n\r\n") {
+                let n = s.read(&mut buf).await.unwrap();
+                if n == 0 {
+                    break;
+                }
+                seen.extend_from_slice(&buf[..n]);
+            }
+            s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\nConnection: close\r\n\r\nabc").await.unwrap();
+            String::from_utf8_lossy(&seen).to_ascii_lowercase()
+        });
+        let body = download(clip_client("UA-de-test/1.0"), &format!("http://127.0.0.1:{port}/son.ogg"), 1024).await.unwrap();
+        assert_eq!(body, b"abc");
+        let head = server.await.unwrap();
+        assert!(head.contains("user-agent: ua-de-test/1.0"), "{head}");
+        assert!(!head.contains("authorization") && !head.contains("referer"), "{head}");
+    }
 }

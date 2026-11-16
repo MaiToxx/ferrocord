@@ -100,6 +100,8 @@ pub(super) enum VoiceAct {
     LocalMute(u64, bool),
     /// Ouvre la confirmation d'une modération.
     Moderate { user: u64, action: VoiceMod },
+    /// « Regarder le stream » : rejoint le salon de `user` et regarde son direct.
+    Watch { channel: u64, user: u64 },
 }
 
 impl App {
@@ -244,6 +246,15 @@ impl App {
                     self.set_local_prefs(p);
                 }
                 VoiceAct::Moderate { user, action } => self.voice_ask(user, action),
+                VoiceAct::Watch { channel, user } => {
+                    // Fonctions existantes : rejoindre le salon, regarder le direct, ouvrir la vue du salon.
+                    self.voice_join(channel);
+                    if self.store.voice.me.is_some_and(|m| m.channel_id == channel) {
+                        let guild = self.store.voice.channel(channel).map(|c| c.guild_id);
+                        self.store.video_watch(&crate::state::stream::stream_key(guild, channel, user));
+                        self.open_channel(channel);
+                    }
+                }
             }
         }
     }
@@ -292,7 +303,7 @@ impl App {
         }
         let mut sound = None;
         if before.me != now.me {
-            sound = Some(if now.me.is_some() { Kind::VoiceJoin } else { Kind::VoiceLeave });
+            sound = Some(if now.me.is_some() { Kind::VoiceConnect } else { Kind::VoiceDisconnect });
         } else if now.me.is_some() {
             let came: Vec<u64> = now.people.iter().filter(|u| !before.people.contains(u)).copied().collect();
             if !came.is_empty() {

@@ -5,17 +5,109 @@ use crate::state::model::{
     sort_channels, Avatar, Channel, ChannelKind, Dm, Emoji, Guild, ImageHash, ImageRef, Member, Message, Overwrite, OverwriteKind, Role,
 };
 use crate::state::{DmKnown, Permissions};
-use serde::{de::DeserializeOwned, de::IgnoredAny, Deserialize, Deserializer};
+use serde::de::{DeserializeOwned, DeserializeSeed, IgnoredAny, MapAccess, SeqAccess, Visitor};
+use serde::{Deserialize, Deserializer};
+use std::fmt;
 use serde_json::value::RawValue;
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
-fn de_id<'de, D: Deserializer<'de>>(d: D) -> Result<u64, D::Error> {
-    let s = String::deserialize(d)?;
-    s.parse().map_err(serde::de::Error::custom)
+/// Texte attendu, lu sans copie : `f` reçoit la chaîne décodée. Même
+/// exigence que `String::deserialize` (tout autre type est une erreur), mais
+/// sans allouer une `String` par identifiant.
+struct StrWith<F>(F);
+
+impl<'de, R, F: FnOnce(&str) -> R> Visitor<'de> for StrWith<F> {
+    type Value = R;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("a string")
+    }
+
+    fn visit_str<E: serde::de::Error>(self, s: &str) -> Result<R, E> {
+        Ok((self.0)(s))
+    }
+}
+
+/// Identifiant obligatoire, en chaîne : sinon la structure est illisible.
+pub(super) fn de_id<'de, D: Deserializer<'de>>(d: D) -> Result<u64, D::Error> {
+    d.deserialize_str(StrWith(|s: &str| s.parse::<u64>()))?.map_err(serde::de::Error::custom)
 }
 
 fn de_opt_id<'de, D: Deserializer<'de>>(d: D) -> Result<Option<u64>, D::Error> {
-    Ok(Option::<String>::deserialize(d)?.and_then(|s| s.parse().ok()))
+    struct Opt;
+    impl<'de> Visitor<'de> for Opt {
+        type Value = Option<u64>;
+
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("a string or null")
+        }
+
+        fn visit_none<E: serde::de::Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_unit<E: serde::de::Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_some<D: Deserializer<'de>>(self, d: D) -> Result<Self::Value, D::Error> {
+            d.deserialize_str(StrWith(|s: &str| s.parse().ok()))
+        }
+    }
+    d.deserialize_option(Opt)
+}
+
+/// Nom sous lequel `serde_json` remet le texte brut d'une valeur (celui que
+/// lit `RawValue`). Privé mais stable depuis la 1.0 ; le test
+/// `raw_text_is_lent_without_copy` casse si une mise à jour le changeait.
+const RAW_TOKEN: &str = "$serde_json::private::RawValue";
+
+/// Donne à `f` le texte JSON brut de la prochaine valeur, **sans le copier**
+/// quand le texte lu est déjà en mémoire (`from_str`, `from_slice` : tous nos
+/// paquets). `Box<RawValue>` recopiait chaque champ lu à part avant de le
+/// relire : pour un READY, trois copies emboîtées du nom de chaque rôle.
+/// Même texte, mêmes erreurs que `Box::<RawValue>::deserialize`.
+pub(super) fn with_raw<'de, D: Deserializer<'de>, R>(d: D, f: impl FnOnce(&str) -> R) -> Result<R, D::Error> {
+    struct Outer<F>(F);
+
+    impl<'de, R, F: FnOnce(&str) -> R> Visitor<'de> for Outer<F> {
+        type Value = R;
+
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("any valid JSON value")
+        }
+
+        fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<R, A::Error> {
+            let token = map.next_key_seed(Token)?;
+            if token != Some(true) {
+                return Err(serde::de::Error::invalid_type(serde::de::Unexpected::Map, &self));
+            }
+            map.next_value_seed(Text(self.0))
+        }
+    }
+
+    struct Token;
+
+    impl<'de> DeserializeSeed<'de> for Token {
+        type Value = bool;
+
+        fn deserialize<D: Deserializer<'de>>(self, d: D) -> Result<bool, D::Error> {
+            d.deserialize_str(StrWith(|s: &str| s == RAW_TOKEN))
+        }
+    }
+
+    struct Text<F>(F);
+
+    impl<'de, R, F: FnOnce(&str) -> R> DeserializeSeed<'de> for Text<F> {
+        type Value = R;
+
+        fn deserialize<D: Deserializer<'de>>(self, d: D) -> Result<R, D::Error> {
+            d.deserialize_str(StrWith(self.0))
+        }
+    }
+
+    d.deserialize_newtype_struct(RAW_TOKEN, Outer(f))
 }
 
 /// Élément décodé à part : s'il a une forme inattendue, il vaut `None` au
@@ -25,8 +117,205 @@ pub(super) struct Item<T>(pub Option<T>);
 
 impl<'de, T: DeserializeOwned> Deserialize<'de> for Item<T> {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let raw = Box::<RawValue>::deserialize(d)?;
-        Ok(Item(serde_json::from_str(raw.get()).ok()))
+        with_raw(d, |raw| Item(serde_json::from_str(raw).ok()))
+    }
+}
+
+// ---------------------------------------------------------------- serveur lu une fois
+//
+// Un READY ou un GUILD_CREATE est lu par plusieurs décodeurs (principal,
+// fonctions du serveur, vocal, conférences), chacun ne gardant que ses champs.
+// Chacun relisait tout le texte : pour un READY de 100 serveurs, quatre
+// parcours entiers de plusieurs Mo. Le texte est maintenant découpé une fois
+// en champs bruts empruntés ([`Parts`]) et chaque décodeur ne lit que les
+// champs que sa structure déclare. La tolérance est exactement celle d'avant :
+// même structure, mêmes aides, mêmes erreurs (voir les tests
+// `parts_read_like_the_whole_text` de ce fichier et ceux des trois décodeurs).
+
+/// Valeur JSON d'un paquet, découpée une fois.
+pub(super) enum Parts<'a> {
+    /// Objet : ses champs dans l'ordre, valeurs laissées en texte brut.
+    Object(Vec<(Cow<'a, str>, &'a RawValue)>),
+    /// Tout le reste (tableau, nombre, texte invalide…) : lu comme avant, en entier.
+    Other(&'a str),
+}
+
+impl<'a> Parts<'a> {
+    pub(super) fn new(text: &'a str) -> Parts<'a> {
+        struct Fields;
+
+        impl<'de> Visitor<'de> for Fields {
+            type Value = Vec<(Cow<'de, str>, &'de RawValue)>;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("an object")
+            }
+
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+                let mut fields = Vec::with_capacity(48);
+                while let Some(key) = map.next_key_seed(Key)? {
+                    fields.push((key, map.next_value::<&'de RawValue>()?));
+                }
+                Ok(fields)
+            }
+        }
+
+        /// Nom de champ : emprunté au texte, copié seulement s'il porte un échappement.
+        struct Key;
+
+        impl<'de> DeserializeSeed<'de> for Key {
+            type Value = Cow<'de, str>;
+
+            fn deserialize<D: Deserializer<'de>>(self, d: D) -> Result<Self::Value, D::Error> {
+                d.deserialize_str(self)
+            }
+        }
+
+        impl<'de> Visitor<'de> for Key {
+            type Value = Cow<'de, str>;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a field name")
+            }
+
+            fn visit_borrowed_str<E: serde::de::Error>(self, s: &'de str) -> Result<Self::Value, E> {
+                Ok(Cow::Borrowed(s))
+            }
+
+            fn visit_str<E: serde::de::Error>(self, s: &str) -> Result<Self::Value, E> {
+                Ok(Cow::Owned(s.to_owned()))
+            }
+        }
+
+        struct Whole<'a>(Vec<(Cow<'a, str>, &'a RawValue)>);
+
+        impl<'de> Deserialize<'de> for Whole<'de> {
+            fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+                d.deserialize_map(Fields).map(Whole)
+            }
+        }
+
+        if !text.trim_start_matches([' ', '\t', '\n', '\r']).starts_with('{') {
+            return Parts::Other(text);
+        }
+        match serde_json::from_str::<Whole>(text) {
+            Ok(w) => Parts::Object(w.0),
+            Err(_) => Parts::Other(text),
+        }
+    }
+
+    /// Lit une structure dérivée : seuls les champs qu'elle déclare sont
+    /// relus, les autres ne coûtent plus rien. La structure ne doit porter ni
+    /// `flatten` (tous les champs seraient relus) ni `alias` (serde ne
+    /// déclare que le nom principal : l'autre nom serait écarté).
+    pub(super) fn read<T: Deserialize<'a>>(&self) -> Result<T, serde_json::Error> {
+        match self {
+            Parts::Object(fields) => T::deserialize(PartsDe(fields)),
+            Parts::Other(text) => serde_json::from_str(text),
+        }
+    }
+}
+
+struct PartsDe<'p, 'a>(&'p [(Cow<'a, str>, &'a RawValue)]);
+
+struct PartsAccess<'p, 'a> {
+    fields: std::slice::Iter<'p, (Cow<'a, str>, &'a RawValue)>,
+    /// Champs que la structure déclare ; `None` : tous.
+    wanted: Option<&'static [&'static str]>,
+    value: Option<&'a RawValue>,
+}
+
+impl<'de> MapAccess<'de> for PartsAccess<'_, 'de> {
+    type Error = serde_json::Error;
+
+    fn next_key_seed<K: DeserializeSeed<'de>>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error> {
+        for (key, value) in self.fields.by_ref() {
+            if self.wanted.is_none_or(|w| w.contains(&key.as_ref())) {
+                self.value = Some(value);
+                return seed.deserialize(serde::de::value::StrDeserializer::new(key)).map(Some);
+            }
+        }
+        Ok(None)
+    }
+
+    fn next_value_seed<V: DeserializeSeed<'de>>(&mut self, seed: V) -> Result<V::Value, Self::Error> {
+        match self.value.take() {
+            Some(raw) => seed.deserialize(raw),
+            None => Err(serde::de::Error::custom("valeur demandée sans champ")),
+        }
+    }
+}
+
+impl<'de> Deserializer<'de> for PartsDe<'_, 'de> {
+    type Error = serde_json::Error;
+
+    fn deserialize_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
+        visitor.visit_map(PartsAccess { fields: self.0.iter(), wanted: None, value: None })
+    }
+
+    fn deserialize_struct<V: Visitor<'de>>(self, _name: &'static str, fields: &'static [&'static str], visitor: V) -> Result<V::Value, Self::Error> {
+        visitor.visit_map(PartsAccess { fields: self.0.iter(), wanted: Some(fields), value: None })
+    }
+
+    fn deserialize_option<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
+        visitor.visit_some(self)
+    }
+
+    fn deserialize_newtype_struct<V: Visitor<'de>>(self, _name: &'static str, visitor: V) -> Result<V::Value, Self::Error> {
+        visitor.visit_newtype_struct(self)
+    }
+
+    fn deserialize_ignored_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
+        visitor.visit_unit()
+    }
+
+    serde::forward_to_deserialize_any! {
+        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string bytes byte_buf unit unit_struct seq tuple tuple_struct map enum identifier
+    }
+}
+
+/// Ce que les décodeurs d'un même paquet se partagent : découpé une fois par
+/// [`Shared::of`], au lieu d'un parcours du texte par décodeur.
+pub(super) enum Shared<'a> {
+    /// READY et READY_SUPPLEMENTAL : les serveurs, un par un ; `None` si le
+    /// paquet n'a pas la forme `{ "guilds": [...] }` (aucun serveur lu, comme avant).
+    Ready(Option<Vec<Parts<'a>>>),
+    /// GUILD_CREATE : le serveur.
+    Guild(Parts<'a>),
+    /// Autres paquets : rien à partager.
+    Nothing,
+}
+
+impl<'a> Shared<'a> {
+    pub(super) fn of(kind: &str, d: &'a str) -> Shared<'a> {
+        /// Même forme que les anciennes structures `{ guilds: Vec<Item<…>> }`
+        /// de chaque décodeur : champ facultatif, éléments pris tels quels.
+        #[derive(Deserialize)]
+        struct Guilds<'a> {
+            #[serde(borrow, default)]
+            guilds: Vec<&'a RawValue>,
+        }
+        match kind {
+            "READY" | "READY_SUPPLEMENTAL" => Shared::Ready(serde_json::from_str::<Guilds>(d).ok().map(|g| g.guilds.into_iter().map(|raw| Parts::new(raw.get())).collect())),
+            "GUILD_CREATE" => Shared::Guild(Parts::new(d)),
+            _ => Shared::Nothing,
+        }
+    }
+
+    /// Serveurs d'un READY (aucun si le paquet était illisible).
+    pub(super) fn guilds(&self) -> &[Parts<'a>] {
+        match self {
+            Shared::Ready(Some(guilds)) => guilds,
+            _ => &[],
+        }
+    }
+
+    /// Serveur d'un GUILD_CREATE.
+    pub(super) fn guild(&self) -> Option<&Parts<'a>> {
+        match self {
+            Shared::Guild(g) => Some(g),
+            _ => None,
+        }
     }
 }
 
@@ -37,41 +326,96 @@ pub(super) fn de_lenient<'de, D: Deserializer<'de>, T: DeserializeOwned>(d: D) -
 
 /// Identifiant en chaîne (forme documentée) ou en nombre ; `None` sinon.
 pub(super) fn de_loose_id<'de, D: Deserializer<'de>>(d: D) -> Result<Option<u64>, D::Error> {
-    Ok(match Loose::deserialize(d)? {
+    loose(d, |v| match v {
         Loose::Str(s) => s.parse().ok(),
         Loose::Num(n) => Some(n),
-        Loose::Other(_) => None,
+        Loose::Other => None,
     })
 }
 
-/// Valeur dont la forme n'est pas garantie : chaîne, entier, ou autre
+/// Valeur dont la forme n'est pas garantie : chaîne, entier positif, ou autre
 /// (gardé illisible au lieu de faire échouer tout le paquet).
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum Loose {
-    Str(String),
+enum Loose<'a> {
+    Str(&'a str),
     Num(u64),
-    #[allow(dead_code)]
-    Other(IgnoredAny),
+    Other,
+}
+
+/// Lit une valeur de forme libre et la donne à `f`, sans tampon ni copie (un
+/// `untagged` de serde recopiait la valeur avant d'essayer chaque forme).
+fn loose<'de, D: Deserializer<'de>, R>(d: D, f: impl FnOnce(Loose) -> R) -> Result<R, D::Error> {
+    struct V<F>(F);
+
+    impl<'de, R, F: FnOnce(Loose) -> R> Visitor<'de> for V<F> {
+        type Value = R;
+
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("any value")
+        }
+
+        fn visit_str<E: serde::de::Error>(self, s: &str) -> Result<R, E> {
+            Ok((self.0)(Loose::Str(s)))
+        }
+
+        fn visit_u64<E: serde::de::Error>(self, n: u64) -> Result<R, E> {
+            Ok((self.0)(Loose::Num(n)))
+        }
+
+        fn visit_i64<E: serde::de::Error>(self, n: i64) -> Result<R, E> {
+            Ok((self.0)(u64::try_from(n).map_or(Loose::Other, Loose::Num)))
+        }
+
+        fn visit_f64<E: serde::de::Error>(self, _: f64) -> Result<R, E> {
+            Ok((self.0)(Loose::Other))
+        }
+
+        fn visit_bool<E: serde::de::Error>(self, _: bool) -> Result<R, E> {
+            Ok((self.0)(Loose::Other))
+        }
+
+        fn visit_unit<E: serde::de::Error>(self) -> Result<R, E> {
+            Ok((self.0)(Loose::Other))
+        }
+
+        fn visit_none<E: serde::de::Error>(self) -> Result<R, E> {
+            Ok((self.0)(Loose::Other))
+        }
+
+        fn visit_some<D: Deserializer<'de>>(self, d: D) -> Result<R, D::Error> {
+            d.deserialize_any(self)
+        }
+
+        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<R, A::Error> {
+            while seq.next_element::<IgnoredAny>()?.is_some() {}
+            Ok((self.0)(Loose::Other))
+        }
+
+        fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<R, A::Error> {
+            while map.next_entry::<IgnoredAny, IgnoredAny>()?.is_some() {}
+            Ok((self.0)(Loose::Other))
+        }
+    }
+
+    d.deserialize_any(V(f))
 }
 
 /// Permissions en chaîne décimale (forme documentée) ou en entier (anciennes
 /// versions de l'API) ; `None` si illisible.
 fn de_perms<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Permissions>, D::Error> {
-    Ok(match Loose::deserialize(d)? {
-        Loose::Str(s) => Permissions::parse(&s),
+    loose(d, |v| match v {
+        Loose::Str(s) => Permissions::parse(s),
         Loose::Num(n) => Some(Permissions(n)),
-        Loose::Other(_) => None,
+        Loose::Other => None,
     })
 }
 
 /// Type de dérogation : 0/1 (forme documentée) ou "role"/"member" (anciennes versions).
 fn de_overwrite_kind<'de, D: Deserializer<'de>>(d: D) -> Result<Option<OverwriteKind>, D::Error> {
-    Ok(match Loose::deserialize(d)? {
+    loose(d, |v| match v {
         Loose::Num(0) => Some(OverwriteKind::Role),
         Loose::Num(1) => Some(OverwriteKind::Member),
-        Loose::Str(s) if s == "role" => Some(OverwriteKind::Role),
-        Loose::Str(s) if s == "member" => Some(OverwriteKind::Member),
+        Loose::Str("role") => Some(OverwriteKind::Role),
+        Loose::Str("member") => Some(OverwriteKind::Member),
         _ => None,
     })
 }
@@ -254,8 +598,7 @@ pub(super) struct RawUser {
 
 /// Couleur présente (même `null`) : `Some`, avec sa valeur si elle tient sur 24 bits.
 fn de_present_color<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Option<u32>>, D::Error> {
-    let raw = Box::<RawValue>::deserialize(d)?;
-    Ok(Some(serde_json::from_str::<u32>(raw.get()).ok().filter(|c| *c <= 0xFF_FFFF)))
+    with_raw(d, |raw| Some(serde_json::from_str::<u32>(raw).ok().filter(|c| *c <= 0xFF_FFFF)))
 }
 
 impl RawUser {
@@ -657,7 +1000,10 @@ impl RawGuild {
             None => (Vec::new(), true),
         };
         let emojis = self.emojis.map(into_emojis).unwrap_or_default();
-        Some(Guild { id: self.id, name, channels, owner_id: self.owner_id.or(prop_owner), roles, me: member, roles_unreadable, icon, emojis, premium_tier, boosts, banner, tag })
+        let mut guild = Guild { id: self.id, name, channels, owner_id: self.owner_id.or(prop_owner), roles, me: member, roles_unreadable, icon, emojis, premium_tier, boosts, banner, tag };
+        // Gardé toute la session : sans la réserve des tableaux bruts (lot « ram »).
+        guild.shrink_to_fit();
+        Some(guild)
     }
 }
 
@@ -711,8 +1057,7 @@ pub(super) struct RawGuildUpdate {
 
 /// Champ présent (même `null`) : `Some`, avec l'empreinte si elle est lisible.
 pub(super) fn de_present_hash<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Option<ImageHash>>, D::Error> {
-    let raw = Box::<RawValue>::deserialize(d)?;
-    Ok(Some(serde_json::from_str::<String>(raw.get()).ok().as_deref().and_then(ImageHash::parse)))
+    with_raw(d, |raw| Some(serde_json::from_str::<String>(raw).ok().as_deref().and_then(ImageHash::parse)))
 }
 
 impl RawGuildUpdate {
@@ -1033,10 +1378,107 @@ pub(super) struct Hello {
     pub heartbeat_interval: u64,
 }
 
+/// Paquets READY, READY_SUPPLEMENTAL et GUILD_CREATE des tests du découpage
+/// partagé ([`Shared`]) : tous les jeux d'essai, chaque serveur d'un READY
+/// rejoué en GUILD_CREATE, et des formes hostiles (éléments qui ne sont pas des
+/// objets, champs en double, noms échappés, texte tronqué, espaces).
+#[cfg(test)]
+pub(super) fn guild_texts() -> Vec<(&'static str, String)> {
+    let mut out: Vec<(&'static str, String)> = Vec::new();
+    let dir = format!("{}/tests/fixtures", env!("CARGO_MANIFEST_DIR"));
+    let mut names: Vec<String> = std::fs::read_dir(&dir).into_iter().flatten().flatten().filter_map(|e| e.file_name().into_string().ok()).collect();
+    names.sort();
+    for name in names {
+        let kind = if name.starts_with("ready_supplemental") {
+            "READY_SUPPLEMENTAL"
+        } else if name.starts_with("ready_") {
+            "READY"
+        } else if name.starts_with("guild_create_") {
+            "GUILD_CREATE"
+        } else {
+            continue;
+        };
+        let text = std::fs::read_to_string(format!("{dir}/{name}")).unwrap_or_else(|e| panic!("{name} : {e}"));
+        let v: serde_json::Value = serde_json::from_str(&text).unwrap_or_else(|e| panic!("{name} : {e}"));
+        let d = &v["d"];
+        for g in d["guilds"].as_array().into_iter().flatten() {
+            out.push(("GUILD_CREATE", g.to_string()));
+        }
+        // Avec des retours à la ligne et des espaces, comme sans.
+        out.push((kind, serde_json::to_string_pretty(d).unwrap_or_default()));
+        out.push((kind, d.to_string()));
+    }
+    assert!(out.len() > 20, "jeux d'essai introuvables dans {dir}");
+    let guilds = [
+        r#"{ "id": "1", "properties": { "features": ["COMMUNITY"] }, "guild_scheduled_events": [] }"#,
+        "7",
+        r#"{ "id": "2", "unavailable": true }"#,
+        "[1, 2]",
+        r#"["3", "n"]"#,
+        "null",
+        r#""x""#,
+        "{}",
+        r#"{ "id": 3 }"#,
+        r#"{ "id": "4", "id": "5" }"#,
+        r#"{ "id": "4", "channels": [], "channels": [] }"#,
+        r#"{ "id": "4", "inconnu": 1, "inconnu": 2 }"#,
+        r#"{ "id": "7", "channels": [{ "id": "70", "type": 2, "name": "vocal" }] }"#,
+        r#"{ "channels": [{ "id": "9", "type": 2, "name": "v", "bitrate": 64000 }, 5, { "id": 9 }, { "id": "10", "type": 13, "name": "scène" }], "id": "6", "voice_states": [{ "user_id": "1", "channel_id": "9", "session_id": "s" }, 7], "stage_instances": [{ "id": "11", "channel_id": "10", "topic": "sujet" }, null] }"#,
+        r#"{ "id": "8", "channels": 5, "voice_states": {}, "stage_instances": "non", "properties": [], "roles": 3, "emojis": null }"#,
+        r#"  { "id" : "12" , "name" : "espaces" }  "#,
+    ];
+    for g in guilds {
+        out.push(("GUILD_CREATE", g.to_string()));
+    }
+    let all = guilds.join(", ");
+    for kind in ["READY", "READY_SUPPLEMENTAL"] {
+        out.push((kind, format!(r#"{{ "guilds": [{all}], "user": {{}} }}"#)));
+        out.push((kind, format!(r#"{{ "user": {{}}, "guilds": [{all}] }}"#)));
+        for odd in [r#"{ "guilds": { "a": 1 } }"#, r#"{ "guilds": null }"#, "{}", "[]", r#"[[{ "id": "1" }]]"#, r#"{ "guilds": [{ "id": "1" }], "guilds": [] }"#, r#"{ "guilds": [{ "id": "1" }"#, r#"  { "guilds" : [ { "id" : "1" } ] }  "#, "", "7"] {
+            out.push((kind, odd.to_string()));
+        }
+    }
+    for cut in [r#"{ "id": "1""#, r#"{ "id": "1", "channels": ["#, "{", r#"{ "id": "1" } trop"#, ""] {
+        out.push(("GUILD_CREATE", cut.to_string()));
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::state::SystemKind;
+
+    /// Le serveur lu par champs ([`Parts`]) est celui qu'on lisait d'un bloc,
+    /// sur tous les jeux d'essai et toutes les formes hostiles.
+    #[test]
+    fn parts_read_like_the_whole_text() {
+        let mut objects = 0;
+        for (kind, d) in guild_texts() {
+            if kind != "GUILD_CREATE" {
+                continue;
+            }
+            let parts = Parts::new(&d);
+            objects += usize::from(matches!(parts, Parts::Object(_)));
+            let guild = |g: Result<RawGuild, serde_json::Error>| g.ok().map(|g| (g.id, g.unavailable, g.channels.len(), g.roles.as_ref().map(Vec::len), format!("{:?}", g.into_guild(Some(1), None))));
+            assert_eq!(guild(parts.read::<RawGuild>()), guild(serde_json::from_str::<RawGuild>(&d)), "{d}");
+            // Une structure de sonde : stricte sur `id`, tolérante ailleurs.
+            let probe = |p: Result<Inner, serde_json::Error>| p.ok().map(|p| (p.id, p.name));
+            assert_eq!(probe(parts.read::<Inner>()), probe(serde_json::from_str::<Inner>(&d)), "{d}");
+            // Et lu sans structure : tous les champs, dans l'ordre.
+            let tree = |v: Result<serde_json::Value, serde_json::Error>| v.ok();
+            if !d.contains(r#""id": "4", "#) {
+                assert_eq!(tree(parts.read::<serde_json::Value>()), tree(serde_json::from_str::<serde_json::Value>(&d)), "{d}");
+            }
+        }
+        assert!(objects > 20, "{objects} serveurs découpés");
+        // Seuls les champs déclarés sont relus : un champ ignoré illisible à la
+        // relecture ne compte pas (il a déjà été validé au découpage).
+        let parts = Parts::new(r#"{ "name": "n", "id": "5", "gros": [1, 2, 3] }"#);
+        let Parts::Object(fields) = &parts else { panic!("objet attendu") };
+        assert_eq!(fields.iter().map(|(k, v)| (k.as_ref(), v.get())).collect::<Vec<_>>(), [("name", r#""n""#), ("id", r#""5""#), ("gros", "[1, 2, 3]")]);
+        assert!(fields.iter().all(|(k, _)| matches!(k, Cow::Borrowed(_))), "noms empruntés au texte");
+    }
 
     fn message(json: &str) -> Message {
         serde_json::from_str::<RawMessage>(json).map(RawMessage::into_message).unwrap_or_else(|e| panic!("JSON de test invalide : {e}"))
@@ -1339,5 +1781,254 @@ mod tests {
         // Groupe : l'icône, même nulle (retirée), est une information.
         assert_eq!(upd(r#"{ "id": "11", "type": 3, "icon": null }"#), Some(DmKnown { name: false, avatar: true }));
         assert_eq!(upd(&format!(r#"{{ "id": "11", "type": 3, "icon": "{H}" }}"#)), Some(DmKnown { name: false, avatar: true }));
+    }
+
+    // ---------------------------------------------------------------- lecture sans copie
+    //
+    // Le module `old` garde les anciennes écritures (copie par
+    // `Box<RawValue>`, `untagged`, `String` par identifiant) comme
+    // références : les nouvelles doivent rendre exactement la même chose,
+    // réussite comme échec, sur toutes les formes.
+
+    #[derive(Debug, PartialEq, Deserialize)]
+    struct Probe {
+        #[serde(default, deserialize_with = "de_lenient")]
+        a: Option<u32>,
+        #[serde(default, deserialize_with = "de_lenient")]
+        b: Option<Vec<Item<Inner>>>,
+        #[serde(default, deserialize_with = "de_loose_id")]
+        c: Option<u64>,
+        #[serde(default, deserialize_with = "de_opt_id")]
+        d: Option<u64>,
+        #[serde(default, deserialize_with = "de_perms")]
+        e: Option<Permissions>,
+        #[serde(default, deserialize_with = "de_overwrite_kind")]
+        f: Option<OverwriteKind>,
+    }
+
+    #[derive(Debug, PartialEq, Deserialize)]
+    struct Inner {
+        #[serde(deserialize_with = "de_id")]
+        id: u64,
+        #[serde(default, deserialize_with = "de_lenient")]
+        name: Option<String>,
+    }
+
+    impl<T: PartialEq> PartialEq for Item<T> {
+        fn eq(&self, o: &Self) -> bool {
+            self.0 == o.0
+        }
+    }
+
+    impl<T: std::fmt::Debug> std::fmt::Debug for Item<T> {
+        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            self.0.fmt(f)
+        }
+    }
+
+    mod old {
+        use crate::state::model::OverwriteKind;
+        use crate::state::Permissions;
+        use serde::{de::DeserializeOwned, de::IgnoredAny, Deserialize, Deserializer};
+        use serde_json::value::RawValue;
+
+        pub fn de_id<'de, D: Deserializer<'de>>(d: D) -> Result<u64, D::Error> {
+            let s = String::deserialize(d)?;
+            s.parse().map_err(serde::de::Error::custom)
+        }
+
+        pub fn de_opt_id<'de, D: Deserializer<'de>>(d: D) -> Result<Option<u64>, D::Error> {
+            Ok(Option::<String>::deserialize(d)?.and_then(|s| s.parse().ok()))
+        }
+
+        #[derive(Debug, PartialEq)]
+        pub struct Item<T>(pub Option<T>);
+
+        impl<'de, T: DeserializeOwned> Deserialize<'de> for Item<T> {
+            fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+                let raw = Box::<RawValue>::deserialize(d)?;
+                Ok(Item(serde_json::from_str(raw.get()).ok()))
+            }
+        }
+
+        pub fn de_lenient<'de, D: Deserializer<'de>, T: DeserializeOwned>(d: D) -> Result<Option<T>, D::Error> {
+            Ok(Item::<T>::deserialize(d)?.0)
+        }
+
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Loose {
+            Str(String),
+            Num(u64),
+            #[allow(dead_code)]
+            Other(IgnoredAny),
+        }
+
+        pub fn de_loose_id<'de, D: Deserializer<'de>>(d: D) -> Result<Option<u64>, D::Error> {
+            Ok(match Loose::deserialize(d)? {
+                Loose::Str(s) => s.parse().ok(),
+                Loose::Num(n) => Some(n),
+                Loose::Other(_) => None,
+            })
+        }
+
+        pub fn de_perms<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Permissions>, D::Error> {
+            Ok(match Loose::deserialize(d)? {
+                Loose::Str(s) => Permissions::parse(&s),
+                Loose::Num(n) => Some(Permissions(n)),
+                Loose::Other(_) => None,
+            })
+        }
+
+        pub fn de_overwrite_kind<'de, D: Deserializer<'de>>(d: D) -> Result<Option<OverwriteKind>, D::Error> {
+            Ok(match Loose::deserialize(d)? {
+                Loose::Num(0) => Some(OverwriteKind::Role),
+                Loose::Num(1) => Some(OverwriteKind::Member),
+                Loose::Str(s) if s == "role" => Some(OverwriteKind::Role),
+                Loose::Str(s) if s == "member" => Some(OverwriteKind::Member),
+                _ => None,
+            })
+        }
+
+        #[derive(Debug, PartialEq, Deserialize)]
+        pub struct Probe {
+            #[serde(default, deserialize_with = "de_lenient")]
+            pub a: Option<u32>,
+            #[serde(default, deserialize_with = "de_lenient")]
+            pub b: Option<Vec<Item<Inner>>>,
+            #[serde(default, deserialize_with = "de_loose_id")]
+            pub c: Option<u64>,
+            #[serde(default, deserialize_with = "de_opt_id")]
+            pub d: Option<u64>,
+            #[serde(default, deserialize_with = "de_perms")]
+            pub e: Option<Permissions>,
+            #[serde(default, deserialize_with = "de_overwrite_kind")]
+            pub f: Option<OverwriteKind>,
+        }
+
+        #[derive(Debug, PartialEq, Deserialize)]
+        pub struct Inner {
+            #[serde(deserialize_with = "de_id")]
+            pub id: u64,
+            #[serde(default, deserialize_with = "de_lenient")]
+            pub name: Option<String>,
+        }
+    }
+
+    /// Valeurs de toutes les formes, bonnes et mauvaises, y compris des
+    /// échappements, des espaces autour et des nombres hors bornes.
+    const SHAPES: &[&str] = &[
+        "null",
+        "true",
+        "false",
+        "0",
+        "1",
+        "2",
+        "-1",
+        "7",
+        "4294967296",
+        "18446744073709551615",
+        "18446744073709551616",
+        "1.5",
+        "-0.0",
+        "1e3",
+        r#""""#,
+        r#""12""#,
+        r#""role""#,
+        r#""member""#,
+        r#""-3""#,
+        r#""1024""#,
+        r#""abc""#,
+        r#""a\"b\\cé\n""#,
+        r#""18446744073709551616""#,
+        "[]",
+        "[1,2]",
+        r#"[{"id":"5","name":"x"}]"#,
+        r#"[{"id":"5","name":7}, 3, {"id":5}, {"id":"6"}, null, [], {"id":"x"}]"#,
+        "{}",
+        r#"{"id":"9"}"#,
+        r#"{"a":{"b":[1,{"c":null}]}}"#,
+        r#"  [ { "id" : "5" , "name" : "é\té" } ]  "#,
+    ];
+
+    type Flat = (Option<u32>, Option<Vec<Option<(u64, Option<String>)>>>, Option<u64>, Option<u64>, Option<Permissions>, Option<OverwriteKind>);
+
+    fn flat(p: Probe) -> Flat {
+        (p.a, p.b.map(|l| l.into_iter().map(|i| i.0.map(|x| (x.id, x.name))).collect()), p.c, p.d, p.e, p.f)
+    }
+
+    fn flat_old(p: old::Probe) -> Flat {
+        (p.a, p.b.map(|l| l.into_iter().map(|i| i.0.map(|x| (x.id, x.name))).collect()), p.c, p.d, p.e, p.f)
+    }
+
+    #[test]
+    fn lenient_readers_match_the_copying_ones_on_every_shape() {
+        let mut checked = 0;
+        for field in ["a", "b", "c", "d", "e", "f"] {
+            for shape in SHAPES {
+                let json = format!(r#"{{ "x": [1, "{{"], "{field}": {shape}, "y": null }}"#);
+                // Texte en mémoire (tous nos paquets), octets, flux (le texte
+                // brut y est possédé) et arbre déjà décodé.
+                let new = serde_json::from_str::<Probe>(&json).ok().map(flat);
+                let was = serde_json::from_str::<old::Probe>(&json).ok().map(flat_old);
+                assert_eq!(new, was, "{json}");
+                assert_eq!(serde_json::from_slice::<Probe>(json.as_bytes()).ok().map(flat), was, "octets {json}");
+                assert_eq!(serde_json::from_reader::<_, Probe>(json.as_bytes()).ok().map(flat), was, "flux {json}");
+                if let Ok(tree) = serde_json::from_str::<serde_json::Value>(&json) {
+                    let n = serde_json::from_value::<Probe>(tree.clone()).ok().map(flat);
+                    let w = serde_json::from_value::<old::Probe>(tree).ok().map(flat_old);
+                    assert_eq!(n, w, "arbre {json}");
+                }
+                checked += 1;
+            }
+        }
+        assert_eq!(checked, 6 * SHAPES.len());
+        // Un texte tronqué reste une erreur de tout le paquet, comme avant.
+        for cut in [r#"{ "a": [1, "#, r#"{ "b": [{"id":"5"}"#, r#"{ "c": "12"#] {
+            assert!(serde_json::from_str::<Probe>(cut).is_err() && serde_json::from_str::<old::Probe>(cut).is_err(), "{cut}");
+        }
+    }
+
+    #[test]
+    fn raw_text_is_lent_without_copy() {
+        struct Seen(String);
+        impl<'de> Deserialize<'de> for Seen {
+            fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+                with_raw(d, |raw| Seen(raw.to_owned()))
+            }
+        }
+        // Le texte remis est celui de `RawValue`, caractère pour caractère.
+        for shape in SHAPES {
+            let json = format!("[ {shape} ,1]");
+            let (got, _): (Seen, u8) = serde_json::from_str(&json).unwrap();
+            let (want, _): (Box<RawValue>, u8) = serde_json::from_str(&json).unwrap();
+            assert_eq!(got.0, want.get(), "{json}");
+        }
+        // Et il pointe dans le texte lu : aucune copie.
+        struct Inside(usize);
+        impl<'de> Deserialize<'de> for Inside {
+            fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+                with_raw(d, |raw| Inside(raw.as_ptr() as usize))
+            }
+        }
+        let json = String::from(r#"{"k": {"deep": [1, 2, 3]}}"#);
+        let got: HashMap<String, Inside> = serde_json::from_str(&json).unwrap();
+        let range = json.as_ptr() as usize..json.as_ptr() as usize + json.len();
+        assert!(range.contains(&got["k"].0), "le texte brut a été copié");
+        // Sous un tampon de serde (`untagged`), échec comme `RawValue`.
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Buffered {
+            #[allow(dead_code)]
+            New(Seen),
+        }
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum BufferedOld {
+            #[allow(dead_code)]
+            Old(Box<RawValue>),
+        }
+        assert!(serde_json::from_str::<Buffered>(r#"{"a":1}"#).is_err());
+        assert!(serde_json::from_str::<BufferedOld>(r#"{"a":1}"#).is_err());
     }
 }

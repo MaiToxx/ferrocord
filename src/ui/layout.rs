@@ -40,17 +40,27 @@ pub(super) struct Place {
 }
 
 impl App {
+    /// Mon statut personnalisé en une ligne, s'il y en a un en cours.
+    pub(super) fn user_panel_custom(&self) -> Option<String> {
+        let now = self.store.now();
+        let c = self.saved_custom_status().filter(|c| !c.expired(now))?;
+        // Un emoji personnalisé n'a pas de caractère : le texte seul.
+        let emoji = if c.emoji_id == 0 { c.emoji_name.as_str() } else { "" };
+        let line = [emoji, c.text.as_str()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ");
+        (!line.is_empty()).then_some(line)
+    }
+
+    /// Nom de l'activité annoncée (sans statut personnalisé, il suit la manette).
+    pub(super) fn user_panel_game(&self) -> Option<String> {
+        let p = self.store.own_presence()?;
+        p.game.map(|g| g.name).or_else(|| p.rich.map(|r| r.activity.name.clone())).filter(|n| !n.is_empty())
+    }
+
     /// Seconde ligne du panneau utilisateur : mon statut personnalisé, sinon
     /// mon statut en mots.
     pub(super) fn user_panel_line(&self) -> Option<String> {
-        let now = self.store.now();
-        if let Some(c) = self.saved_custom_status().filter(|c| !c.expired(now)) {
-            // Un emoji personnalisé n'a pas de caractère : le texte seul.
-            let emoji = if c.emoji_id == 0 { c.emoji_name.as_str() } else { "" };
-            let line = [emoji, c.text.as_str()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ");
-            if !line.is_empty() {
-                return Some(line);
-            }
+        if let Some(line) = self.user_panel_custom() {
+            return Some(line);
         }
         let status = self.own_status().or_else(|| self.store.me.as_ref().and_then(|me| super::profile::known_status(&self.ctx, me.id)))?;
         Some(super::profile::status_text(status).get(self.lang).to_string())

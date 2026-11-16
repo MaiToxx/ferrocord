@@ -55,10 +55,57 @@ const OFFLOAD_PACKET: usize = 256 << 10;
 /// Commandes en attente d'envoi, au plus (lots suivants : présence, souscriptions).
 const MAX_QUEUED: usize = 256;
 
+/// Ouverture de la connexion (TCP, TLS, WebSocket) : au-delà, nouvel essai.
+/// Sans ce plafond, une poignée de main TLS qui ne répond plus (réseau changé
+/// en cours de route) laissait la tâche attendre sans fin.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
+/// Attente du Hello après l'ouverture (Discord l'envoie aussitôt).
+const HELLO_TIMEOUT: Duration = Duration::from_secs(20);
+/// Envoi d'un paquet : au-delà, la connexion est tenue pour morte (tampon
+/// d'émission plein vers un pair qui ne lit plus).
+const SEND_TIMEOUT: Duration = Duration::from_secs(20);
+/// Une session n'est « stable » (compteur d'échecs remis à zéro) qu'après
+/// `reconnect_base` × ce facteur : 30 s en production. Une session acceptée
+/// puis coupée aussitôt, en boucle, voit donc son attente croître.
+const STABLE_FACTOR: u32 = 30;
+/// Après un code 4008 (débit) ou 4015 (trop de sessions) : attente d'au moins
+/// `reconnect_base` × ce facteur (60 s en production, la fenêtre de débit).
+const SLOW_FACTOR: u32 = 60;
+/// Reprises de suite refusées (connexion ouverte, ni RESUMED ni op 9) avant
+/// d'abandonner la session pour un Identify neuf.
+const RESUMES_REFUSED_MAX: u32 = 3;
+/// Reprises de suite dont l'adresse (`resume_gateway_url`) ne répond pas
+/// avant de repasser par la passerelle par défaut.
+const RESUMES_UNREACHABLE_MAX: u32 = 3;
+/// Marge au-delà de l'intervalle de heartbeat avant de conclure que
+/// l'horloge a sauté (veille de l'ordinateur) : au moins 10 s.
+const STALL_SLACK: Duration = Duration::from_secs(10);
+
 /// Délai avant la prochaine tentative : `base` doublé à chaque échec
-/// consécutif, plafonné à `MAX_RECONNECT_DELAY`.
+/// consécutif, plafonné à `MAX_RECONNECT_DELAY` (la gigue s'y ajoute :
+/// `backoff::equal_jitter`).
 fn reconnect_delay(base: Duration, failures: u32) -> Duration {
     base.checked_mul(1 << failures.min(6)).unwrap_or(MAX_RECONNECT_DELAY).min(MAX_RECONNECT_DELAY)
+}
+
+/// Le battement arrive-t-il si tard que l'ordinateur a dû dormir (ou que la
+/// boucle est restée bloquée) ? `mono` : temps écoulé depuis le battement
+/// précédent à l'horloge monotone ; `wall` : à l'horloge murale (`None` si
+/// elle a reculé). L'une ou l'autre suffit : selon le système, l'horloge
+/// monotone s'arrête ou non pendant la veille.
+fn stalled(mono: Duration, wall: Option<Duration>, period: Duration) -> bool {
+    let limit = period + (period / 2).max(STALL_SLACK);
+    mono > limit || wall.is_some_and(|w| w > limit)
+}
+
+/// Où en est une tentative : sert à compter les échecs sans confondre un
+/// réseau absent (rien à reprocher à la session) et une reprise refusée.
+#[derive(Default)]
+struct Progress {
+    /// WebSocket ouvert.
+    connected: bool,
+    /// READY ou RESUMED reçu.
+    established: bool,
 }
 
 /// Cause de déconnexion typée, transportée dans un `BoxError` jusqu'au statut.
@@ -93,6 +140,8 @@ impl From<InflateError> for Cause {
 
 enum End {
     Reconnect,
+    /// Discord demande de ralentir (4008, 4015) : reprise après une longue attente.
+    Slow,
     /// Flux compressé illisible : les connexions suivantes ne compressent plus.
     BadCompression(InflateError),
     Fatal { problem: Problem, bad_token: bool },
@@ -120,17 +169,24 @@ pub(super) struct Subs {
     /// Identité annoncée (Identify, en-têtes du WebSocket) ; par défaut : Ferrocord.
     identity: std::sync::Arc<super::identity::Identity>,
     ws_headers: Vec<(&'static str, String)>,
+    /// Compteurs de la connexion (sessions ouvertes, Identify).
+    health: std::sync::Arc<super::health::Health>,
 }
 
 impl Subs {
     pub(super) fn new(rx: tokio::sync::mpsc::UnboundedReceiver<Subscription>, token: &str) -> Self {
-        Subs { rx, open: true, pacer: Pacer::default(), bot: token.starts_with("Bot "), voice: None, op4: Default::default(), op4_pending: None, video: None, gw_video: Default::default(), presence_rx: None, presence: Default::default(), identity: std::sync::Arc::new(super::identity::Identity::ferrocord()), ws_headers: Vec::new() }
+        Subs { rx, open: true, pacer: Pacer::default(), bot: token.starts_with("Bot "), voice: None, op4: Default::default(), op4_pending: None, video: None, gw_video: Default::default(), presence_rx: None, presence: Default::default(), identity: std::sync::Arc::new(super::identity::Identity::ferrocord()), ws_headers: Vec::new(), health: Default::default() }
     }
 
     /// Identité de la connexion et en-têtes d'ouverture du WebSocket (`net::identity`).
     pub(super) fn with_identity(mut self, identity: std::sync::Arc<super::identity::Identity>, ws_headers: Vec<(&'static str, String)>) -> Self {
         self.identity = identity;
         self.ws_headers = ws_headers;
+        self
+    }
+
+    pub(super) fn with_health(mut self, health: std::sync::Arc<super::health::Health>) -> Self {
+        self.health = health;
         self
     }
 
@@ -166,9 +222,12 @@ pub(super) async fn gateway_task(token: String, ep: Endpoints, out: Out, mut sub
     let mut failures: u32 = 0;
     let mut compress = ep.compress;
     let mut identifies = IdentifyLimiter::new(ep.identify_interval, ep.identify_per_day);
+    let stable_after = ep.reconnect_base.saturating_mul(STABLE_FACTOR);
+    let (mut refused, mut unreachable) = (0u32, 0u32);
     loop {
         out.send(Event::Status(if st.resume.is_some() { Status::Resuming } else { Status::Connecting }));
-        if !st.resumable() {
+        let resuming = st.resumable();
+        if !resuming {
             // Identify espacés (5 s au moins) quel que soit le chemin qui y mène.
             let now = std::time::Instant::now();
             let at = identifies.next_allowed(now);
@@ -180,16 +239,46 @@ pub(super) async fn gateway_task(token: String, ep: Endpoints, out: Out, mut sub
         // Toute session qui n'atteint pas READY/RESUMED compte comme un échec :
         // aucun chemin (fermeture après Hello, op 7 ou op 9 répétés, heartbeats
         // non accusés) ne permet de boucle de reconnexion serrée contre Discord.
-        let mut established = false;
-        let result = session(&token, &ep, &mut st, compress, &mut identifies, &out, &mut established, &mut subs).await;
-        if established {
+        let mut prog = Progress::default();
+        let started = Instant::now();
+        let result = session(&token, &ep, &mut st, compress, &mut identifies, &out, &mut prog, &mut subs).await;
+        // Remise à zéro seulement après une session qui a tenu : une session
+        // acceptée puis coupée aussitôt, en boucle, n'est pas un succès.
+        let stable = prog.established && started.elapsed() >= stable_after;
+        if stable {
             failures = 0;
         }
+        // Reprise qui n'aboutit pas : ne pas la retenter sans fin.
+        if prog.established {
+            (refused, unreachable) = (0, 0);
+        } else if resuming && prog.connected {
+            refused += 1;
+            if refused >= RESUMES_REFUSED_MAX {
+                // Ni RESUMED ni op 9, plusieurs fois : session neuve (l'Identify
+                // reste espacé par `identifies`).
+                st.resume = None;
+                st.seq = None;
+                (refused, unreachable) = (0, 0);
+            }
+        } else if resuming {
+            unreachable += 1;
+            if unreachable >= RESUMES_UNREACHABLE_MAX
+                && let Some(r) = st.resume.as_mut()
+            {
+                // L'adresse de reprise ne répond pas : passerelle par défaut.
+                r.url = None;
+            }
+        }
+        let mut min_wait = Duration::ZERO;
         match result {
             Ok(End::Reconnect) => {
-                if !established {
+                if !stable {
                     failures += 1;
                 }
+            }
+            Ok(End::Slow) => {
+                failures += 1;
+                min_wait = ep.reconnect_base.saturating_mul(SLOW_FACTOR).min(MAX_RECONNECT_DELAY);
             }
             Ok(End::BadCompression(InflateError::TooLarge)) => {
                 // Pas une corruption : la compression reste ; erreur de session
@@ -211,7 +300,9 @@ pub(super) async fn gateway_task(token: String, ep: Endpoints, out: Out, mut sub
                 out.send(Event::Status(Status::Disconnected { cause: cause_of(e), no_compression: false }));
             }
         }
-        tokio::time::sleep(reconnect_delay(ep.reconnect_base, failures)).await;
+        // Gigue : jamais de nouvel essai à heure fixe (1 s, 2 s, 4 s pile).
+        let wait = super::backoff::equal_jitter(reconnect_delay(ep.reconnect_base, failures), super::backoff::unit()).max(min_wait);
+        tokio::time::sleep(wait).await;
     }
 }
 
@@ -266,8 +357,17 @@ where
     async fn raw(&mut self, text: String) -> Result<(), BoxError> {
         #[cfg(debug_assertions)]
         super::shapes::record_sent(&text);
-        self.sink.send(WsMsg::text(text)).await?;
-        Ok(())
+        match tokio::time::timeout(SEND_TIMEOUT, self.sink.send(WsMsg::text(text))).await {
+            Ok(r) => Ok(r?),
+            Err(_) => Err(Lost(Cause::Transport("envoi : délai dépassé".into())).into()),
+        }
+    }
+
+    /// Fermeture propre, au mieux (une seconde) : `1000` invalide la session
+    /// côté Discord, tout autre code la laisse reprendre (documentation).
+    async fn close(&mut self, code: u16) {
+        let frame = tungstenite::protocol::CloseFrame { code: code.into(), reason: Utf8Bytes::from_static("") };
+        let _ = tokio::time::timeout(Duration::from_secs(1), self.sink.send(WsMsg::Close(Some(frame)))).await;
     }
 
     async fn heartbeat(&mut self, seq: Option<u64>) -> Result<(), BoxError> {
@@ -447,7 +547,7 @@ async fn session(
     compress: bool,
     identifies: &mut IdentifyLimiter,
     out: &Out,
-    established: &mut bool,
+    prog: &mut Progress,
     subs: &mut Subs,
 ) -> Result<End, BoxError> {
     let base = st.resume.as_ref().and_then(|r| r.url.clone()).unwrap_or_else(|| ep.gateway.clone());
@@ -456,11 +556,16 @@ async fn session(
     let cfg = WebSocketConfig::default()
         .max_message_size(Some(ep.max_payload))
         .max_frame_size(Some(ep.max_payload));
-    let (ws, _) = tokio_tungstenite::connect_async_with_config(super::identity::ws_request(&url, &subs.ws_headers)?, Some(cfg), false).await?;
+    let connecting = tokio_tungstenite::connect_async_with_config(super::identity::ws_request(&url, &subs.ws_headers)?, Some(cfg), false);
+    let Ok(opened) = tokio::time::timeout(CONNECT_TIMEOUT, connecting).await else {
+        return Err(Lost(Cause::Transport("connexion : délai dépassé".into())).into());
+    };
+    let (ws, _) = opened?;
+    prog.connected = true;
     // Contexte de décompression neuf à chaque connexion.
     let mut work = Some(Work { inflater: compress.then(|| Inflater::new(ep.max_payload)), st: std::mem::take(st) });
     let mut job: Option<Job> = None;
-    let result = run(ws, token, ep, &mut work, &mut job, identifies, out, established, subs).await;
+    let result = run(ws, token, ep, &mut work, &mut job, identifies, out, &mut prog.established, subs).await;
     // Un décodage en cours détient l'état de la session : on le récupère.
     if let Some(j) = job.take() {
         work = Some(match j.finish().await {
@@ -494,8 +599,12 @@ where
     let Some(w) = work.as_mut() else { return Err(Lost(Cause::NoSessionState).into()) };
 
     // 1) Hello
+    let hello_by = Instant::now() + HELLO_TIMEOUT;
     let interval = loop {
-        let msg = match stream.next().await {
+        let Ok(next) = tokio::time::timeout_at(hello_by, stream.next()).await else {
+            return Err(Lost(Cause::Transport("Hello : délai dépassé".into())).into());
+        };
+        let msg = match next {
             Some(m) => m?,
             None => return Ok(End::Reconnect),
         };
@@ -521,6 +630,7 @@ where
 
     // 2) Identify ou Resume
     let identified = !w.st.resumable();
+    subs.health.session(identified);
     let first = match (w.st.resume.as_ref(), w.st.seq) {
         (Some(r), Some(s)) => json!({ "op": 6, "d": { "token": token, "session_id": r.session_id, "seq": s } }).to_string(),
         _ => {
@@ -533,16 +643,33 @@ where
     gw.flush().await?;
 
     // 3) Boucle principale
-    let mut hb = tokio::time::interval_at(Instant::now() + period / 2, period);
+    // Premier battement à un moment au hasard de l'intervalle (documentation :
+    // « heartbeat_interval * jitter »), puis à intervalle fixe. Un battement
+    // manqué n'est pas rattrapé en rafale : le rythme reprend, décalé.
+    let mut hb = tokio::time::interval_at(Instant::now() + period.mul_f64(super::backoff::unit()), period);
+    hb.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let mut last_beat = (Instant::now(), std::time::SystemTime::now());
     let mut acked = true;
     let mut last_seq = w.st.seq;
     loop {
         let retry = gw.retry_at;
         let control = tokio::select! {
             _ = hb.tick() => {
+                // Horloge qui a sauté (veille, reprise de l'ordinateur) : la
+                // connexion est morte côté Discord, inutile d'y écrire puis
+                // d'attendre un intervalle de plus. Reprise tout de suite.
+                let now = (Instant::now(), std::time::SystemTime::now());
+                let late = stalled(now.0.saturating_duration_since(last_beat.0), now.1.duration_since(last_beat.1).ok(), period);
+                last_beat = now;
+                if late {
+                    gw.close(CLOSE_RESUMABLE).await;
+                    return Ok(End::Reconnect);
+                }
                 // Accusé peut-être pas encore lu pendant un décodage : on attend la fin.
                 if !acked && job.is_none() {
-                    // Connexion zombie : on se reconnecte (et on reprend la session).
+                    // Connexion zombie : fermée avec un code qui garde la session
+                    // (ni 1000 ni 1001), puis reprise.
+                    gw.close(CLOSE_RESUMABLE).await;
                     return Ok(End::Reconnect);
                 }
                 acked = false;
@@ -717,13 +844,20 @@ where
             }
             Ok(Control::HeartbeatRequest) => gw.heartbeat(last_seq).await?,
             Ok(Control::Ack) => acked = true,
-            Ok(Control::Reconnect) => return Ok(End::Reconnect),
+            Ok(Control::Reconnect) => {
+                gw.close(CLOSE_RESUMABLE).await;
+                return Ok(End::Reconnect);
+            }
             Ok(Control::InvalidSession { resumable }) => {
                 if !resumable {
                     w.st.resume = None;
                     w.st.seq = None;
                 }
-                tokio::time::sleep(ep.invalid_session_wait).await;
+                // Documentation de Discord (Gateway, Invalid Session) : attendre
+                // une durée au hasard entre 1 et 5 s avant de s'identifier de nouveau.
+                let wait = super::backoff::between(ep.invalid_session_wait, ep.invalid_session_wait.saturating_mul(INVALID_SESSION_SPREAD), super::backoff::unit());
+                tokio::time::sleep(wait).await;
+                gw.close(if resumable { CLOSE_RESUMABLE } else { CLOSE_NORMAL }).await;
                 return Ok(End::Reconnect);
             }
             Ok(_) => {}
@@ -743,15 +877,35 @@ fn spawn_job(work: &mut Option<Work>, job: &mut Option<Job>, input: Input, hosts
     *job = Some(Job { handle, backup });
 }
 
+/// Code de fermeture envoyé quand la session doit pouvoir être reprise
+/// (« any close code besides 1000 or 1001 », documentation).
+const CLOSE_RESUMABLE: u16 = 4000;
+/// Fermeture normale : Discord oublie la session.
+const CLOSE_NORMAL: u16 = 1000;
+/// Attente après une session invalidée : de `invalid_session_wait` à cinq
+/// fois cette durée (1 à 5 s en production).
+const INVALID_SESSION_SPREAD: u32 = 5;
+
+/// Que faire d'un code de fermeture reçu (documentation de Discord, « Gateway
+/// Close Event Codes » ; 4015 : docs.discord.food, « Opcodes and Close
+/// Codes », lue le 15 novembre 2026).
 fn close_reason(code: Option<u16>, resume: &mut Option<Resume>, seq: &mut Option<u64>) -> End {
     match code.unwrap_or(0) {
+        // Jeton refusé : arrêt définitif, jamais de nouvel essai.
         4004 => End::Fatal { problem: Problem::BadToken, bad_token: true },
         c @ (4010..=4014) => End::Fatal { problem: Problem::Refused { code: c }, bad_token: false },
+        // Séquence invalide, session expirée : session neuve.
         4007 | 4009 => {
             *resume = None;
             *seq = None;
             End::Reconnect
         }
+        // Débit dépassé, trop de sessions : la session reste, mais on attend
+        // une fenêtre entière avant de revenir.
+        4008 | 4015 => End::Slow,
+        // 1000, 1001, 4000 à 4003, 4005, sans code, inconnu : reprise tentée
+        // (si Discord a oublié la session, il répond op 9 et l'Identify suit,
+        // espacé par le limiteur).
         _ => End::Reconnect,
     }
 }
@@ -766,6 +920,9 @@ pub(super) fn dispatch(kind: &str, d: &str, hosts: ResumeHosts, resume: &mut Opt
         .then(|| serde_json::from_str::<RawChannelMark>(d).ok())
         .flatten()
         .and_then(|c| out.interest.calm_channel_update(c.guild_id?, c.id, c.mark()).then(|| out.calm()));
+    // READY, GUILD_CREATE : serveurs découpés une fois pour tous les décodeurs
+    // du paquet (lot « long ») ; rien pour les autres paquets.
+    let shared = super::raw::Shared::of(kind, d);
     // Réactions, épingles, emojis (lots T5/T6) : décodés à part.
     super::social::dispatch(kind, d, out);
     // Fils et forums (lot T10).
@@ -844,7 +1001,7 @@ pub(super) fn dispatch(kind: &str, d: &str, hosts: ResumeHosts, resume: &mut Opt
             let mut stickers = Vec::new();
             let mut roles = Vec::new();
             let mut boosts = Vec::new();
-            if let Some(g) = serde_json::from_str::<RawGuild>(d).ok().and_then(|mut g| {
+            if let Some(g) = shared.guild().and_then(|g| g.read::<RawGuild>().ok()).and_then(|mut g| {
                 super::social::take_emojis(&mut g, &mut emojis);
                 super::threads::take(&mut g, &mut threads);
                 super::stickers::take(&mut g, &mut stickers);
@@ -1025,11 +1182,11 @@ pub(super) fn dispatch(kind: &str, d: &str, hosts: ResumeHosts, resume: &mut Opt
     super::interactions::dispatch(kind, d, out);
     // Modération (A4, A5), événements et fonctions du serveur (A7), après
     // READY et GUILD_CREATE.
-    super::admin::dispatch_after(kind, d, out);
+    super::admin::dispatch_after(kind, d, &shared, out);
     // Vocal des serveurs (phase 4), après READY et GUILD_CREATE.
-    super::voicegw::dispatch(kind, d, out);
+    super::voicegw::dispatch(kind, d, &shared, out);
     // Appels, états vocaux, conférences, sons joués (lot V6), après READY.
-    super::calls::dispatch(kind, d, out);
+    super::calls::dispatch(kind, d, &shared, out);
     // Directs (phase 5), après READY.
     super::streamgw::dispatch(kind, d, out);
 }
@@ -1088,7 +1245,30 @@ mod tests {
         assert_eq!(delays, vec![s(1), s(2), s(4), s(8), s(16), s(32), s(60), s(60), s(60)]);
         assert_eq!(reconnect_delay(base, u32::MAX), s(60));
         assert_eq!(reconnect_delay(Duration::MAX, 3), s(60));
-        assert_eq!(Endpoints::default().invalid_session_wait, s(2), "valeur de production inchangée");
+        // Session invalidée : de 1 à 5 s, au hasard (documentation de Discord).
+        assert_eq!(Endpoints::default().invalid_session_wait, s(1));
+        assert_eq!(INVALID_SESSION_SPREAD, 5);
+        // La gigue ne dépasse jamais le plafond et ne descend pas sous la moitié.
+        for u in [0.0, 0.3, 0.999_999] {
+            let d = crate::net::backoff::equal_jitter(reconnect_delay(base, 9), u);
+            assert!(d >= s(30) && d <= s(60), "{d:?}");
+        }
+    }
+
+    #[test]
+    fn a_clock_jump_is_told_from_an_ordinary_beat() {
+        let (s, hb) = (Duration::from_secs, Duration::from_millis(41_250));
+        // Battement à l'heure, ou en retard de quelques secondes (machine chargée).
+        assert!(!stalled(hb, Some(hb), hb));
+        assert!(!stalled(hb + s(15), Some(hb + s(15)), hb));
+        // Veille : l'une des deux horloges a avancé de bien plus qu'un intervalle.
+        assert!(stalled(hb, Some(s(3600)), hb), "horloge monotone arrêtée pendant la veille");
+        assert!(stalled(s(3600), Some(s(3600)), hb));
+        assert!(stalled(s(3600), None, hb), "horloge murale reculée : la monotone suffit");
+        // Horloge murale reculée (réglage de l'heure) : pas un saut.
+        assert!(!stalled(hb, None, hb));
+        // Intervalle très court (tests) : la marge de 10 s évite les fausses alertes.
+        assert!(!stalled(s(5), Some(s(5)), Duration::from_millis(50)));
     }
 
     // ------------------------------------------------------------ close_reason
@@ -1108,11 +1288,18 @@ mod tests {
                     assert!(!bad_token);
                     assert_eq!(problem, Problem::Refused { code });
                 }
-                End::Reconnect | End::BadCompression(_) => panic!("{code} devrait être fatal"),
+                End::Reconnect | End::Slow | End::BadCompression(_) => panic!("{code} devrait être fatal"),
             }
         }
-        let (mut r, mut s) = resumable();
-        assert!(matches!(close_reason(Some(4015), &mut r, &mut s), End::Reconnect));
+    }
+
+    #[test]
+    fn close_4008_and_4015_slow_down_but_keep_the_session() {
+        for code in [4008, 4015] {
+            let (mut r, mut s) = resumable();
+            assert!(matches!(close_reason(Some(code), &mut r, &mut s), End::Slow), "{code}");
+            assert!(r.is_some() && s == Some(42), "{code} : la reprise doit être gardée");
+        }
     }
 
     #[test]
@@ -1127,7 +1314,7 @@ mod tests {
 
     #[test]
     fn close_other_or_none_reconnect_keeping_resume() {
-        for code in [Some(1000), Some(1006), Some(4000), Some(4008), None] {
+        for code in [Some(1000), Some(1001), Some(1006), Some(4000), Some(4001), Some(4002), Some(4003), Some(4005), Some(4999), None] {
             let (mut r, mut s) = resumable();
             assert!(matches!(close_reason(code, &mut r, &mut s), End::Reconnect));
             assert!(r.is_some(), "{code:?} : la reprise doit être gardée");
@@ -1395,6 +1582,24 @@ mod tests {
     }
 
     /// READY minimal : `guilds` et `merged_members` donnés en JSON.
+    /// Lot « ram » : un serveur décodé ne garde pas la réserve de sa forme
+    /// brute (les tableaux étaient convertis sur place : un salon brut est
+    /// trois fois plus gros qu'un salon, et les salons vocaux sont écartés).
+    #[test]
+    fn ready_guilds_keep_no_spare_capacity() {
+        let list = |n: usize, one: &dyn Fn(usize) -> String| (0..n).map(one).collect::<Vec<_>>().join(",");
+        let channels = list(40, &|i| format!(r#"{{ "id": "{}", "type": {}, "name": "salon-{i}", "permission_overwrites": [{{ "id": "10", "type": 0, "allow": "0", "deny": "1024" }}] }}"#, 100 + i, if i % 4 == 0 { 2 } else { 0 }));
+        let roles = list(20, &|i| format!(r#"{{ "id": "{}", "name": "rôle {i}", "permissions": "1024" }}"#, 10 + i));
+        let emojis = list(33, &|i| format!(r#"{{ "id": "{}", "name": "emoji_{i}", "roles": ["11"] }}"#, 500 + i));
+        let guilds = format!(r#"[{{ "id": "10", "properties": {{ "name": "A" }}, "channels": [{channels}], "roles": [{roles}], "emojis": [{emojis}] }}]"#);
+        let g = &ready_with(&guilds, r#"[[{ "user_id": "1", "roles": [] }]]"#)[0];
+        assert_eq!((g.channels.len(), g.roles.len(), g.emojis.len()), (30, 20, 33));
+        assert_eq!((g.channels.capacity(), g.roles.capacity(), g.emojis.capacity()), (30, 20, 33));
+        assert!(g.channels.iter().all(|c| c.name.capacity() == c.name.len() && c.overwrites.as_ref().is_some_and(|o| o.capacity() == o.len())));
+        assert!(g.roles.iter().all(|r| r.name.capacity() == r.name.len()));
+        assert!(g.emojis.iter().all(|e| e.name.capacity() == e.name.len() && e.roles.capacity() == e.roles.len()));
+    }
+
     fn ready_with(guilds: &str, merged: &str) -> Vec<Guild> {
         let ready = format!(
             r#"{{ "user": {{ "id": "1", "username": "moi" }}, "session_id": "s", "resume_gateway_url": "wss://gateway.discord.gg",

@@ -311,9 +311,21 @@ impl App {
         }
         if !available {
             note(ui, t, s2::DESKTOP_IDENTITY_UNAVAILABLE.get(lang));
+        } else if p.identity.desktop {
+            // Valeurs figées au lancement : lues une fois, aucune requête.
+            let f = crate::net::identity::freshness();
+            value_row(ui, s2::IDENTITY_VERSIONS.get(lang), s2::IDENTITY_VERSIONS_TIP.get(lang), &versions_line(f));
+            if f.embedded_stale() {
+                note(ui, t, s2::IDENTITY_STALE_EMBEDDED.get(lang));
+            }
+            if f.build_stale() {
+                note(ui, t, s2::IDENTITY_STALE_BUILD.get(lang));
+            }
         }
 
         section(ui, t, s2::SEC_DEBUG.get(lang));
+        let health = crate::net::health::current().map_or_else(|| s2::NET_HEALTH_NONE.get(lang).to_string(), |h| health_line(&h));
+        value_row(ui, s2::NET_HEALTH.get(lang), s2::NET_HEALTH_TIP.get(lang), &health);
         note(ui, t, s2::LOCAL_TIP.get(lang));
         if let Some(v) = toggle(ui, s2::DEBUG_LOG.get(lang), s2::DEBUG_LOG_TIP.get(lang), Some(p.debug_log), true) {
             p.debug_log = v;
@@ -369,6 +381,19 @@ impl App {
             self.install.trusted.remove(&d);
         }
     }
+}
+
+/// « discord 1.0.9268 · build 673764 · Electron 44.10.2 · Chromium 152 » : ce
+/// qui est annoncé en mode bureau (lot « fiable »).
+fn versions_line(f: &crate::net::identity::Freshness) -> String {
+    let v = &f.versions;
+    format!("discord {} · build {} · Electron {} · Chromium {}", v.client_version, v.client_build_number, v.electron, v.chrome.split('.').next().unwrap_or_default())
+}
+
+/// Compteurs de la connexion, sur une ligne (libellés techniques, les mêmes
+/// dans les deux langues).
+fn health_line(h: &crate::net::health::Snapshot) -> String {
+    format!("4xx {} · 429 {} · 5xx {} · ↻ {} · ⦸ {} · WS {} (Identify {})", h.client_errors, h.rate_limited, h.server_errors, h.retries, h.spared, h.sessions, h.identifies)
 }
 
 /// Mode développeur activé dans les réglages synchronisés (tests).

@@ -19,7 +19,7 @@
 //! Tout part sur un geste, par le limiteur commun ; aucun en-tête ni champ
 //! propre au client officiel.
 
-use super::raw::{de_lenient, de_loose_id, Item};
+use super::raw::{de_lenient, de_loose_id, Item, Parts, Shared};
 use super::ratelimit::Route;
 use super::rest::{api_req, ApiError, Ctx};
 use super::Out;
@@ -131,12 +131,6 @@ impl RawGuildVoice {
 }
 
 #[derive(Deserialize)]
-struct RawGuilds {
-    #[serde(default)]
-    guilds: Vec<Item<RawGuildVoice>>,
-}
-
-#[derive(Deserialize)]
 struct RawStatusUpdate {
     #[serde(default, deserialize_with = "de_loose_id")]
     id: Option<u64>,
@@ -179,7 +173,14 @@ fn emoji_of(e: Option<RawEmoji>) -> Option<EffectEmoji> {
 }
 
 /// Paquets de la passerelle qui intéressent ce lot.
+#[cfg(test)]
 pub(super) fn decode(kind: &str, d: &str) -> Vec<Event> {
+    decode_shared(kind, d, &Shared::of(kind, d))
+}
+
+/// Comme [`decode`], avec le découpage du READY ou du GUILD_CREATE déjà fait
+/// pour tous les décodeurs du paquet.
+pub(super) fn decode_shared(kind: &str, d: &str, shared: &Shared) -> Vec<Event> {
     let mut out = Vec::new();
     match kind {
         "CALL_CREATE" | "CALL_UPDATE" => {
@@ -201,12 +202,10 @@ pub(super) fn decode(kind: &str, d: &str) -> Vec<Event> {
             }
         }
         "READY" | "READY_SUPPLEMENTAL" => {
-            if let Ok(r) = serde_json::from_str::<RawGuilds>(d) {
-                r.guilds.into_iter().filter_map(|g| g.0).for_each(|g| g.events(kind == "READY_SUPPLEMENTAL", &mut out));
-            }
+            shared.guilds().iter().filter_map(|g| g.read::<RawGuildVoice>().ok()).for_each(|g| g.events(kind == "READY_SUPPLEMENTAL", &mut out));
         }
         "GUILD_CREATE" => {
-            if let Ok(g) = serde_json::from_str::<RawGuildVoice>(d) {
+            if let Some(Ok(g)) = shared.guild().map(Parts::read::<RawGuildVoice>) {
                 g.events(false, &mut out);
             }
         }
@@ -242,7 +241,7 @@ pub(super) fn decode(kind: &str, d: &str) -> Vec<Event> {
 
 /// Appelé pour chaque paquet, après le traitement principal (READY doit
 /// arriver au magasin avant les états vocaux qu'il porte).
-pub(super) fn dispatch(kind: &str, d: &str, out: &Out) {
+pub(super) fn dispatch(kind: &str, d: &str, shared: &Shared, out: &Out) {
     if matches!(
         kind,
         "CALL_CREATE"
@@ -257,7 +256,7 @@ pub(super) fn dispatch(kind: &str, d: &str, out: &Out) {
             | "VOICE_CHANNEL_STATUS_UPDATE"
             | "VOICE_CHANNEL_EFFECT_SEND"
     ) {
-        decode(kind, d).into_iter().for_each(|e| out.send(e));
+        decode_shared(kind, d, shared).into_iter().for_each(|e| out.send(e));
     }
 }
 
@@ -428,6 +427,41 @@ pub(super) async fn run_stage(ctx: Arc<Ctx>, cmd: StageCmd) {
 mod tests {
     use super::*;
     use crate::state::stage::StageAction;
+
+    /// Le découpage partagé rend exactement ce que rendait la lecture du
+    /// texte entier (ancienne écriture, gardée ici comme référence).
+    #[test]
+    fn shared_split_reads_like_the_whole_text() {
+        fn whole(kind: &str, d: &str) -> Vec<Event> {
+            #[derive(Deserialize)]
+            struct RawGuilds {
+                #[serde(default)]
+                guilds: Vec<Item<RawGuildVoice>>,
+            }
+            let mut out = Vec::new();
+            match kind {
+                "READY" | "READY_SUPPLEMENTAL" => {
+                    if let Ok(r) = serde_json::from_str::<RawGuilds>(d) {
+                        r.guilds.into_iter().filter_map(|g| g.0).for_each(|g| g.events(kind == "READY_SUPPLEMENTAL", &mut out));
+                    }
+                }
+                "GUILD_CREATE" => {
+                    if let Ok(g) = serde_json::from_str::<RawGuildVoice>(d) {
+                        g.events(false, &mut out);
+                    }
+                }
+                _ => {}
+            }
+            out
+        }
+        let mut events = 0;
+        for (kind, d) in super::super::raw::guild_texts() {
+            let got = decode(kind, &d);
+            events += got.len();
+            assert_eq!(format!("{got:?}"), format!("{:?}", whole(kind, &d)), "{kind} {d}");
+        }
+        assert!(events > 5, "{events} événements comparés");
+    }
 
     fn fixture(name: &str) -> Value {
         let path = format!("{}/tests/fixtures/{name}.json", env!("CARGO_MANIFEST_DIR"));

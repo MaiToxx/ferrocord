@@ -13,10 +13,10 @@ pub mod t {
         TOASTS = "Notifications de bureau", "Desktop notifications";
         TOASTS_TIP = "Une notification de Windows par message qui vous notifie (au plus une par salon toutes les quelques secondes). Un clic ouvre le salon.", "A Windows notification for each message that notifies you (at most one per channel every few seconds). Clicking opens the channel.";
         SOUNDS = "Sons", "Sounds";
-        SOUNDS_TIP = "Son de message et son de mention (sons de Windows)", "Message and mention sounds (Windows sounds)";
+        SOUNDS_TIP = "Messages, mentions, vocal et appels", "Messages, mentions, voice and calls";
         VOLUME = "Volume des sons", "Sound volume";
         VOLUME_TIP = "De 0 à 100", "From 0 to 100";
-        TEST_SOUND = "Essayer", "Test";
+        TEST_SOUND = "Écouter", "Listen";
         BADGE = "Pastille", "Badge";
         BADGE_TIP = "Nombre de mentions non lues dans le titre de la fenêtre et sur l'icône de la zone de notification\u{a0}; la fenêtre clignote dans la barre des tâches à chaque mention.", "Unread mention count in the window title and on the notification area icon; the window flashes in the taskbar on each mention.";
         TRAY = "Icône dans la zone de notification", "Notification area icon";

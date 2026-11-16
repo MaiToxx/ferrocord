@@ -9,6 +9,9 @@ pub mod t {
         SHOW_CHAT = "Discussion", "Chat";
         SHOW_CHAT_TIP = "Afficher la discussion du salon", "Show the channel chat";
         SHOW_CALL = "Revenir à l'appel", "Back to the call";
+        SHRINK = "Réduire l'appel", "Minimize call";
+        SHRINK_TIP = "Revenir à la conversation, l'appel en bandeau au-dessus", "Back to the conversation, with the call in a strip above";
+        EXPAND = "Agrandir l'appel", "Expand call";
         CAMERA_ON = "Allumer la caméra", "Turn on camera";
         CAMERA_OFF = "Éteindre la caméra", "Turn off camera";
         SHARE = "Partager l'écran", "Share your screen";

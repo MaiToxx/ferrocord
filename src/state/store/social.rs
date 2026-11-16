@@ -58,6 +58,8 @@ pub struct Rights {
     pub pin: bool,
     /// Créer un fil depuis un message (lot T10).
     pub thread: bool,
+    /// MP du compte système de Discord : lecture seule, ni barre de survol ni transfert.
+    pub official: bool,
 }
 
 #[derive(Default)]
@@ -270,6 +272,10 @@ impl Store {
         let dm = !self.chan_guild.contains_key(&channel_id);
         let ok = |p| self.can(channel_id, p) != Verdict::Refuse;
         let history = ok(Permissions::READ_MESSAGE_HISTORY);
+        // MP du compte système de Discord : lecture seule, comme dans le client.
+        if dm && self.is_official_dm(channel_id) {
+            return Rights { me, dm, official: true, ..Rights::default() };
+        }
         Rights {
             me,
             dm,
@@ -279,6 +285,7 @@ impl Store {
             manage: !dm && ok(Permissions::MANAGE_MESSAGES),
             pin: dm || ok(Permissions::PIN_MESSAGES),
             thread: self.can_create_thread(channel_id),
+            official: false,
         }
     }
 

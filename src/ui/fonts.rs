@@ -15,7 +15,7 @@
 //! réglée sur son axe de graisse ; sans elle, la normale. Le code est en
 //! Consolas, comme dans le client sous Windows.
 //!
-//! Les styles de nom de Discord ont leurs polices à eux : douze polices
+//! Les styles de nom de Discord ont leurs polices à eux : quatorze polices
 //! libres embarquées (`assets/fonts/noms/`), chargées à la demande (voir
 //! « Polices de nom » plus bas).
 //!
@@ -662,11 +662,13 @@ fn fonts_dir() -> Option<PathBuf> {
 //
 // Discord dessine un nom stylé dans une police à lui
 // (`display_name_styles.font_id`, docs.discord.food, « Display Name Font »).
-// Douze de ces polices sont libres (SIL Open Font License 1.1) : leurs
+// Quatorze de ces polices sont libres (SIL Open Font License 1.1) : leurs
 // fichiers sont embarqués (`assets/fonts/noms/<famille>/`, licence à côté).
-// Les autres (Néo-Castel, Ribes, Sinistre) n'ont pas de fichier ici : elles
-// prennent la police de Windows la plus proche. gg sans, propriétaire, est
-// rendue par la demi-grasse de l'interface.
+// Néo-Castel n'est publiée que sur Gumroad, sans licence libre : pas de
+// fichier ici, elle prend la police de Windows la plus proche, ou le fichier
+// que l'utilisateur a posé lui-même (`<réglages>/ferrocord/polices/7.otf` ou
+// `7.ttf`, voir [`read_names`]). gg sans, propriétaire, est rendue par la
+// demi-grasse de l'interface.
 //
 // Une police embarquée ne coûte rien tant que personne ne la porte : ses
 // octets restent dans l'image de l'exécutable (pages jamais lues) et egui ne
@@ -682,7 +684,8 @@ enum NameSource {
     Interface,
     /// Fichier embarqué ; graisse réglée sur l'axe `wght` d'un fichier variable.
     Embedded(&'static [u8], Option<f32>),
-    /// Pas de fichier : la police de Windows la plus proche (fichier de `Fonts`).
+    /// Pas de fichier : la police de Windows la plus proche (fichier de `Fonts`),
+    /// ou le fichier de l'utilisateur (`polices/<id>.otf` ou `.ttf` des réglages).
     Substitute(&'static str),
 }
 
@@ -717,7 +720,8 @@ const fn name(id: u16, label: &'static str, font: &'static str, offered: bool, f
 /// Polices de nom, dans l'ordre du sélecteur (gg sans d'abord, puis par
 /// identifiant). Seize entrées au plus : [`want`] les compte sur 16 bits.
 /// Fichiers variables : graisse 700, comme les fichiers statiques retenus
-/// (Kalam, Zilla Slab et Compagnon en « Bold »).
+/// (Kalam, Sinistre et Compagnon en « Bold »). Zilla Slab : la demi-grasse
+/// (« SemiBold », 600) ; Ribes : « Black », la graisse forte de ses trois.
 pub(crate) static NAMES: [NameFont; 16] = [
     name(11, "gg Sans", "gg sans", true, "ferrocord-nom-11", NameSource::Interface),
     name(1, "Bangers", "Bangers", false, "ferrocord-nom-1", embedded!("bangers/Bangers-Regular.ttf")),
@@ -726,11 +730,13 @@ pub(crate) static NAMES: [NameFont; 16] = [
     name(4, "Jellybean", "Chicle", true, "ferrocord-nom-4", embedded!("chicle/Chicle-Regular.ttf")),
     name(5, "Compagnon", "Compagnon", false, "ferrocord-nom-5", embedded!("compagnon/Compagnon-Bold.otf")),
     name(6, "Modern", "MuseoModerno", true, "ferrocord-nom-6", embedded!("museomoderno/MuseoModerno[wght].ttf", 700.0)),
-    name(7, "Medieval", "Néo-Castel", true, "ferrocord-nom-7", NameSource::Substitute("georgiab.ttf")),
+    // Néo-Castel (onciale, sur Gumroad, sans licence libre) n'est pas redistribuable : Palatino Linotype, calligraphique et
+    // de graisse normale, en tient lieu (Georgia grasse alourdissait le nom).
+    name(7, "Medieval", "Néo-Castel", true, "ferrocord-nom-7", NameSource::Substitute("pala.ttf")),
     name(8, "8Bit", "Pixelify Sans", true, "ferrocord-nom-8", embedded!("pixelifysans/PixelifySans[wght].ttf", 700.0)),
-    name(9, "Ribes", "Ribes", false, "ferrocord-nom-9", NameSource::Substitute("segoeprb.ttf")),
-    name(10, "Vampyre", "Sinistre", true, "ferrocord-nom-10", NameSource::Substitute("georgiab.ttf")),
-    name(12, "Tempo", "Zilla Slab", true, "ferrocord-nom-12", embedded!("zillaslab/ZillaSlab-Bold.ttf")),
+    name(9, "Ribes", "Ribes", false, "ferrocord-nom-9", embedded!("ribes/Ribes-Black.otf")),
+    name(10, "Vampyre", "Sinistre", true, "ferrocord-nom-10", embedded!("sinistre/Sinistre-Bold.otf")),
+    name(12, "Tempo", "Zilla Slab", true, "ferrocord-nom-12", embedded!("zillaslab/ZillaSlab-SemiBold.ttf")),
     name(13, "Monkey Bars", "Playpen Sans", true, "ferrocord-nom-13", embedded!("playpensans/PlaypenSans[wght].ttf", 700.0)),
     name(14, "Mainframe", "Orbitron", true, "ferrocord-nom-14", embedded!("orbitron/Orbitron[wght].ttf", 700.0)),
     name(15, "Headbang", "New Rocker", true, "ferrocord-nom-15", embedded!("newrocker/NewRocker-Regular.ttf")),
@@ -761,7 +767,8 @@ impl NameFont {
     }
 }
 
-/// Fichiers de Windows des polices de nom sans fichier embarqué (nom du fichier, contenu projeté).
+/// Fichiers des polices de nom sans fichier embarqué : celui de l'utilisateur,
+/// sinon celui de Windows (nom du fichier de Windows, contenu projeté).
 static NAME_DATA: std::sync::Mutex<Vec<(&'static str, Bytes)>> = std::sync::Mutex::new(Vec::new());
 
 /// Famille du style de nom `font_id` ; identifiant inconnu : la demi-grasse.
@@ -819,20 +826,33 @@ fn want(ctx: &egui::Context, i: usize) {
     commit(ctx, Applied { names: a.names | bit, ..(*a).clone() });
 }
 
-/// Lit (projette) les polices de Windows des styles sans fichier embarqué.
-fn read_names(dir: &Path) {
+/// Lit (projette) les polices des styles sans fichier embarqué, dans le fil
+/// des polices. Un fichier que l'utilisateur a posé dans `own`
+/// (`<réglages>/ferrocord/polices/`), nommé d'après l'identifiant du style
+/// (`7.otf` ou `7.ttf` pour Néo-Castel), passe avant la police de Windows
+/// (`dir`) : c'est ainsi qu'une police non redistribuable, obtenue de son
+/// auteur, est utilisée. Même contrôle que les autres fichiers (taille,
+/// en-tête de police) ; lu au démarrage seulement.
+fn read_names(dir: &Path, own: Option<&Path>) {
+    let found = find_names(dir, own);
+    if let Ok(mut kept) = NAME_DATA.lock() {
+        *kept = found;
+    }
+}
+
+fn find_names(dir: &Path, own: Option<&Path>) -> Vec<(&'static str, Bytes)> {
     let mut found: Vec<(&'static str, Bytes)> = Vec::new();
     for n in &NAMES {
         if let NameSource::Substitute(file) = n.source
             && !found.iter().any(|(f, _)| *f == file)
-            && let Some(bytes) = read(dir, file, MAX_FONT_BYTES)
+            && let Some(bytes) = own
+                .and_then(|o| ["otf", "ttf"].iter().find_map(|ext| read(o, &format!("{}.{ext}", n.id), MAX_FONT_BYTES)))
+                .or_else(|| read(dir, file, MAX_FONT_BYTES))
         {
             found.push((file, bytes));
         }
     }
-    if let Ok(mut kept) = NAME_DATA.lock() {
-        *kept = found;
-    }
+    found
 }
 
 /// Met en tête de sa famille (et de sa jumelle) chaque police de nom
@@ -961,6 +981,29 @@ fn commit(ctx: &egui::Context, a: Applied) {
     ctx.request_repaint();
 }
 
+/// Largeur donnée au plus à l'atlas des glyphes (lot « ram »).
+///
+/// egui crée l'atlas à la largeur maximale d'une texture du processeur
+/// graphique (16 384 pixels ici) sur 32 de haut, puis double sa hauteur au
+/// besoin : 2 Mo dès la première image, gardés par egui, par la texture et par
+/// la copie du pilote, alors que le démarrage n'en remplit pas la moitié. À
+/// 8 192 de large, il part d'1 Mo et grandit par pas d'1 Mo. Le dessin ne
+/// change pas : mêmes glyphes, mêmes pixels, seule leur place dans la texture
+/// diffère (largeurs en puissances de deux : coordonnées exactes).
+///
+/// Pas plus étroit : cette valeur est aussi la borne qu'egui vérifie, en
+/// compilation de débogage, pour toute texture créée ; 8 192 couvre toutes
+/// les images (4 096 au plus) et une vidéo en 8K.
+pub const ATLAS_SIDE: usize = 8192;
+
+/// Borne l'atlas des glyphes : à appeler sur les entrées de chaque image,
+/// avant qu'egui les lise (`eframe::App::raw_input_hook`).
+pub fn limit_atlas(raw: &mut egui::RawInput) {
+    if let Some(side) = &mut raw.max_texture_side {
+        *side = (*side).min(ATLAS_SIDE);
+    }
+}
+
 /// Familles prêtes tout de suite (police intégrée), puis Segoe UI et les polices
 /// de repli projetées dans un fil à part et installées à l'image suivante. Le fil d'interface ne lit
 /// aucun fichier.
@@ -976,7 +1019,7 @@ pub fn install(ctx: &egui::Context) {
         if data[0].is_some() {
             // Repli projeté ici aussi, puis une seule installation : une seule remise en page.
             let extra = read_fallbacks(&dir);
-            read_names(&dir);
+            read_names(&dir, crate::platform::config_dir().map(|d| d.join("ferrocord").join("polices")).as_deref());
             if let Ok(mut kept) = SYSTEM.lock() {
                 *kept = Some((data.clone(), extra.clone()));
             }
@@ -1069,6 +1112,30 @@ mod tests {
         let _ = std::fs::write(dir.join("vraie.ttf"), [0u8, 1, 0, 0, 9]);
         assert_eq!(read(&dir, "vraie.ttf").as_deref(), Some(&[0u8, 1, 0, 0, 9][..]));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Police non redistribuable (Néo-Castel) : le fichier que l'utilisateur
+    /// a posé, nommé d'après l'identifiant du style, passe avant la police de
+    /// Windows ; un fichier qui n'est pas une police est ignoré, et les
+    /// styles embarqués ne lisent jamais ce dossier.
+    #[test]
+    fn user_file_replaces_the_windows_substitute() {
+        let root = std::env::temp_dir().join(format!("ferrocord-polices-nom-{}", std::process::id()));
+        let (windows, own) = (root.join("Fonts"), root.join("polices"));
+        let _ = std::fs::create_dir_all(&windows);
+        let _ = std::fs::create_dir_all(&own);
+        let bytes = |found: &[(&'static str, Bytes)]| found.iter().map(|(f, b)| (*f, (**b).as_ref().to_vec())).collect::<Vec<_>>();
+        assert!(find_names(&windows, Some(&own)).is_empty());
+        let _ = std::fs::write(windows.join("pala.ttf"), [0u8, 1, 0, 0, 1]);
+        let _ = std::fs::write(own.join("7.otf"), b"pas une police");
+        let _ = std::fs::write(own.join("9.otf"), b"OTTO\x09");
+        assert_eq!(bytes(&find_names(&windows, Some(&own))), [("pala.ttf", vec![0u8, 1, 0, 0, 1])]);
+        let _ = std::fs::write(own.join("7.ttf"), [0u8, 1, 0, 0, 7]);
+        assert_eq!(bytes(&find_names(&windows, Some(&own))), [("pala.ttf", vec![0u8, 1, 0, 0, 7])]);
+        let _ = std::fs::write(own.join("7.otf"), b"OTTO\x07");
+        assert_eq!(bytes(&find_names(&windows, Some(&own))), [("pala.ttf", b"OTTO\x07".to_vec())]);
+        assert_eq!(bytes(&find_names(&windows, None)), [("pala.ttf", vec![0u8, 1, 0, 0, 1])]);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// Chaque caractère du jeu d'essai trouve un glyphe dans la chaîne, repli
@@ -1250,8 +1317,8 @@ mod name_tests {
     }
 
     /// Identifiant de Discord → police (docs.discord.food, « Display Name
-    /// Font ») : les douze polices libres sont embarquées, Néo-Castel, Ribes
-    /// et Sinistre gardent un fichier de Windows, gg sans et tout identifiant
+    /// Font ») : les quatorze polices libres sont embarquées, Néo-Castel
+    /// garde un fichier de Windows, gg sans et tout identifiant
     /// inconnu la demi-grasse de l'interface.
     #[test]
     fn discord_font_ids_map_to_their_fonts() {
@@ -1265,10 +1332,10 @@ mod name_tests {
             (6, "MuseoModerno", "MuseoModerno[wght].ttf", true),
             (7, "Néo-Castel", "", true),
             (8, "Pixelify Sans", "PixelifySans[wght].ttf", true),
-            (9, "Ribes", "", false),
-            (10, "Sinistre", "", true),
+            (9, "Ribes", "Ribes-Black.otf", false),
+            (10, "Sinistre", "Sinistre-Bold.otf", true),
             (11, "gg sans", "", true),
-            (12, "Zilla Slab", "ZillaSlab-Bold.ttf", true),
+            (12, "Zilla Slab", "ZillaSlab-SemiBold.ttf", true),
             (13, "Playpen Sans", "PlaypenSans[wght].ttf", true),
             (14, "Orbitron", "Orbitron[wght].ttf", true),
             (15, "New Rocker", "NewRocker-Regular.ttf", true),
@@ -1282,7 +1349,7 @@ mod name_tests {
             match n.source {
                 NameSource::Interface => assert_eq!((id, styled(&ctx, id)), (11, demi())),
                 NameSource::Substitute(windows) => {
-                    assert!([7, 9, 10].contains(&id) && windows.ends_with(".ttf"));
+                    assert!(id == 7 && windows.ends_with(".ttf"));
                     assert_eq!(styled(&ctx, id), FontFamily::Name(format!("ferrocord-nom-{id}").into()));
                 }
                 NameSource::Embedded(bytes, weight) => {
@@ -1297,7 +1364,7 @@ mod name_tests {
                 }
             }
         }
-        assert_eq!(NAMES.iter().filter(|n| n.embedded()).count(), 12);
+        assert_eq!(NAMES.iter().filter(|n| n.embedded()).count(), 14);
         for unknown in [0, 17, 999] {
             assert_eq!(styled(&ctx, unknown), demi(), "{unknown}");
         }
@@ -1305,6 +1372,31 @@ mod name_tests {
         let offered: Vec<u16> = NAMES.iter().filter(|n| n.offered).map(|n| n.id).collect();
         assert_eq!(offered, [11, 3, 4, 6, 7, 8, 10, 12, 13, 14, 15, 16]);
         assert_eq!(DEFAULT_NAME_FONT, 11);
+    }
+
+    /// Lot « ram » : l'atlas des glyphes est borné en largeur, jamais élargi.
+    #[test]
+    fn atlas_width_is_capped_not_raised() {
+        let side = |given: Option<usize>| {
+            let mut raw = egui::RawInput { max_texture_side: given, ..Default::default() };
+            limit_atlas(&mut raw);
+            raw.max_texture_side
+        };
+        assert_eq!(side(Some(16_384)), Some(ATLAS_SIDE));
+        assert_eq!(side(Some(4096)), Some(4096), "processeur graphique plus modeste : sa limite reste");
+        assert_eq!(side(None), None, "rien d'annoncé : rien d'inventé");
+        // Toute image de l'application tient sous la borne (egui la vérifie en débogage).
+        assert!(ATLAS_SIDE >= crate::images::decode::MAX_SIDE as usize && ATLAS_SIDE.is_power_of_two());
+        // egui part bien de cette largeur : 8 192 × 32 pixels, soit 1 Mo au lieu de 2.
+        let ctx = egui::Context::default();
+        install_builtin(&ctx);
+        let mut raw = egui::RawInput { max_texture_side: Some(16_384), ..Default::default() };
+        limit_atlas(&mut raw);
+        let mut out = ctx.run_ui(raw, |ui| {
+            ui.label("atlas");
+        });
+        out.textures_delta.clear();
+        assert_eq!(ctx.fonts(|f| f.font_image_size())[0], ATLAS_SIDE);
     }
 
     /// Au démarrage, aucune police de nom embarquée n'est connue d'egui : les

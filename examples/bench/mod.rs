@@ -4,7 +4,7 @@
 //! synthétique : par défaut 100 serveurs × 50 salons, quatre salons de 500
 //! messages variés (courts, longs, sur plusieurs lignes, liens, embeds,
 //! pièces jointes), et un salon de 2 000 messages dont seule la dernière page
-//! est en mémoire au départ : la connev.iter().for_each(|x| Self::flat(e, x, out))ion simulée sert les autres page par
+//! est en mémoire au départ : la connexion simulée sert les autres page par
 //! page (`before`, `after`), comme Discord. Le banc enchaîne des phases de
 //! plusieurs centaines d'images chacune et produit un rapport texte et JSON.
 //!
@@ -40,6 +40,11 @@
 //! modifié, supprimé, nouveau message, nouvelle pastille, salon renommé) :
 //! chacun doit réveiller l'interface.
 
+pub mod alloc;
+pub mod compte;
+pub mod cpu;
+pub mod long;
+
 use super::{Generated, Offline, View};
 use eframe::egui;
 use ferrocord::images::{self, Images};
@@ -74,11 +79,14 @@ pub struct BenchCfg {
     pub out: Option<PathBuf>,
     /// Nom de la série dans le rapport (par exemple « avant » ou « après »).
     pub label: String,
+    /// Sans la borne de l'atlas des polices (`--bench-atlas-libre`, lot
+    /// « long ») : même exécutable, pour isoler son effet sur le temps d'image.
+    pub free_atlas: bool,
 }
 
 impl Default for BenchCfg {
     fn default() -> Self {
-        BenchCfg { guilds: 100, channels: 50, messages: 500, deep: 2000, frames: 300, quiet: 10, out: None, label: String::from("banc") }
+        BenchCfg { guilds: 100, channels: 50, messages: 500, deep: 2000, frames: 300, quiet: 10, out: None, label: String::from("banc"), free_atlas: false }
     }
 }
 
@@ -86,6 +94,16 @@ const GUILD_BASE: u64 = 6_000_000_000_000_000_000;
 const CHANNEL_BASE: u64 = 6_100_000_000_000_000_000;
 const ME: u64 = 1_000_000_000_000_000_001;
 const AUTHORS: u64 = 40;
+/// Octets vivants du tas tolérés 3 s après le démarrage du compte simulé
+/// (`--bench-mem demarrage` : READY de 100 serveurs, 10 000 jeux détectables,
+/// un salon affiché). Mesuré : 11,1 Mo après le lot « ram », 20,3 Mo avant.
+/// Au-dessus, le relevé se termine en échec (code de sortie 1).
+const START_HEAP_MAX: usize = 16 << 20;
+/// Octets vivants du tas tolérés au repos après le chargement du magasin du banc
+/// (lot « ram » : magasin, 2 500 messages, polices, images de l'écran). Mesuré : 10,9 Mo. Le seuil est large (un cache de plus ne le
+/// franchit pas), mais une structure gardée en double ou une liste décodée
+/// sans compactage le franchit.
+const REST_HEAP_MAX: usize = 16 << 20;
 /// Salons remplis de messages (le premier est ouvert).
 const FILLED: usize = 4;
 /// Débit de la phase « arrivée ».
@@ -353,6 +371,75 @@ pub fn process_memory() -> Option<(u64, u64, u64)> {
     Some((it.next()??, it.next()??, it.next()??))
 }
 
+/// Compteurs de mémoire lus dans le processus (`perf::memory`), sans PowerShell.
+#[cfg(windows)]
+fn usage() -> Option<ferrocord::perf::memory::Usage> {
+    ferrocord::perf::memory::usage()
+}
+
+/// Hors de Windows : pas de compteurs.
+#[cfg(not(windows))]
+fn usage() -> Option<Usage> {
+    None
+}
+
+#[cfg(not(windows))]
+struct Usage {
+    private: u64,
+    working: u64,
+    private_working: u64,
+}
+
+fn usage_json() -> Value {
+    match usage() {
+        Some(u) => json!({ "privee_mo": mo(u.private), "travail_mo": mo(u.working), "travail_privee_mo": mo(u.private_working) }),
+        None => Value::Null,
+    }
+}
+
+/// Répartition de la mémoire privée engagée (`perf::memory::map`) : modules
+/// (les plus lourds nommés), piles, tas (engagé et alloué), reste.
+#[cfg(windows)]
+fn map_json() -> Value {
+    let m = ferrocord::perf::memory::map();
+    // Bibliothèques graphiques réellement chargées (lot « gl ») : `libglesv2.dll` dit qu'ANGLE
+    // sert, `atio6axx.dll`, `nvoglv64.dll`… que c'est le pilote OpenGL du fabricant.
+    const GRAPHIQUES: [&str; 14] = ["libegl", "libgles", "opengl32", "atio", "atid", "amdx", "nvogl", "nvwgf", "nvldumd", "ig", "d3d1", "d3dcompiler", "dxgi", "vulkan"];
+    let pilotes: Vec<&str> = m.by_module.iter().map(|(n, _)| n.as_str()).filter(|n| GRAPHIQUES.iter().any(|g| n.starts_with(g))).collect();
+    let modules: Vec<Value> = m.by_module.iter().take(8).filter(|(_, b)| *b >= 512 * 1024).map(|(n, b)| json!({ "module": n, "mo": mo(*b) })).collect();
+    json!({
+        "pilotes": pilotes,
+        "modules_mo": mo(m.images), "principaux_modules": modules,
+        "piles_mo": mo(m.stacks), "piles": m.stack_count,
+        "tas_engage_mo": mo(m.heaps), "tas_alloue_mo": mo(m.heaps_allocated), "tas": m.heap_count,
+        "autre_mo": mo(m.other), "total_mo": mo(m.total()), "sections_partagees_mo": mo(m.mapped),
+    })
+}
+
+#[cfg(not(windows))]
+fn map_json() -> Value {
+    Value::Null
+}
+
+/// Tas engagé, tas alloué et reste de la mémoire privée, pour une étape.
+#[cfg(windows)]
+fn stage_map() -> Option<(u64, u64, u64)> {
+    let m = ferrocord::perf::memory::map();
+    Some((m.heaps, m.heaps_allocated, m.other))
+}
+
+#[cfg(not(windows))]
+fn stage_map() -> Option<(u64, u64, u64)> {
+    None
+}
+
+/// Nombre de fils du processus (PowerShell, comme la mémoire).
+fn thread_count() -> Option<u64> {
+    let cmd = format!("(Get-Process -Id {}).Threads.Count", std::process::id());
+    let out = std::process::Command::new("powershell").args(["-NoProfile", "-NonInteractive", "-Command", &cmd]).output().ok()?;
+    String::from_utf8_lossy(&out.stdout).trim().parse().ok()
+}
+
 fn mem_json(m: Option<(u64, u64, u64)>) -> Value {
     match m {
         Some((p, w, peak)) => json!({ "privee_mo": mo(p), "travail_mo": mo(w), "pic_travail_mo": mo(peak) }),
@@ -425,6 +512,20 @@ type Shots = Arc<Mutex<Vec<(usize, Arc<egui::ColorImage>)>>>;
 struct Series {
     layout: Vec<f64>,
     frame: Vec<f64>,
+    /// Allocations faites pendant l'image, tous fils (lot « long ») : ce que
+    /// l'image refait à l'identique se voit d'abord ici.
+    allocs: Vec<f64>,
+}
+
+/// Médiane, 95e centile et maximum d'un compte par image.
+fn counts(v: &[f64]) -> Value {
+    if v.is_empty() {
+        return Value::Null;
+    }
+    let mut s = v.to_vec();
+    s.sort_by(f64::total_cmp);
+    let q = |p: f64| s[((s.len() - 1) as f64 * p).round() as usize];
+    json!({ "mediane": q(0.5), "p95": q(0.95), "max": s[s.len() - 1] })
 }
 
 fn stats(v: &[f64]) -> Value {
@@ -487,6 +588,8 @@ pub struct Bench {
     first_frame_cpu: Option<f64>,
     mem_start: Option<(u64, u64, u64)>,
     mem_loaded: Option<std::thread::JoinHandle<Option<(u64, u64, u64)>>>,
+    /// Mémoire au repos après le démarrage (lot « ram ») : compteurs, tas vivant et répartition, lus dans le processus.
+    rest: Option<(Value, alloc::Heap)>,
     /// Mémoire à la fin des phases qui la font monter (changements de salon, historique).
     mem_phases: Vec<(&'static str, MemSample)>,
     live_sent: u64,
@@ -541,6 +644,8 @@ pub struct Bench {
     /// Temps processeur par phase : images, fil d'interface (ms), autres fils (ms).
     cpu: Vec<(Phase, usize, f64, f64)>,
     cpu_mark: (f64, f64),
+    /// Allocations comptées au début de l'image précédente.
+    alloc_mark: usize,
     /// Phase « trafic » (lot « perf »).
     traffic: Traffic,
 }
@@ -568,6 +673,7 @@ impl Bench {
             first_frame_cpu: None,
             mem_start,
             mem_loaded: None,
+            rest: None,
             mem_phases: Vec::new(),
             live_sent: 0,
             live_seq: 0,
@@ -605,6 +711,7 @@ impl Bench {
             frame_no: 0,
             cpu: Vec::new(),
             cpu_mark: (0.0, 0.0),
+            alloc_mark: 0,
             traffic: Traffic::default(),
         }
     }
@@ -666,6 +773,8 @@ impl Bench {
     pub fn before(&mut self, frame: &eframe::Frame, app: &mut App, ctx: &egui::Context) {
         self.frame_no += 1;
         let cpu = frame.info().cpu_usage.map(|s| f64::from(s) * 1000.0);
+        let allocated = alloc::live().total;
+        let allocs = allocated.saturating_sub(std::mem::replace(&mut self.alloc_mark, allocated)) as f64;
         if self.frame_no == 2 {
             self.t_second_frame = Some(self.t_start.elapsed().as_secs_f64() * 1000.0);
             self.first_frame_cpu = cpu;
@@ -676,6 +785,7 @@ impl Bench {
             let s = self.series_mut(phase);
             s.layout.push(layout);
             s.frame.push(cpu);
+            s.allocs.push(allocs);
         }
         if self.phase == Phase::Quiet && self.quiet_armed && !self.quiet_over.load(Ordering::SeqCst) {
             let causes = ctx.repaint_causes().iter().map(|c| format!("{c:?}")).collect::<Vec<_>>();
@@ -747,6 +857,8 @@ impl Bench {
         self.phase = phase;
         self.phase_frames = 0;
         self.phase_start = Instant::now();
+        // Profil des allocations de la phase demandée (`FERROCORD_BANC_PROFIL`).
+        alloc::profile(std::env::var("FERROCORD_BANC_PROFIL").is_ok_and(|p| p == phase.key()));
         let a = self.filled.first().copied().unwrap_or_default();
         match phase {
             Phase::Idle | Phase::Live | Phase::Quiet => self.pending = Some(a),
@@ -902,6 +1014,7 @@ impl Bench {
                 let waited = self.phase_start.elapsed();
                 if (self.phase_frames > 20 * filled.len() + 60 && settled) || waited > Duration::from_secs(20) {
                     self.mem_loaded = Some(sample_later());
+                    self.rest = Some((json!({ "compteurs": usage_json(), "carte": map_json() }), alloc::live()));
                     self.enter(Phase::Idle);
                 }
             }
@@ -1215,13 +1328,25 @@ impl Bench {
 
     fn report(&mut self, app: &App, ctx: &egui::Context) {
         let mem_loaded = self.mem_loaded.take().and_then(|h| h.join().ok().flatten());
+        // Mémoire au repos après le démarrage : le tas vivant ne dépend ni du pilote ni de la machine, d'où le seuil.
+        let rest_heap = self.rest.as_ref().map(|(_, h)| *h);
+        let rest_ok = rest_heap.is_some_and(|h| h.bytes <= REST_HEAP_MAX);
+        let rest = match self.rest.take() {
+            Some((mut v, h)) => {
+                v["tas_vivant_mo"] = json!(mo(h.bytes as u64));
+                v["blocs_vivants"] = json!(h.blocks);
+                v["seuil_tas_vivant_mo"] = json!(mo(REST_HEAP_MAX as u64));
+                v
+            }
+            None => Value::Null,
+        };
         let mut mem_phases = serde_json::Map::new();
         for (k, h) in std::mem::take(&mut self.mem_phases) {
             mem_phases.insert(k.into(), mem_json(h.join().ok().flatten()));
         }
         let mut phases = serde_json::Map::new();
         for (p, s) in &self.series {
-            phases.insert(p.key().into(), json!({ "mise_en_page": stats(&s.layout), "image": stats(&s.frame) }));
+            phases.insert(p.key().into(), json!({ "mise_en_page": stats(&s.layout), "image": stats(&s.frame), "allocations": counts(&s.allocs) }));
         }
         // Temps processeur par image, tous fils : ce que le temps d'image ne voit pas
         // (pilote graphique, décodage) ; les phases à captures ou à attente sont écartées.
@@ -1236,6 +1361,7 @@ impl Bench {
         let (pairs, identical, differences) = (self.pairs, self.identical, std::mem::take(&mut self.differences));
         let round_trip = self.round_trip.take();
         let mem_end = process_memory();
+        let heap_end = alloc::live();
         // Ce que tiennent les caches à ce moment (estimation de leurs octets).
         let (layouts, layout_bytes) = app.text_layouts();
         let img = app.image_stats();
@@ -1317,7 +1443,7 @@ impl Bench {
                 "maj_hors_ecran_par_s": UPDATE_RATE, "maj_hors_ecran_injectees": self.updates.load(Ordering::SeqCst), "maj_hors_ecran_ayant_demande_un_redessin": self.update_wakes.load(Ordering::SeqCst),
             },
             "trafic": traffic,
-            "memoire": { "depart": mem_json(self.mem_start), "apres_chargement": mem_json(mem_loaded), "phases": Value::Object(mem_phases), "fin": mem_json(mem_end), "caches_a_la_fin": held },
+            "memoire": { "depart": mem_json(self.mem_start), "apres_chargement": mem_json(mem_loaded), "repos_apres_demarrage": rest, "phases": Value::Object(mem_phases), "fin": mem_json(mem_end), "tas_a_la_fin": { "vivant_mo": mo(heap_end.bytes as u64), "blocs": heap_end.blocks }, "caches_a_la_fin": held },
             "verdicts": {
                 "image_repos_moins_4ms": frame_verdict("repos"),
                 "image_defilement_moins_4ms": frame_verdict("defilement"),
@@ -1327,10 +1453,18 @@ impl Bench {
                 "zero_redessin_au_repos": { "verdict": verdict(self.quiet_frames == 0), "statistique": "nombre strict après stabilisation", "images": self.quiet_frames },
                 "zero_image_au_repos_sous_trafic": { "verdict": verdict(traffic_calm), "statistique": "nombre strict, paquets de la passerelle dans des salons qui ne sont pas à l'écran", "images": self.traffic.frames[CALM] },
                 "paquets_visibles_reveillent": { "verdict": verdict(visible_ok), "statistique": "chaque paquet qui change l'écran réveille et une image suit", "images": self.traffic.frames[VISIBLE] },
+                "memoire_au_repos_apres_demarrage": { "verdict": verdict(rest_ok), "statistique": "octets vivants du tas après chargement, sous le seuil", "tas_vivant_mo": rest_heap.map(|h| mo(h.bytes as u64)), "seuil_mo": mo(REST_HEAP_MAX as u64) },
                 "defilement_effectif": { "verdict": verdict(moved), "statistique": "premier message affiché différent au demi-tour et à la fin" },
                 "historique_aller_retour": { "verdict": verdict(walked && round_ok), "statistique": "haut et bas atteints, capture finale identique à l'initiale" },
             },
         });
+        // Profil des allocations demandé : les sites les plus fréquents, par image de la phase.
+        if let Ok(wanted) = std::env::var("FERROCORD_BANC_PROFIL") {
+            let frames = self.series.iter().find(|(p, _)| p.key() == wanted).map_or(1, |(_, s)| s.frame.len().max(1));
+            for (n, bytes, stack) in alloc::profile_report().into_iter().take(60) {
+                eprintln!("{:>8.1} allocations et {:>9.0} octets par image : {stack}", n as f64 / frames as f64, bytes as f64 / frames as f64);
+            }
+        }
         println!("=== Banc Ferrocord — série « {} » ===", self.cfg.label);
         println!(
             "magasin : {} serveurs, {} salons, {} messages en mémoire ({} par salon rempli, salon profond de {})",
@@ -1348,7 +1482,7 @@ impl Bench {
         for (p, _) in &self.series {
             if let Some(v) = phases.get(p.key()) {
                 let g = |s: &Value| format!("{:.3} / {:.3} / {:.3}", get(s, "mediane_ms"), get(s, "p95_ms"), get(s, "max_ms"));
-                println!("{:<22} {:>34} {:>34}", p.key(), g(&v["mise_en_page"]), g(&v["image"]));
+                println!("{:<22} {:>34} {:>34}   allocations par image : médiane {}, p95 {}, max {}", p.key(), g(&v["mise_en_page"]), g(&v["image"]), v["allocations"]["mediane"], v["allocations"]["p95"], v["allocations"]["max"]);
             }
         }
         println!("processeur par image, tous fils (ms) : {}", cpu.iter().map(|(k, v)| format!("{k} {} + {}", v["fil_interface_ms"], v["autres_fils_ms"])).collect::<Vec<_>>().join(" ; "));
@@ -1385,9 +1519,22 @@ impl Bench {
         println!("  paquets qui changent l'écran : {} ; {} sans réveil", line(&t["visibles"]), t["paquets_visibles_sans_reveil"]);
         let m = |v: &Value| format!("privée {} Mo, travail {} Mo", v["privee_mo"], v["travail_mo"]);
         println!("mémoire : départ {} ; après chargement {} ; fin {}", m(&report["memoire"]["depart"]), m(&report["memoire"]["apres_chargement"]), m(&report["memoire"]["fin"]));
+        {
+            let r = &report["memoire"]["repos_apres_demarrage"];
+            let (c, k) = (&r["compteurs"], &r["carte"]);
+            println!(
+                "mémoire au repos après démarrage : privée {} Mo, de travail {} Mo (dont privée {} Mo) ; tas vivant {} Mo en {} blocs (seuil {} Mo)",
+                c["privee_mo"], c["travail_mo"], c["travail_privee_mo"], r["tas_vivant_mo"], r["blocs_vivants"], r["seuil_tas_vivant_mo"]
+            );
+            println!(
+                "  répartition de la mémoire privée : tas {} Mo (alloués {} Mo), réservations directes {} Mo, modules {} Mo, piles {} Mo ({} fils)",
+                k["tas_engage_mo"], k["tas_alloue_mo"], k["autre_mo"], k["modules_mo"], k["piles_mo"], k["piles"]
+            );
+        }
         for (k, v) in report["memoire"]["phases"].as_object().into_iter().flatten() {
             println!("  {k} : {}", m(v));
         }
+        println!("  tas vivant à la fin : {} Mo en {} blocs", report["memoire"]["tas_a_la_fin"]["vivant_mo"], report["memoire"]["tas_a_la_fin"]["blocs"]);
         println!("  caches à la fin : {}", report["memoire"]["caches_a_la_fin"]);
         println!("verdicts (budgets du 1.3) :");
         if let Some(v) = report["verdicts"].as_object() {
@@ -1438,7 +1585,7 @@ pub fn run(cfg: BenchCfg) -> eframe::Result {
             let bench = Bench::new(cfg, &syn, inject.clone(), served.clone(), t_start, mem_start);
             let Synthetic { store, deep, .. } = syn;
             let pages = HashMap::from([(deep.0, deep.1)]);
-            let backend = Offline { connected: true, queue: Vec::new(), wake: None, next_id: 5_000_000_000_000_001_000, view: View::Guild, inject: Some(inject), pages, served: Some(served) };
+            let backend = Offline { connected: true, queue: Vec::new(), wake: None, next_id: 5_000_000_000_000_001_000, view: View::Guild, inject: Some(inject), pages, served: Some(served), make: None };
             let wake_ctx = cc.egui_ctx.clone();
             let wake: Wake = Arc::new(move || wake_ctx.request_repaint());
             let images = Images::start(cc.egui_ctx.clone(), rt.handle(), Arc::new(Generated), None, images::Config::default(), wake);
@@ -1460,6 +1607,10 @@ struct BenchApp {
 
 impl eframe::App for BenchApp {
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
+        // Comme l'application (`App::raw_input_hook`) : atlas des glyphes borné.
+        if !self.bench.cfg.free_atlas {
+            ferrocord::ui::fonts::limit_atlas(raw);
+        }
         self.bench.input(raw);
     }
 
@@ -1485,7 +1636,9 @@ impl eframe::App for BenchApp {
 /// la mémoire du processus et celle des textures d'egui.
 pub fn run_mem(scenario: &str) -> eframe::Result {
     let start = process_memory();
+    alloc::trace_from_env();
     let scenario = scenario.to_string();
+    let heap_start = alloc::live();
     let mut options = ferrocord::native_options();
     options.viewport = options.viewport.with_title("Ferrocord — mesure mémoire");
     if scenario == "vide-logiciel" {
@@ -1504,11 +1657,47 @@ pub fn run_mem(scenario: &str) -> eframe::Result {
         Box::new(move |cc| {
             // Fenêtre et contexte OpenGL créés, aucune image encore dessinée.
             let at_window = process_memory();
+            let mut stages = vec![Stage::new("avant_la_fenetre", alloc::Heap::default(), heap_start), Stage::since("fenetre_et_opengl", heap_start)];
             let app = match scenario.as_str() {
+                "demarrage-parties" => {
+                    // Dissection : le magasin du compte simulé est rendu partie par partie.
+                    let store = startup_store(&compte::Size::default(), &mut stages);
+                    let mut mark = alloc::live();
+                    let mut parts: Vec<(&'static str, i64, i64)> = Vec::new();
+                    store.release_by_part(|name| {
+                        let now = alloc::live();
+                        parts.push((name, mark.bytes as i64 - now.bytes as i64, mark.blocks as i64 - now.blocks as i64));
+                        mark = now;
+                    });
+                    parts.sort_by_key(|p| std::cmp::Reverse(p.1));
+                    for (name, bytes, blocks) in parts.iter().filter(|p| p.1 >= 16 * 1024) {
+                        println!("magasin.{name} : {:.2} Mo, {blocks} blocs", *bytes as f64 / 1_048_576.0);
+                    }
+                    None
+                }
+                s if s.starts_with("demarrage") => {
+                    let size = match s {
+                        "demarrage-demi" => compte::Size::default().scaled(1, 2),
+                        "demarrage-double" => compte::Size::default().scaled(2, 1),
+                        _ => compte::Size::default(),
+                    };
+                    let store = startup_store(&size, &mut stages);
+                    let backend = Offline { connected: true, queue: Vec::new(), wake: None, next_id: 1, view: View::Guild, inject: None, pages: HashMap::new(), served: None, make: None };
+                    let before = alloc::live();
+                    alloc::reset_peak();
+                    let wake_ctx = cc.egui_ctx.clone();
+                    let wake: Wake = Arc::new(move || wake_ctx.request_repaint());
+                    let images = Images::start(cc.egui_ctx.clone(), rt.handle(), Arc::new(Generated), None, images::Config::default(), wake);
+                    let theme = ThemeLink::open(None, false, WatchConfig::default());
+                    let mut app = App::new(cc, offline_boot(backend, store, theme, images));
+                    app.set_theme(Preset::Rouille.tokens());
+                    stages.push(Stage::since("application_polices_theme", before));
+                    Some(app)
+                }
                 "app" | "app-sans-images" | "connexion" => {
                     let cfg = BenchCfg::default();
                     let store = if scenario == "connexion" { Store::new() } else { store(&cfg).store };
-                    let backend = Offline { connected: scenario != "connexion", queue: Vec::new(), wake: None, next_id: 1, view: View::Guild, inject: None, pages: HashMap::new(), served: None };
+                    let backend = Offline { connected: scenario != "connexion", queue: Vec::new(), wake: None, next_id: 1, view: View::Guild, inject: None, pages: HashMap::new(), served: None, make: None };
                     let images = if scenario == "app" {
                         let wake_ctx = cc.egui_ctx.clone();
                         let wake: Wake = Arc::new(move || wake_ctx.request_repaint());
@@ -1527,7 +1716,8 @@ pub fn run_mem(scenario: &str) -> eframe::Result {
                 }
                 _ => None,
             };
-            Ok(Box::new(MemApp { app, scenario, start, at_window, frames: 0, started: Instant::now(), done: false, _rt: rt }))
+            alloc::reset_peak();
+            Ok(Box::new(MemApp { app, scenario, start, at_window, frames: 0, started: Instant::now(), done: false, _rt: rt, mark: alloc::live(), stages }))
         }),
     )
 }
@@ -1541,9 +1731,93 @@ struct MemApp {
     started: Instant,
     done: bool,
     _rt: tokio::runtime::Runtime,
+    /// Tas au début de l'étape en cours, et étapes déjà relevées (lot « ram »).
+    mark: alloc::Heap,
+    stages: Vec<Stage>,
+}
+
+/// Étape du démarrage : ce que le tas a gagné pendant elle (octets vivants,
+/// blocs), la pointe atteinte au-dessus de son départ, les allocations faites.
+struct Stage {
+    name: &'static str,
+    bytes: i64,
+    blocks: i64,
+    peak: i64,
+    allocations: usize,
+    /// Mémoire privée et de travail du processus à la fin de l'étape (octets).
+    process: Option<(u64, u64)>,
+    /// Répartition à la fin de l'étape : tas engagé, tas alloué, reste (octets).
+    map: Option<(u64, u64, u64)>,
+}
+
+impl Stage {
+    fn new(name: &'static str, before: alloc::Heap, after: alloc::Heap) -> Stage {
+        Stage { name, bytes: after.bytes as i64 - before.bytes as i64, blocks: after.blocks as i64 - before.blocks as i64, peak: alloc::peak() as i64 - before.bytes as i64, allocations: after.total - before.total, process: usage().map(|u| (u.private, u.working)), map: stage_map() }
+    }
+
+    /// Étape commencée à `before` et finie maintenant.
+    fn since(name: &'static str, before: alloc::Heap) -> Stage {
+        Stage::new(name, before, alloc::live())
+    }
+
+    fn json(&self) -> Value {
+        let m = |b: i64| (b as f64 / 1_048_576.0 * 100.0).round() / 100.0;
+        json!({ "etape": self.name, "garde_mo": m(self.bytes), "blocs": self.blocks, "pointe_mo": m(self.peak), "allocations": self.allocations, "privee_mo": self.process.map(|p| mo(p.0)), "travail_mo": self.process.map(|p| mo(p.1)), "tas_engage_mo": self.map.map(|p| mo(p.0)), "tas_alloue_mo": self.map.map(|p| mo(p.1)), "autre_mo": self.map.map(|p| mo(p.2)) })
+    }
+}
+
+/// Magasin du relevé « démarrage » : un READY de compte utilisateur et la liste
+/// des jeux détectables passent par le vrai décodage, puis la dernière page du
+/// salon ouvert. Chaque étape est relevée dans `stages`.
+fn startup_store(size: &compte::Size, stages: &mut Vec<Stage>) -> Store {
+    let mut store = Store::new();
+    // READY : le texte du paquet est compté dans la pointe, pas dans ce qui reste.
+    let before = alloc::live();
+    alloc::reset_peak();
+    {
+        let d = compte::ready(size);
+        let wake: Wake = Arc::new(|| {});
+        let (mut replay, rx) = ferrocord::net::Replay::new(wake, Arc::default(), None);
+        replay.dispatch("READY", &d);
+        drop(d);
+        store.apply(Event::PeopleHub(replay.people()));
+        for e in rx.try_iter() {
+            store.apply(e);
+        }
+    }
+    store.take_commands();
+    stages.push(Stage::since("ready_et_magasin", before));
+    // Jeux détectables : réponse de Discord décodée, puis index.
+    let before = alloc::live();
+    alloc::reset_peak();
+    {
+        let body = compte::detectable(size.games);
+        let index = ferrocord::net::decode_detectable_to_index(&body, chrono::Utc::now().timestamp_millis()).unwrap_or_default();
+        drop(body);
+        store.apply(Event::Activity(ferrocord::state::activity::ActivityEvent::Detectable(Arc::new(index))));
+    }
+    stages.push(Stage::since("jeux_detectables", before));
+    // Salon ouvert : sa dernière page.
+    let before = alloc::live();
+    alloc::reset_peak();
+    let (g, c) = (compte::guild_id(0), compte::channel_id(0, 5));
+    store.select_guild(g);
+    store.select_channel(c);
+    store.take_commands();
+    let now = chrono::Utc::now().timestamp_millis();
+    let messages = (0..HISTORY_PAGE as u64).map(|i| message(i, c, g, now - (HISTORY_PAGE as i64 - i as i64) * 90_000)).collect();
+    store.apply(Event::History { channel_id: c, before: None, messages });
+    store.take_commands();
+    stages.push(Stage::since("salon_ouvert", before));
+    store
 }
 
 impl eframe::App for MemApp {
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
+        // Comme l'application (`App::raw_input_hook`) : atlas des glyphes borné.
+        ferrocord::ui::fonts::limit_atlas(raw);
+    }
+
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         if let Some(app) = self.app.as_mut() {
             eframe::App::logic(app, ctx, frame);
@@ -1559,17 +1833,26 @@ impl eframe::App for MemApp {
         if self.done {
             return;
         }
+        if self.frames == 1 {
+            self.stages.push(Stage::since("premiere_image", self.mark));
+            self.mark = alloc::live();
+            alloc::reset_peak();
+        }
         // Quelques secondes d'images, puis la mesure.
         if self.started.elapsed() < Duration::from_secs(3) {
             ctx.request_repaint_after(Duration::from_millis(100));
             return;
         }
         self.done = true;
+        self.stages.push(Stage::since("images_suivantes_3_s", self.mark));
+        let heap = alloc::live();
         let mem = process_memory();
         let atlas = ctx.fonts(|f| f.font_image_size());
         let tex = ctx.tex_manager();
         let (count, bytes) = tex.read().allocated().fold((0, 0), |(n, b), (_, m)| (n + 1, b + m.size[0] * m.size[1] * m.bytes_per_pixel));
         let store_bytes = self.app.as_ref().map(|a| store_size(a.store()));
+        // Compte simulé : seuil sur les octets vivants (ni le pilote ni la machine n'y entrent).
+        let over = self.scenario.starts_with("demarrage").then_some(heap.bytes > START_HEAP_MAX);
         let report = json!({
             "scenario": self.scenario,
             "rendu": ferrocord::rendu::active().name(),
@@ -1580,8 +1863,28 @@ impl eframe::App for MemApp {
             "atlas_polices_px": atlas,
             "textures": { "nombre": count, "mo": mo(bytes as u64) },
             "magasin_estime_mo": store_bytes.map(|b| mo(b as u64)),
+            "tas": { "vivant_mo": mo(heap.bytes as u64), "blocs": heap.blocks, "allocations_depuis_le_debut": heap.total },
+            "seuil_tas_vivant_mo": over.map(|_| mo(START_HEAP_MAX as u64)),
+            "verdict": over.map(|o| if o { "non tenu" } else { "tenu" }),
+            "etapes": self.stages.iter().map(Stage::json).collect::<Vec<_>>(),
+            "caches": self.app.as_ref().map(|a| {
+                let (layouts, layout_bytes) = a.text_layouts();
+                let img = a.image_stats();
+                json!({ "mises_en_page": { "nombre": layouts, "mo": mo(layout_bytes as u64) }, "textures_des_images": { "nombre": img.textures, "mo": mo(img.bytes as u64) } })
+            }),
+            "fils": thread_count(),
+            "compteurs": usage_json(),
+            "carte": map_json(),
         });
+        // Gros blocs encore vivants et qui les a demandés (`FERROCORD_BANC_TRACE`).
+        for (bytes, blocks, stack) in alloc::survivors().into_iter().take(60) {
+            eprintln!("{:.2} Mo en {blocks} blocs : {stack}", bytes as f64 / 1_048_576.0);
+        }
         println!("{}", serde_json::to_string(&report).unwrap_or_default());
+        if over == Some(true) {
+            eprintln!("mémoire au repos après démarrage : {:.1} Mo vivants dans le tas, au-dessus du seuil de {:.0} Mo", heap.bytes as f64 / 1_048_576.0, START_HEAP_MAX as f64 / 1_048_576.0);
+            std::process::exit(1);
+        }
         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
     }
 }

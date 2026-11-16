@@ -194,6 +194,37 @@ impl Store {
         true
     }
 
+    /// « Tout marquer comme lu » de la boîte de réception : ces salons sont
+    /// accusés ensemble (par lots de `ACK_BULK_MAX`), jamais un par un.
+    pub fn mark_channels_read(&mut self, channels: &[u64]) {
+        let mut acks = Vec::new();
+        for &c in channels {
+            self.clear_unread(c);
+            if let Some(m) = self.reads.take_now(c) {
+                acks.push((c, m));
+            }
+        }
+        for chunk in acks.chunks(ACK_BULK_MAX) {
+            self.outbox.push(Cmd::Relations(RelationsCmd::AckBulk(chunk.to_vec())));
+        }
+    }
+
+    /// Messages non lus d'un salon parmi ceux déjà en mémoire (boîte de
+    /// réception) : leur nombre et les `max` premiers. `None` : l'historique
+    /// du salon n'est pas chargé, ou aucun de ses messages en mémoire n'est
+    /// non lu. Rien n'est demandé au réseau.
+    pub fn unread_cached(&self, channel: u64, max: usize) -> Option<(usize, Vec<&super::super::model::Message>)> {
+        let cs = self.chans.get(&channel).filter(|cs| cs.loaded)?;
+        let from = match (self.reads.acked(channel), self.unread_from.get(&channel)) {
+            (Some(acked), _) => acked.saturating_add(1),
+            (None, Some(first)) => *first,
+            (None, None) => return None,
+        };
+        let start = cs.msgs.partition_point(|m| m.id < from);
+        let n = cs.msgs.len() - start;
+        (n > 0).then(|| (n, cs.msgs.range(start..).take(max).collect()))
+    }
+
     /// « Marquer le serveur comme lu » : un accusé groupé pour tous ses salons
     /// qui en ont besoin (par lots de `ACK_BULK_MAX`).
     pub fn mark_guild_read(&mut self, guild: u64) {
@@ -203,6 +234,45 @@ impl Store {
             .find(|g| g.id == guild)
             .map(|g| g.channels.iter().filter(|c| c.kind != ChannelKind::Category).map(|c| c.id).collect())
             .unwrap_or_default();
+        let mut acks = Vec::new();
+        for c in chans {
+            self.clear_unread(c);
+            if let Some(m) = self.reads.take_now(c) {
+                acks.push((c, m));
+            }
+        }
+        for chunk in acks.chunks(ACK_BULK_MAX) {
+            self.outbox.push(Cmd::Relations(RelationsCmd::AckBulk(chunk.to_vec())));
+        }
+    }
+
+    /// « Marquer comme lu » de plusieurs serveurs (dossier) : un seul accusé
+    /// groupé pour tous, au lieu d'une requête par serveur lancées ensemble.
+    pub fn mark_guilds_read(&mut self, guilds: &[u64]) {
+        let chans: Vec<u64> = self.guilds.iter().filter(|g| guilds.contains(&g.id)).flat_map(|g| g.channels.iter().filter(|c| c.kind != ChannelKind::Category).map(|c| c.id)).collect();
+        let mut acks = Vec::new();
+        for c in chans {
+            self.clear_unread(c);
+            if let Some(m) = self.reads.take_now(c) {
+                acks.push((c, m));
+            }
+        }
+        for chunk in acks.chunks(ACK_BULK_MAX) {
+            self.outbox.push(Cmd::Relations(RelationsCmd::AckBulk(chunk.to_vec())));
+        }
+    }
+
+    /// « Marquer tout comme lu » : les salons de tous les serveurs et les
+    /// conversations non lues, en un seul accusé groupé (par lots de
+    /// `ACK_BULK_MAX`), au lieu d'une requête par serveur et par conversation
+    /// lancées au même instant.
+    pub fn mark_all_read(&mut self) {
+        let mut chans: Vec<u64> = self.guilds.iter().flat_map(|g| g.channels.iter().filter(|c| c.kind != ChannelKind::Category).map(|c| c.id)).collect();
+        let unread_dms: Vec<u64> = {
+            let unread = self.unread();
+            self.dms.iter().map(|d| d.id).filter(|c| unread.contains(c)).collect()
+        };
+        chans.extend(unread_dms);
         let mut acks = Vec::new();
         for c in chans {
             self.clear_unread(c);
@@ -433,6 +503,21 @@ mod tests {
         assert_eq!(s.guild_has_unread(&s.guilds[0]), (false, false));
         s.mark_guild_read(G);
         assert!(acks(&mut s).is_empty(), "rien à accuser");
+    }
+
+    #[test]
+    fn mark_all_read_is_one_grouped_ack() {
+        let mut s = ready(Some(vec![ReadState { channel_id: A, last_acked: 10, mentions: 0 }, ReadState { channel_id: B, last_acked: 10, mentions: 3 }, ReadState { channel_id: DM, last_acked: 40, mentions: 1 }]));
+        s.mark_all_read();
+        // Un seul accusé groupé pour les serveurs et les conversations : pas une requête par serveur et par MP.
+        assert_eq!(acks(&mut s), vec![RelationsCmd::AckBulk(vec![(A, 20), (B, 30), (DM, 50)])]);
+        assert!(s.unread().is_empty() && s.mentioned().is_empty());
+        s.mark_all_read();
+        assert!(acks(&mut s).is_empty(), "rien à accuser");
+        // Dossier de serveurs : un seul accusé aussi.
+        let mut s = ready(Some(vec![ReadState { channel_id: A, last_acked: 10, mentions: 0 }, ReadState { channel_id: B, last_acked: 10, mentions: 0 }]));
+        s.mark_guilds_read(&[G, 999]);
+        assert_eq!(acks(&mut s), vec![RelationsCmd::AckBulk(vec![(A, 20), (B, 30)])]);
     }
 
     #[test]

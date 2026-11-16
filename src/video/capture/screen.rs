@@ -188,13 +188,18 @@ pub(super) fn open(kind: SourceKind, raw: &str, want: Quality, opts: Options, on
     ))
 }
 
+/// Windows sait capturer sans dessiner son cadre jaune.
+pub(super) fn borderless() -> bool {
+    GraphicsCaptureApi::is_border_settings_supported().unwrap_or(false)
+}
+
 pub(super) fn snapshot(kind: SourceKind, raw: &str, max_w: u32) -> Result<Frame, CaptureError> {
     let want = Quality { width: max_w.max(2), height: u32::MAX / 2, fps: 30 };
     let run = |border| {
         let (tx, rx) = mpsc::channel();
         start(kind, raw, want, true, border, Sink::Once(tx), Arc::default()).map(|c| (c, rx))
     };
-    let (control, rx) = if GraphicsCaptureApi::is_border_settings_supported().unwrap_or(false) {
+    let (control, rx) = if borderless() {
         // Sans bordure refusé par Windows : avec, comme un partage.
         run(DrawBorderSettings::WithoutBorder).or_else(|_| run(DrawBorderSettings::Default))?
     } else {

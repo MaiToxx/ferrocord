@@ -77,9 +77,19 @@ pub fn parse_message(store: &Store, message: &Message, lang: Lang, h24: bool) ->
         doc.spoilers = d.spoilers;
         doc.reply = Some(Box::new(d));
     }
-    if let Some(f) = message.meta.forward.as_deref().filter(|f| !f.content.is_empty()) {
-        let d = other(&f.content, &f.mentions, doc.spoilers);
+    if let Some(f) = message.meta.forward.as_deref().filter(|f| !f.content.is_empty() || !f.embeds.is_empty()) {
+        let mut d = other(&f.content, &f.mentions, doc.spoilers);
         doc.spoilers = d.spoilers;
+        // Textes des embeds de l'instantané, mis en forme avec lui (mêmes emplacements que ceux d'un message).
+        for (i, e) in f.embeds.iter().enumerate() {
+            let texts = e.description.iter().map(|d| (0, d.as_str())).chain(e.fields.iter().enumerate().map(|(n, f)| (n + 1, f.value.as_str())));
+            for (slot, text) in texts {
+                let part = other(text, &f.mentions, doc.spoilers);
+                doc.spoilers = part.spoilers;
+                d.embeds.push((i, slot, part));
+            }
+        }
+        d.spoilers = doc.spoilers;
         doc.forward = Some(Box::new(d));
     }
     let ctx = MessageContext { store, message, lang, h24 };

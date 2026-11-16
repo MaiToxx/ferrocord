@@ -12,6 +12,8 @@ use super::perms::{base_permissions, with_base, Permissions, Verdict};
 pub mod social;
 /// Envoi de fichiers (lot T8).
 mod upload;
+/// MP du compte système de Discord : lecture seule (lot « messages »).
+pub mod official;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     sync::atomic::{AtomicU64, Ordering},
@@ -302,6 +304,8 @@ pub enum SendBlock {
     /// Exclusion temporaire jusqu'à cet instant (ms Unix).
     Timeout { until_ms: i64 },
     NoPermission,
+    /// MP du compte système de Discord : réservé aux notifications officielles.
+    Official,
 }
 
 /// Permissions calculées pour un serveur. Un salon absent de `perms` a des
@@ -489,6 +493,25 @@ impl Store {
         Self::default()
     }
 
+    /// Relevé de mémoire (banc de l'aperçu, lot « ram ») : rend le magasin
+    /// partie par partie ; `after` reçoit le nom de chacune une fois libérée,
+    /// pour que l'appelant lise ce que le tas a rendu entre deux appels.
+    pub fn release_by_part(mut self, mut after: impl FnMut(&'static str)) {
+        macro_rules! part {
+            ($($field:ident),* $(,)?) => {
+                $(
+                    drop(std::mem::take(&mut self.$field));
+                    after(stringify!($field));
+                )*
+            };
+        }
+        part!(
+            guilds, dms, chans, unread, mentioned, mention_counts, outbox, access, chan_guild, unread_index, unread_from, unsent, sending, social, typing, last_sent, people, members, account, relations, reads, uploads, threads,
+            stickers, servers, search, inbox, interactions, polls, invites, announce, guild_admin, chan_admin, roles_admin, moderation, events, community, expressions, voice, calls, stage, video, stream, activity, gifs, effects,
+            tags, widgets, shop, inventory, suggestions, saved, safety_hub, appdir, verification, summaries, discovery, quests,
+        );
+    }
+
     /// Oublie tout ce qui vient du compte (déconnexion). Le statut est gardé.
     pub fn clear(&mut self) {
         self.me = None;
@@ -562,6 +585,8 @@ impl Store {
         let mut cmds = std::mem::take(&mut self.outbox);
         cmds.extend(self.account.take_commands().into_iter().map(Cmd::Account));
         cmds.extend(self.activity_commands().into_iter().map(Cmd::Activity));
+        // MP du compte système : aucune écriture ne sort, quel que soit le chemin pris.
+        self.drop_official_writes(&mut cmds);
         cmds
     }
 
@@ -1123,6 +1148,9 @@ impl Store {
 
     /// Raison pour laquelle on ne peut pas écrire ici, s'il y en a une sûre.
     pub fn send_block(&self, channel: u64) -> Option<SendBlock> {
+        if self.is_official_dm(channel) {
+            return Some(SendBlock::Official);
+        }
         if self.can(channel, Permissions::SEND_MESSAGES) != Verdict::Refuse {
             return None;
         }

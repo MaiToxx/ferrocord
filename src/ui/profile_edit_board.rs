@@ -52,7 +52,7 @@ enum Act {
 impl App {
     /// Nom d'un jeu : celui de Discord (`GET /games`), sinon celui de la liste des jeux détectables.
     fn game_name(&self, id: u64) -> Option<String> {
-        self.store.widgets.game(id).map(|g| g.name.clone()).or_else(|| self.store.activity.index.as_ref()?.apps().iter().find(|a| a.id == id).map(|a| a.name.clone()))
+        self.store.widgets.game(id).map(|g| g.name.clone()).or_else(|| self.store.activity.index.as_ref()?.app(id).map(|a| a.name.to_string()))
     }
 
     /// Colonne des widgets (à droite du profil, ou dessous dans une fenêtre étroite).
@@ -250,7 +250,7 @@ impl App {
         let mut results: Vec<(u64, String)> = Vec::new();
         if searching {
             if let Some(index) = &self.store.activity.index {
-                results.extend(index.apps().iter().filter(|a| a.name.to_lowercase().contains(&query)).map(|a| (a.id, a.name.clone())));
+                results.extend(index.apps().filter(|a| a.name.to_lowercase().contains(&query)).map(|a| (a.id, a.name.to_string())));
             }
             results.extend(suggested.iter().filter_map(|id| Some((*id, self.game_name(*id)?))).filter(|(_, n)| n.to_lowercase().contains(&query)));
         } else {

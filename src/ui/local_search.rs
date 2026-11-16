@@ -73,6 +73,35 @@ pub(super) fn mode_tabs(ui: &mut egui::Ui, t: &Tokens, lang: Lang, local: bool, 
     to
 }
 
+/// Marges du sélecteur « Local » autour de son texte.
+const CHIP_PAD: egui::Vec2 = egui::vec2(6.0, 2.0);
+
+/// Largeur que le sélecteur « Local » prend dans le champ de recherche (rien si le plugin est coupé).
+pub(super) fn chip_width(ui: &egui::Ui, t: &Tokens, lang: Lang) -> f32 {
+    if !plugins::on(Plugin::LocalSearch) {
+        return 0.0;
+    }
+    ui.painter().layout_no_wrap(jt::LS_TOGGLE.get(lang).to_owned(), egui::FontId::proportional(t.typography.small), t.colors.muted).size().x + 2.0 * CHIP_PAD.x + t.spacing.item_x / 2.0
+}
+
+/// Sélecteur « Local », rangé dans le champ de recherche (le client n'a pas ce
+/// bouton : il ne prend pas de place dans l'en-tête) : petite pastille, pleine
+/// quand la recherche se fait sur place. Vrai s'il vient d'être cliqué.
+pub(super) fn chip(ui: &mut egui::Ui, t: &Tokens, lang: Lang, on: bool) -> bool {
+    if !plugins::on(Plugin::LocalSearch) {
+        return false;
+    }
+    let label = jt::LS_TOGGLE.get(lang);
+    let galley = ui.painter().layout_no_wrap(label.to_owned(), egui::FontId::proportional(t.typography.small), t.colors.muted);
+    let (rect, resp) = ui.allocate_exact_size(galley.size() + 2.0 * CHIP_PAD, egui::Sense::click());
+    let hot = resp.hovered() || resp.has_focus();
+    let (fill, ink) = if on { (t.colors.accent, t.colors.on_accent) } else { (if hot { t.colors.row_hover } else { t.colors.bg3 }, if hot { t.colors.text_strong } else { t.colors.muted }) };
+    ui.painter().rect_filled(rect, t.r_row().at_most(4), fill);
+    ui.painter().galley(rect.min + CHIP_PAD, galley, ink);
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, on, label));
+    resp.on_hover_text(jt::LS_TOGGLE_TIP.get(lang)).on_hover_cursor(egui::CursorIcon::PointingHand).clicked()
+}
+
 impl App {
     /// Le champ de recherche cherche sur place.
     pub(in crate::ui) fn local_search_wanted(&self) -> bool {
@@ -84,14 +113,15 @@ impl App {
         self.local_search.len()
     }
 
-    /// Bouton « Local » à côté du champ, et résultats pendant la frappe.
-    pub(in crate::ui) fn local_search_field(&mut self, ui: &mut egui::Ui, typed: bool) {
+    /// Suite du champ de recherche : `flip`, le sélecteur « Local » du champ
+    /// ([`chip`]) vient d'être cliqué ; `typed`, le texte a changé (résultats
+    /// pendant la frappe en mode local).
+    pub(in crate::ui) fn local_search_typed(&mut self, flip: bool, typed: bool) {
         if !plugins::on(Plugin::LocalSearch) {
             return;
         }
-        let lang = self.lang;
         let on = self.search.local;
-        if ui.selectable_label(on, jt::LS_TOGGLE.get(lang)).on_hover_text(jt::LS_TOGGLE_TIP.get(lang)).clicked() {
+        if flip {
             self.local_search_mode(!on);
         } else if typed && on {
             self.local_search_run(0, None, true);

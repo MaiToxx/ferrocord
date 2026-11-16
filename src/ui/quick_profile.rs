@@ -12,11 +12,10 @@
 //! paramètres, dont le brouillon est partagé.
 
 use super::menu::{self, Lead, Line, Mark};
-use super::profile::{custom_status_ui, room, section, Header};
+use super::profile::{room, Header};
 use super::settings::synced::{EXPIRY, STATUSES};
 use super::{widgets, App};
 use crate::account::AccountKey;
-use crate::i18n::table::profile::t as pt;
 use crate::i18n::table::quick::t as qt;
 use crate::i18n::table::s::{f as sf, t as st};
 use crate::i18n::{time, Text};
@@ -51,6 +50,8 @@ const SUB_LEAVE: f64 = 0.25;
 /// Part de la couleur du texte dans le fond d'un bloc de lignes : il se
 /// détache du fond de la carte, clair ou foncé, thème de profil compris.
 const BLOCK_TINT: f32 = 0.06;
+/// Vignettes de jeux montrées dans « Collection de jeux », au plus.
+const GAME_TILES: usize = 3;
 
 /// État de la carte de mon compte et de l'édition rapide.
 #[derive(Default)]
@@ -89,6 +90,10 @@ enum Pick {
     /// Un compte choisi dans le sous-menu.
     Account(AccountKey),
     CopyId,
+    /// « Paramètres d'activité » du menu de la carte d'activité.
+    ActivitySettings,
+    /// « Voir le profil complet » du même menu.
+    FullProfile,
 }
 
 fn sub_id(kind: SubKind) -> Id {
@@ -327,6 +332,16 @@ impl App {
                 self.quick.card = false;
                 self.switch_account(key);
             }
+            Pick::ActivitySettings => {
+                self.quick.card = false;
+                self.show_settings(super::settings::Page::Activity);
+            }
+            Pick::FullProfile => {
+                self.quick.card = false;
+                if let Some(me) = self.store.me.clone() {
+                    super::profile_full::open_full(ctx, me.id, self.store.guild, &me.name, me.avatar, super::profile_full::Tab::Activity);
+                }
+            }
             Pick::CopyId => {
                 if let Some(me) = &self.store.me {
                     ctx.copy_text(me.id.to_string());
@@ -402,12 +417,12 @@ impl App {
 
     #[allow(clippy::too_many_arguments)]
     fn account_card(&mut self, ui: &mut egui::Ui, t: &Tokens, themed: Option<&super::cosmetics::Themed>, me: &User, guild: Option<u64>, s: &super::profile::Shown, avail: f32) -> Option<Pick> {
-        let lang = self.lang;
         let c = &t.colors;
         let width = t.layout.profile_width;
         let pad = t.profile_pad();
         let name = super::profile::name_of(&me.name, s);
         let mut pick = None;
+        let mut activity = None;
         // Ce qui suit l'en-tête défile dans la hauteur qui reste : la carte, ancrée
         // au-dessus du panneau, ne dépasse jamais sous la barre de titre et sa dernière
         // ligne n'est plus tranchée tant que la fenêtre a la place.
@@ -419,7 +434,7 @@ impl App {
             ui.set_width(width);
             let left = ui.max_rect().left();
             let top = ui.cursor().top();
-            self.profile_header(ui, t, width, me.id, guild, s, me.avatar, &name, Header { themed, ..Header::default() });
+            self.profile_header(ui, t, width, me.id, guild, s, me.avatar, &name, Header { themed, bubble: true, ..Header::default() });
             // Hauteur de l'en-tête mesurée, pas estimée : l'estimation laissait un vide
             // sous la barre de titre et tranchait la dernière ligne.
             let max_height = (avail - (ui.cursor().top() - top) - 2.0 * t.shapes.border.max(1.0)).max(t.layout.profile_avatar);
@@ -427,29 +442,77 @@ impl App {
                 egui::ScrollArea::vertical().id_salt("mon-compte").max_height(max_height).show(ui, |ui| {
                     egui::Frame::new().inner_margin(t.profile_margin()).show(ui, |ui| {
                         ui.set_width(width - 2.0 * pad);
-                        self.identity_ui(ui, t, &name, s);
-                        if let Some(a) = s.presence.as_ref().and_then(Presence::custom) {
-                            custom_status_ui(ui, t, a);
-                        }
+                        // Comme dans le client : statut personnalisé en bulle (en-tête), badges en
+                        // capsule, bio repliée sans titre, puis l'activité en cours dans sa carte.
+                        self.identity_card(ui, t, &name, s);
                         if let Some(bio) = s.profile.as_ref().and_then(Profile::bio) {
                             ui.add_space(t.spacing.item_y);
-                            section(ui, t, pt::ABOUT_ME.get(lang));
-                            // Bio courte : quatre lignes, le reste défile.
-                            let lines = 4.0 * ui.text_style_height(&egui::TextStyle::Body);
-                            egui::ScrollArea::vertical().id_salt("mon-compte-bio").max_height(lines).show(ui, |ui| self.bio_ui(ui, t, me.id, guild, bio));
+                            self.bio_folded(ui, t, me.id, guild, bio);
+                        }
+                        self.games_row(ui, t, s);
+                        match self.activity_cards(ui, t, s) {
+                            Some(super::activity::CardClick::Settings) => activity = Some(Pick::ActivitySettings),
+                            Some(super::activity::CardClick::Full) => activity = Some(Pick::FullProfile),
+                            _ => {}
                         }
                         ui.add_space(t.spacing.item_x);
                         pick = self.account_rows(ui, t, left..=left + width);
+                        pick = pick.take().or(activity.take());
                     });
                 })
             });
             bg
         });
         if let Some(th) = themed {
-            super::profile::themed_background(ui.painter(), th, framed.inner, framed.response.rect, t.r_card(), Some(t.border()));
+            super::profile::themed_background(ui.painter(), th, framed.inner, framed.response.rect, t.r_card(), Some(th.edge(t)));
         }
         self.paint_profile_effect(ui.painter(), s, framed.response.rect, t.r_card());
         pick
+    }
+
+    /// « Collection de jeux » : les jeux des widgets de mon profil, tels que le
+    /// profil déjà reçu les donne (aucune requête d'ici). Une vignette par jeu
+    /// dont l'image est connue (noms déjà demandés par l'éditeur de profil, ou
+    /// liste des jeux détectables), trois au plus ; sinon le nombre de jeux.
+    fn games_row(&self, ui: &mut egui::Ui, t: &Tokens, s: &super::profile::Shown) {
+        let Some(p) = s.profile.as_ref() else { return };
+        let mut ids: Vec<u64> = Vec::new();
+        for g in p.widgets.iter().flat_map(|w| &w.games) {
+            if !ids.contains(&g.game_id) {
+                ids.push(g.game_id);
+            }
+        }
+        if ids.is_empty() {
+            return;
+        }
+        let image = |id: u64| {
+            let hash = self.store.widgets.game(id).and_then(crate::state::widgets::Game::image).or_else(|| self.store.activity.index.as_ref()?.app(id)?.icon)?;
+            Some(crate::state::model::ImageRef::AppIcon { app_id: id, hash })
+        };
+        let tiles: Vec<crate::state::model::ImageRef> = ids.iter().filter_map(|id| image(*id)).take(GAME_TILES).collect();
+        let lang = self.lang;
+        let side = t.spacing.control_height.min(t.layout.small_avatar.max(24.0));
+        ui.add_space(t.spacing.item_x);
+        let pad = t.spacing.item_x.round().clamp(0.0, 127.0) as i8;
+        egui::Frame::new().fill(block_fill(t)).corner_radius(t.r_embed()).inner_margin(egui::Margin::symmetric(pad, (pad / 2).max(4))).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal(|ui| {
+                ui.set_min_height(side);
+                let title = crate::i18n::table::profile::t::GAME_COLLECTION.get(lang);
+                ui.label(RichText::new(title).font(super::fonts::demi_font(t.typography.small + 1.0)).color(t.colors.text_strong));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.spacing_mut().item_spacing.x = t.spacing.item_y;
+                    if tiles.is_empty() {
+                        ui.label(RichText::new(ids.len().to_string()).small().color(t.colors.muted));
+                    }
+                    for tile in tiles.iter().rev() {
+                        let (rect, _) = ui.allocate_exact_size(egui::Vec2::splat(side), Sense::hover());
+                        ui.painter().rect_filled(rect, t.r_row(), t.colors.bg3);
+                        super::util::paint_image(ui, &self.images, rect, Some(*tile), t.r_row());
+                    }
+                });
+            });
+        });
     }
 
     /// Les deux blocs de lignes de menu de la carte. `card_x` : bords gauche

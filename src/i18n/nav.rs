@@ -16,7 +16,7 @@ pub mod t {
         KIND_FRIEND = "Ami", "Friend";
         INBOX = "Boîte de réception", "Inbox";
         TAB_MENTIONS = "Mentions", "Mentions";
-        TAB_UNREADS = "Non lus", "Unreads";
+        TAB_UNREADS = "Messages non lus", "Unreads";
         ROLE_MENTIONS = "Mentions de rôles", "Role mentions";
         EVERYONE = "@everyone et @here", "@everyone and @here";
         THIS_SERVER = "Ce serveur seulement", "This server only";
@@ -27,6 +27,20 @@ pub mod t {
         NO_UNREADS = "Tout est lu.", "You're all caught up.";
         REMOVE_MENTION = "Retirer de la liste", "Remove from the list";
         MENTIONED = "Vous êtes mentionné", "You are mentioned";
+        TAB_MARKED = "Messages marqués", "Bookmarks";
+        TAB_REMINDERS = "Rappels", "Reminders";
+        TAB_SCHEDULED = "Programmés", "Scheduled";
+        MARK_ALL_READ = "Tout marquer comme lu", "Mark all as read";
+        FILTER_MENTIONS = "Filtrer les mentions", "Filter mentions";
+        CHANNEL_NOTIFS = "Notifications du salon", "Channel notifications";
+        FOLD = "Replier", "Collapse";
+        UNFOLD = "Déplier", "Expand";
+        NEW_MESSAGES = "Nouveaux messages", "New messages";
+        SHOW_MESSAGES = "Afficher les messages", "Show messages";
+        OPEN_CHANNEL = "Ouvrir le salon", "Open channel";
+        GO_TO = "Aller à", "Jump";
+        NO_REMINDERS = "Aucun rappel. Le menu d'un message permet d'en demander un.", "No reminder. A message's menu lets you ask for one.";
+        MARK_ALL_YES = "Confirmer", "Confirm";
         SHORTCUTS = "Raccourcis clavier", "Keyboard shortcuts";
         SHORTCUTS_EDITABLE = "Raccourcis modifiables", "Editable shortcuts";
         MOUSE_NOTE = "Boutons 4 et 5 de la souris\u{a0}: revenir en arrière, aller en avant.", "Mouse buttons 4 and 5: go back, go forward.";
@@ -87,5 +101,9 @@ pub mod f {
         keys_read_failed(reason) = "keys.toml illisible ({reason})\u{a0}: raccourcis par défaut", "keys.toml unreadable ({reason}): default shortcuts";
         keys_save_failed(reason) = "keys.toml non enregistré\u{a0}: {reason}", "keys.toml not saved: {reason}";
         in_guild(channel, guild) = "#{channel} \u{b7} {guild}", "#{channel} \u{b7} {guild}";
+        more_messages(n) = "Voir la suite ({n})", "Show more ({n})";
+        mark_all_confirm(n) = "Marquer {n} salons comme lus\u{a0}?", "Mark {n} channels as read?";
+        mentions_count(n) = "Mentions\u{a0}: {n}", "Mentions: {n}";
+        place(guild, category) = "{guild} \u{203a} {category}", "{guild} \u{203a} {category}";
     }
 }

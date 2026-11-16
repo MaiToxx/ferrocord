@@ -142,12 +142,13 @@ struct RawVersioned {
 // ne peut plus s'y décoder.
 impl<'de> Deserialize<'de> for RawGuildSettingsList {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let raw = Box::<serde_json::value::RawValue>::deserialize(d)?;
-        if let Ok(v) = serde_json::from_str::<RawVersioned>(raw.get()) {
-            return Ok(Self { entries: v.entries, partial: v.partial });
-        }
-        let entries = serde_json::from_str(raw.get()).map_err(serde::de::Error::custom)?;
-        Ok(Self { entries, partial: false })
+        super::raw::with_raw(d, |raw| {
+            if let Ok(v) = serde_json::from_str::<RawVersioned>(raw) {
+                return Ok(Self { entries: v.entries, partial: v.partial });
+            }
+            serde_json::from_str(raw).map(|entries| Self { entries, partial: false })
+        })?
+        .map_err(serde::de::Error::custom)
     }
 }
 

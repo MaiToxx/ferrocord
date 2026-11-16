@@ -150,7 +150,7 @@ pub fn parse_wheel_lines(out: &str) -> Option<u32> {
 
 enum Job {
     Load,
-    Save(LocalPrefs),
+    Save(Box<LocalPrefs>),
     Log(String),
 }
 
@@ -201,7 +201,7 @@ impl Machine for MachineFiles {
         let _ = self.jobs.send(Job::Load);
     }
     fn save(&mut self, prefs: LocalPrefs) {
-        let _ = self.jobs.send(Job::Save(prefs));
+        let _ = self.jobs.send(Job::Save(Box::new(prefs)));
     }
     fn log(&mut self, line: String) {
         let _ = self.jobs.send(Job::Log(line));

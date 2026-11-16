@@ -88,7 +88,7 @@ fn excerpt(text: &str, max: usize) -> String {
 
 /// Ce qu'un clic de la liste ou du bandeau demande.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Act {
+pub(super) enum Act {
     Send(u64),
     Edit(u64),
     Delete(u64),
@@ -165,7 +165,7 @@ impl App {
         true
     }
 
-    fn scheduled_act(&mut self, act: Act) {
+    pub(super) fn scheduled_act(&mut self, act: Act) {
         match act {
             Act::Send(id) => {
                 self.scheduled_send(id);
@@ -644,6 +644,32 @@ mod tests {
         assert_eq!(net.sends().len(), 1, "l'autre, pas encore échu, n'est pas parti non plus");
         let out = frame(&mut app, Vec::new());
         assert!(!shows(&out, "Message programmé pour Alice"), "plus de bandeau");
+    }
+
+    /// Onglet « Programmés » de la boîte de réception : les messages y sont
+    /// listés avec leurs actions ; l'ouvrir n'envoie rien, « Supprimer » retire.
+    #[test]
+    fn inbox_tab_lists_scheduled_messages_and_sends_nothing() {
+        let net = Net::default();
+        let mut app = app(net.clone());
+        frame(&mut app, Vec::new());
+        let now = crate::state::store::now_ms();
+        app.schedule_message(C, "**bon** anniversaire", now + 3_600_000).unwrap();
+        app.show_inbox_tab("programmes");
+        frame(&mut app, Vec::new());
+        let out = frame(&mut app, Vec::new());
+        assert!(shows(&out, "Programmés"), "onglet présent quand le plugin est activé");
+        assert!(shows(&out, "bon anniversaire") && !shows(&out, "**"), "texte mis en forme");
+        assert!(shows(&out, xt::SCHED_SEND_NOW.get(Lang::Fr)));
+        click(&mut app, tx::DELETE.get(Lang::Fr));
+        frame(&mut app, Vec::new());
+        assert!(app.scheduled_items().is_empty());
+        assert!(net.sends().is_empty(), "rien n'est parti");
+        // Plugin coupé : plus d'onglet.
+        app.set_plugin(Plugin::Scheduled, false);
+        frame(&mut app, Vec::new());
+        let out = frame(&mut app, Vec::new());
+        assert!(!shows(&out, "Programmés"));
     }
 
     #[test]

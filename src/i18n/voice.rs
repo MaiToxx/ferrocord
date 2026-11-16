@@ -50,6 +50,7 @@ pub mod t {
         UNSUPPORTED = "aucun chiffrement commun avec le serveur vocal", "no encryption mode in common with the voice server";
         BAD_ENDPOINT = "adresse du serveur vocal refusée", "voice server address refused";
         UNREACHABLE = "serveur vocal injoignable", "voice server unreachable";
+        EXPIRED_LOOP = "la session vocale expire sans cesse, rejoignez le salon à nouveau", "the voice session keeps expiring; join the channel again";
         AUDIO_FAILED = "Impossible d'ouvrir les périphériques audio.", "Couldn't open the audio devices.";
         CODES = "Codes de vérification", "Verification codes";
         CODES_TIP = "Comparez ces codes avec ceux des autres participants pour vérifier le chiffrement de bout en bout.", "Compare these codes with the other participants' to verify end-to-end encryption.";
@@ -58,6 +59,10 @@ pub mod t {
         CODES_LOADING = "Calcul des codes…", "Computing codes…";
         CODE_UNKNOWN = "indisponible", "unavailable";
         CLOSE = "Fermer", "Close";
+        // Présence vocale (lot « vocal ») : amis en vocal, rail, aperçu d'un direct.
+        IN_VOICE = "Dans un salon vocal", "In a voice channel";
+        STREAMING = "Streame", "Streaming";
+        WATCH_STREAM = "Regarder le stream", "Watch Stream";
     }
 }
 
@@ -79,5 +84,8 @@ pub mod f {
         confirm_undeafen(name) = "Retirer la sourdine de {name} sur le serveur\u{a0}?", "Server undeafen {name}?";
         confirm_move(name, channel) = "Déplacer {name} vers {channel}\u{a0}?", "Move {name} to {channel}?";
         confirm_disconnect(name) = "Déconnecter {name} du vocal\u{a0}?", "Disconnect {name} from voice?";
+        // Colonne « En ligne » de la page Amis (lot « vocal »).
+        and(names, last) = "{names} et {last}", "{names} and {last}";
+        elapsed(time) = "Temps écoulé\u{a0}: {time}", "Elapsed: {time}";
     }
 }

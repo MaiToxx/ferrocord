@@ -34,6 +34,8 @@ pub(super) struct NavUi {
     pub(super) inbox: super::inbox::InboxUi,
     /// Fenêtre « Paramètres de notification » d'un serveur (lot N).
     pub(super) notif_win: Option<super::notif_settings::Win>,
+    /// Dernière action de navigation acceptée, pour ralentir la répétition (lot « fiable »).
+    last_repeat: Option<(Action, std::time::Instant)>,
 }
 
 /// Libellé d'une action.
@@ -146,6 +148,17 @@ pub(super) const FIXED: [(&str, Text); 6] = [
     ("F6", xt::FIX_ZONES),
     ("Tab", xt::FIX_FOCUS),
 ];
+
+/// Écart minimal entre deux répétitions d'une action qui ouvre un salon
+/// (lot « fiable ») : touche maintenue, la répétition du système (une
+/// trentaine par seconde) ferait partir un chargement d'historique par
+/// salon traversé.
+const NAV_REPEAT_GAP: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// Action qui ouvre un autre salon (donc charge son historique).
+fn opens_a_channel(a: Action) -> bool {
+    matches!(a, Action::PrevChannel | Action::NextChannel | Action::PrevUnread | Action::NextUnread | Action::PrevGuild | Action::NextGuild)
+}
 
 /// Actions qui se répètent quand la touche reste enfoncée.
 fn repeats(a: Action) -> bool {
@@ -275,6 +288,8 @@ impl App {
         let b = &self.nav.bindings;
         let ringing = !self.ringing_calls().is_empty();
         let mut out = Vec::new();
+        let now = std::time::Instant::now();
+        let mut last_repeat = self.nav.last_repeat;
         ui.input_mut(|i| {
             i.events.retain(|e| {
                 let egui::Event::Key { key, pressed: true, repeat, modifiers, .. } = e else { return true };
@@ -294,10 +309,18 @@ impl App {
                 if (typing && chord.disturbs_typing()) || (*repeat && !repeats(a)) {
                     return true;
                 }
+                // Touche maintenue sur une action qui change de salon : répétition ralentie.
+                if opens_a_channel(a) {
+                    if *repeat && last_repeat.is_some_and(|(same, t)| same == a && now.duration_since(t) < NAV_REPEAT_GAP) {
+                        return false;
+                    }
+                    last_repeat = Some((a, now));
+                }
                 out.push(a);
                 false
             });
         });
+        self.nav.last_repeat = last_repeat;
         out
     }
 
@@ -384,7 +407,8 @@ impl App {
         self.notif_window(ui);
         self.ff2_windows(ui);
         // Une fenêtre du lot ouverte garde ses touches (Échap, flèches).
-        if !self.nav.switcher.open && !self.palette.open && !self.nav.inbox.open && !self.nav.shortcuts_open && !self.params.open && self.nav.notif_win.is_none() {
+        // Le sélecteur de partage aussi : Échap le ferme, au lieu de marquer le salon comme lu.
+        if !self.nav.switcher.open && !self.palette.open && !self.nav.inbox.open && !self.nav.shortcuts_open && !self.params.open && self.nav.notif_win.is_none() && !self.share_picker_open() {
             self.shortcuts_late(ui);
         }
     }
@@ -762,6 +786,9 @@ pub(super) mod tests {
         frame(&mut app, Vec::new());
         frame(&mut app, vec![key(Key::ArrowDown, ALT)]);
         assert_eq!(app.store.channel, Some(11));
+        // Touche relâchée entre deux appuis : sans cela egui y voit une touche
+        // maintenue, dont la répétition est ralentie (lot « fiable »).
+        frame(&mut app, vec![egui::Event::Key { key: Key::ArrowDown, physical_key: None, pressed: false, repeat: false, modifiers: ALT }]);
         frame(&mut app, vec![key(Key::ArrowDown, ALT)]);
         assert_eq!(app.store.channel, Some(10), "en boucle");
         let ctrl_alt = egui::Modifiers { ctrl: true, command: true, ..ALT };
@@ -811,6 +838,32 @@ pub(super) mod tests {
         assert!(app.ctx.text_edit_focused(), "la saisie a le clavier");
         frame(&mut app, vec![key(Key::N, egui::Modifiers::NONE)]);
         assert_eq!(app.store.channel, Some(11));
+    }
+
+    /// Touche maintenue (lot « fiable ») : la répétition du système ne fait
+    /// pas défiler les salons à trente par seconde, chacun avec son
+    /// chargement d'historique.
+    #[test]
+    fn a_held_key_does_not_race_through_channels() {
+        let mut app = app();
+        frame(&mut app, Vec::new());
+        // Alt+Bas (défaut) : une combinaison que la saisie ne retient pas.
+        let held = |repeat| egui::Event::Key { key: Key::ArrowDown, physical_key: None, pressed: true, repeat, modifiers: ALT };
+        frame(&mut app, vec![held(false)]);
+        let first = app.store.channel;
+        assert_eq!(first, Some(11));
+        frame(&mut app, vec![held(true)]);
+        frame(&mut app, vec![held(true)]);
+        assert_eq!(app.store.channel, first, "répétitions rapprochées ignorées");
+        std::thread::sleep(NAV_REPEAT_GAP + std::time::Duration::from_millis(60));
+        frame(&mut app, vec![held(true)]);
+        assert_ne!(app.store.channel, first, "après l'écart, la répétition passe");
+        // Touche relâchée puis rappuyée aussitôt (egui déduit lui-même la
+        // répétition d'une touche restée enfoncée) : un nouvel appui passe toujours.
+        let now = app.store.channel;
+        frame(&mut app, vec![egui::Event::Key { key: Key::ArrowDown, physical_key: None, pressed: false, repeat: false, modifiers: ALT }]);
+        frame(&mut app, vec![held(false)]);
+        assert_ne!(app.store.channel, now, "nouvel appui");
     }
 
     #[test]

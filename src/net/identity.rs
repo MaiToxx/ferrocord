@@ -119,6 +119,60 @@ impl Versions {
     }
 }
 
+/// Au-delà, les versions d'Electron et de Chromium embarquées sont tenues
+/// pour périmées (Discord change d'Electron toutes les quelques semaines) :
+/// seule une mise à jour de Ferrocord les renouvelle.
+pub const EMBEDDED_STALE_DAYS: i64 = 56;
+/// Au-delà, le numéro de build (relevé ou embarqué) est tenu pour périmé.
+pub const BUILD_STALE_DAYS: i64 = 21;
+
+/// Jour (depuis 1970) du relevé embarqué.
+fn embedded_day() -> Option<i64> {
+    chrono::NaiveDate::parse_from_str(EMBEDDED_ON, "%Y-%m-%d").ok().map(|d| d.and_time(chrono::NaiveTime::MIN).and_utc().timestamp() / 86_400)
+}
+
+/// Âge de ce qui est annoncé (Paramètres › Avancés).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Freshness {
+    pub versions: Versions,
+    /// Jours depuis le relevé embarqué ([`EMBEDDED_ON`]).
+    pub embedded_days: i64,
+    /// Jours depuis le dernier numéro de build connu (relevé réussi, sinon l'embarqué).
+    pub build_days: i64,
+    /// Une valeur de `local.toml` l'emporte : l'âge ne dit plus rien.
+    pub forced: bool,
+}
+
+impl Freshness {
+    /// `today` : jours depuis 1970 ; `fetched` : dernier rafraîchissement connu.
+    pub fn at(today: i64, fetched: &Fetched, prefs: &ForcedVersions) -> Self {
+        let embedded = embedded_day().unwrap_or(today);
+        let build = embedded.max(fetched.build_at / 86_400).min(today);
+        Freshness { versions: Versions::resolve(fetched, prefs), embedded_days: (today - embedded).max(0), build_days: (today - build).max(0), forced: *prefs != ForcedVersions::default() }
+    }
+
+    /// Electron et Chromium trop vieux : mettre Ferrocord à jour.
+    pub fn embedded_stale(&self) -> bool {
+        !self.forced && self.embedded_days > EMBEDDED_STALE_DAYS
+    }
+
+    /// Numéro de build trop vieux (rafraîchissement en échec depuis longtemps).
+    pub fn build_stale(&self) -> bool {
+        !self.forced && self.build_days > BUILD_STALE_DAYS
+    }
+}
+
+/// Âge des valeurs annoncées pour ce lancement : lu une fois (fichiers du
+/// cache et de `local.toml`), aucune requête.
+pub fn freshness() -> &'static Freshness {
+    static F: std::sync::OnceLock<Freshness> = std::sync::OnceLock::new();
+    F.get_or_init(|| {
+        let prefs = crate::machine::default_dir().map(|d| crate::machine::read_prefs(&d.join("local.toml"))).unwrap_or_default().identity;
+        let fetched = crate::platform::cache_dir().map(|d| Fetched::read(&d.join("ferrocord").join("identite.json"))).unwrap_or_default();
+        Freshness::at(chrono::Utc::now().timestamp() / 86_400, &fetched, &prefs.forced())
+    })
+}
+
 const BUILD_RANGE: std::ops::Range<u32> = 100_000..100_000_000;
 const NATIVE_RANGE: std::ops::Range<u32> = 1..10_000_000;
 
@@ -138,6 +192,8 @@ fn host_version(s: &str) -> bool {
 pub struct Fetched {
     /// Dernier essai (secondes Unix), réussi ou non.
     pub tried_at: i64,
+    /// Dernier relevé réussi du numéro de build (secondes Unix ; 0 : jamais).
+    pub build_at: i64,
     pub client_version: Option<String>,
     pub client_build_number: Option<u32>,
     pub native_build_number: Option<u32>,
@@ -265,20 +321,24 @@ pub struct Config {
     pub refresh: Option<Refresh>,
     /// `local.toml`, relu à chaque connexion pour le seul réglage du mode.
     prefs_file: Option<PathBuf>,
+    /// Langue choisie dans Ferrocord (réglage explicite), en langue de
+    /// Discord : c'est elle que `X-Discord-Locale` annonce, comme le client
+    /// officiel annonce la langue de son interface. `None` : celle du système.
+    ui_locale: Option<&'static str>,
 }
 
 impl Default for Config {
     /// Identité de Ferrocord : ce que tout appelant obtient sans rien demander
     /// (tests, aperçu). L'application passe par [`Config::for_app`].
     fn default() -> Self {
-        Config { mode: Mode::Ferrocord, versions: Versions::embedded(), machine: None, refresh: None, prefs_file: None }
+        Config { mode: Mode::Ferrocord, versions: Versions::embedded(), machine: None, refresh: None, prefs_file: None, ui_locale: None }
     }
 }
 
 impl Config {
     /// Identité de bureau avec ces valeurs (tests ; l'application : [`Config::for_app`]).
     pub fn desktop(versions: Versions, machine: Machine) -> Self {
-        Config { mode: Mode::Desktop, versions, machine: Some(machine), refresh: None, prefs_file: None }
+        Config { mode: Mode::Desktop, versions, machine: Some(machine), refresh: None, prefs_file: None, ui_locale: None }
     }
 
     /// Lit le réglage (`local.toml`) et les numéros rafraîchis (cache).
@@ -294,7 +354,14 @@ impl Config {
             machine,
             refresh: cache.map(Refresh::discord),
             prefs_file,
+            ui_locale: None,
         }
+    }
+
+    /// Avec la langue choisie dans l'interface (tests ; l'application : [`Config::reread_mode`]).
+    pub fn with_ui_language(mut self, lang: Option<crate::i18n::Lang>) -> Self {
+        self.ui_locale = lang.map(ui_locale);
+        self
     }
 
     /// Avec un rafraîchissement des numéros de version (tests : faux serveur local).
@@ -306,6 +373,7 @@ impl Config {
     /// La même identité, avec le mode que dit `local.toml` maintenant.
     pub fn reread_mode(&self) -> Self {
         let mut c = self.clone();
+        c.ui_locale = crate::i18n::chosen_language().map(ui_locale);
         if let Some(f) = &self.prefs_file {
             let desktop = crate::machine::read_prefs(f).identity.desktop;
             c.mode = if desktop && c.machine.is_some() { Mode::Desktop } else { Mode::Ferrocord };
@@ -370,6 +438,14 @@ fn discord_locale(system: &str) -> &'static str {
         "zh" => "zh-CN",
         "nb" | "nn" => "no",
         l => PLAIN.iter().find(|p| **p == l).copied().unwrap_or("en-US"),
+    }
+}
+
+/// Langue de Discord correspondant à une langue de l'interface de Ferrocord.
+fn ui_locale(lang: crate::i18n::Lang) -> &'static str {
+    match lang {
+        crate::i18n::Lang::Fr => "fr",
+        crate::i18n::Lang::En => "en-US",
     }
 }
 
@@ -467,6 +543,8 @@ struct Desktop {
     user_agent: String,
     launch_id: String,
     launch_signature: String,
+    /// Valeur de `X-Discord-Locale`, figée pour la connexion.
+    locale: &'static str,
     beat: Mutex<Beat>,
 }
 
@@ -527,6 +605,7 @@ impl Identity {
             user_agent: desktop_user_agent(&cfg.versions),
             launch_id: uuid4(),
             launch_signature: launch_signature(),
+            locale: cfg.ui_locale.unwrap_or_else(|| discord_locale(&m.system_locale)),
             beat: Mutex::new(Beat { id: uuid4(), since: Instant::now(), encoded: String::new() }),
         });
         Identity { desktop }
@@ -577,7 +656,7 @@ impl Identity {
         let locale = &d.machine.system_locale;
         let mut req = req
             .header("X-Super-Properties", d.beat().1)
-            .header("X-Discord-Locale", discord_locale(locale))
+            .header("X-Discord-Locale", d.locale)
             .header("Accept-Language", accept_language(locale))
             .header("Referer", REFERER)
             .header("Sec-CH-UA", sec_ch_ua(d.versions.chrome_major()))
@@ -684,8 +763,11 @@ pub async fn refresh(r: Refresh, cfg: Config) {
         known.client_version = host.or(known.client_version);
         known.native_build_number = native.or(known.native_build_number);
     }
-    if let Some(page) = get(&http, &limits, "GET /login", &r.login_url).await {
-        known.client_build_number = build_number(&page).or(known.client_build_number);
+    if let Some(page) = get(&http, &limits, "GET /login", &r.login_url).await
+        && let Some(n) = build_number(&page)
+    {
+        known.client_build_number = Some(n);
+        known.build_at = now;
     }
     known.write(&r.cache);
 }
@@ -825,6 +907,31 @@ mod tests {
         assert_eq!(ws[1], ("Origin", "https://discord.com".to_string()));
     }
 
+    /// Lot « fiable » : `X-Discord-Locale` suit la langue choisie dans
+    /// Ferrocord (comme le client officiel suit la sienne), `Accept-Language`
+    /// et `system_locale` restent ceux du système ; sans choix, la langue du
+    /// système sert aux trois. Figé pour la connexion.
+    #[test]
+    fn discord_locale_follows_the_chosen_language() {
+        let http = reqwest::Client::new();
+        let get = |cfg: &Config| {
+            let req = Identity::new(cfg, false).rest(http.get("http://127.0.0.1:9/x"), &reqwest::Method::GET).build().unwrap();
+            let h = |n: &str| req.headers().get(n).map(|v| v.to_str().unwrap().to_string()).unwrap_or_default();
+            (h("x-discord-locale"), h("accept-language"))
+        };
+        let base = Config::desktop(Versions::embedded(), machine());
+        assert_eq!(get(&base), ("fr".into(), "fr-FR,fr;q=0.9".into()));
+        assert_eq!(get(&base.clone().with_ui_language(Some(crate::i18n::Lang::En))), ("en-US".into(), "fr-FR,fr;q=0.9".into()));
+        assert_eq!(get(&base.clone().with_ui_language(Some(crate::i18n::Lang::Fr))), ("fr".into(), "fr-FR,fr;q=0.9".into()));
+        // Les propriétés (système) ne changent pas avec la langue de l'interface.
+        let en = Identity::new(&base.clone().with_ui_language(Some(crate::i18n::Lang::En)), false);
+        let v: Value = serde_json::from_str(&en.identify(TOKEN).unwrap()).unwrap();
+        assert_eq!(v["d"]["properties"]["system_locale"], "fr-FR");
+        // Mode Ferrocord : toujours aucun en-tête.
+        let honest = Identity::new(&Config::default().with_ui_language(Some(crate::i18n::Lang::En)), false);
+        assert!(honest.rest(http.get("http://127.0.0.1:9/x"), &reqwest::Method::GET).build().unwrap().headers().is_empty());
+    }
+
     #[test]
     fn desktop_mode_needs_a_windows_machine() {
         let c = Config { mode: Mode::Desktop, ..Config::default() };
@@ -873,6 +980,31 @@ mod tests {
         assert_eq!(build_number(r#""BUILD_NUMBER":"12""#), None);
         assert_eq!(build_number(r#""BUILD_NUMBER":700000"#), None);
         assert_eq!(build_number("rien"), None);
+    }
+
+    #[test]
+    fn stale_values_are_noticed() {
+        let none = ForcedVersions::default();
+        let day0 = embedded_day().unwrap();
+        // Le jour du relevé, et trois semaines après : rien à dire.
+        let f = Freshness::at(day0, &Fetched::default(), &none);
+        assert_eq!((f.embedded_days, f.build_days, f.embedded_stale(), f.build_stale()), (0, 0, false, false));
+        assert!(!Freshness::at(day0 + BUILD_STALE_DAYS, &Fetched::default(), &none).build_stale());
+        // Sans relevé réussi depuis plus de trois semaines : build périmé.
+        let f = Freshness::at(day0 + 30, &Fetched::default(), &none);
+        assert!(f.build_stale() && !f.embedded_stale());
+        // Relevé réussi la veille : le build est frais, mais Electron vieillit quand même.
+        let fresh = Fetched { build_at: (day0 + 89) * 86_400, client_build_number: Some(700_000), ..Fetched::default() };
+        let f = Freshness::at(day0 + 90, &fresh, &none);
+        assert_eq!((f.build_days, f.build_stale(), f.embedded_stale()), (1, false, true));
+        assert_eq!(f.versions.client_build_number, 700_000);
+        // Horloge en arrière ou relevé daté du futur : jamais d'âge négatif.
+        let f = Freshness::at(day0 - 5, &Fetched { build_at: (day0 + 50) * 86_400, ..Fetched::default() }, &none);
+        assert_eq!((f.embedded_days, f.build_days), (0, 0));
+        // Valeurs imposées dans local.toml : pas d'avertissement.
+        let forced = ForcedVersions { electron: Some("45.0.0".into()), ..ForcedVersions::default() };
+        let f = Freshness::at(day0 + 400, &Fetched::default(), &forced);
+        assert!(f.forced && !f.embedded_stale() && !f.build_stale());
     }
 
     /// Le relevé du jour, pour ne pas laisser dériver les valeurs embarquées sans le voir.

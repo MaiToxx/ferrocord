@@ -550,10 +550,15 @@ impl App {
 
         // Le statut n'apparaît que lorsqu'il y a quelque chose à signaler.
         let trouble = (self.store.status != Status::Connected).then(|| self.list.status.text().to_string());
+        // Compte système de Discord en face (MP officiel) : su de l'en-tête, des messages et de la saisie.
+        let official = if is_dm { self.store.official_peer(cid) } else { None };
+        super::official::set_peer(ui.ctx(), official);
         self.chat_head(ui, cid, &name, is_thread, is_dm, trouble.as_deref());
         // Appel du MP, ou salon vocal et conférence au-dessus de leur discussion (lot V6).
         if is_dm {
-            self.call_banner(ui, cid);
+            self.call_band(ui, cid);
+            // Profil du correspondant : sous l'en-tête, qui court sur toute la largeur.
+            self.dm_profile_panel(ui);
         } else {
             self.room_head(ui, cid);
         }
@@ -564,6 +569,11 @@ impl App {
             .show_separator_line(false)
             .show(ui, |ui| {
                 super::look::backdrop(ui, super::look::Zone::Chat);
+                // MP du compte système de Discord : lecture seule, un bandeau à la place de la saisie.
+                if official.is_some() {
+                    super::official::banner(ui, &t, lang);
+                    return;
+                }
                 let hint = if is_dm { f::message_dm(lang, &name) } else { f::message_channel(lang, &name) };
                 self.composer_ui(ui, cid, hint);
             });
@@ -615,7 +625,10 @@ impl App {
         let say = self.say();
         let ppp = ui.pixels_per_point();
         let start = Start::of(&self.store, cid);
-        let quick = super::msg_actions::quick_reactions(self.emojis.recent());
+        // Usage local des emojis : lu une fois par compte (fichier de quelques kilo-octets).
+        self.store.gifs.frecency.bind_local(self.store.me.as_ref().map(|u| u.id), self.store.now());
+        let frequent = super::msg_actions::frequent_reactions(&self.store, cid);
+        let quick = super::msg_actions::quick_reactions(frequent.iter().chain(self.emojis.recent()));
         let list = &mut self.list;
         // Le style d'egui suit le thème avec une image de retard : les deux comptent.
         // Les réglages « Texte et images » changent aussi la hauteur des messages.

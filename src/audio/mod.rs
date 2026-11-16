@@ -6,12 +6,15 @@
 //! - [`io`] : périphériques Windows (capture, lecture, rééchantillonnage) ;
 //! - [`dsp`] : traitement de la voix captée (passe-haut, écho, bruit, gain) ;
 //! - [`clip`] : sons courts (tableau de sons, messages vocaux) : décodage
-//!   MP3 et Ogg/Opus, enregistrement en Ogg/Opus, onde (phase 6).
+//!   MP3 et Ogg/Opus, enregistrement en Ogg/Opus, onde (phase 6) ;
+//! - [`sons`] : sons d'interface (sonneries, micro, notifications) fabriqués
+//!   par un petit synthétiseur, et sons personnels de l'utilisateur.
 
 pub mod clip;
 pub mod dsp;
 pub mod engine;
 pub mod io;
+pub mod sons;
 
 /// Traitement de la capture (suppression d'écho, de bruit, gain…) appliqué
 /// avant la porte et l'encodage.

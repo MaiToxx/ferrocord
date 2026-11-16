@@ -7,6 +7,9 @@
 //! - Surveillance par simple relevé de la date de modification et de la
 //!   taille, plusieurs fois par seconde : rien n'est lu tant que rien ne
 //!   change, et l'interface n'est réveillée que pour un vrai changement.
+//!   Sous Windows (lot « cpu »), le relevé n'a lieu que si le système a
+//!   signalé un changement dans le dossier (`platform::dirwatch`), plus un
+//!   relevé de sûreté de loin en loin : au repos, le disque n'est plus touché.
 //! - Enregistrement différé : les réglages du panneau sont regroupés et
 //!   écrits après un court silence, pas à chaque mouvement de curseur.
 //! - Le fichier l'emporte : s'il a changé depuis le dernier relevé, une
@@ -226,6 +229,37 @@ impl<D: Document> Drop for FileLink<D> {
     }
 }
 
+/// Avec le signal du dossier, le fichier n'est plus relevé qu'un appel sur
+/// tant (relevé de sûreté : 5 s pour le thème, 20 s pour les réglages), au
+/// cas où le système n'aurait pas prévenu (disque réseau).
+const FULL_EVERY: u32 = 20;
+/// Nouvel essai d'abonnement quand le dossier n'existait pas encore.
+const SIGNAL_RETRY: Duration = Duration::from_secs(10);
+
+/// Signal de changement du dossier du fichier surveillé (lot « cpu »).
+struct Signal {
+    state: Option<crate::platform::dirwatch::DirSignal>,
+    /// Prochain relevé de sûreté.
+    full_at: Instant,
+    /// Prochain essai d'abonnement (sans signal).
+    retry_at: Instant,
+}
+
+impl Signal {
+    fn new(file: Option<&Path>, now: Instant) -> Signal {
+        // Premier relevé sans attendre : un changement fait entre la lecture
+        // initiale et l'abonnement ne lèverait aucun signal.
+        let mut s = Signal { state: None, full_at: now, retry_at: now };
+        s.open(file, now);
+        s
+    }
+
+    fn open(&mut self, file: Option<&Path>, now: Instant) {
+        self.state = file.and_then(Path::parent).and_then(crate::platform::dirwatch::DirSignal::open);
+        self.retry_at = now + SIGNAL_RETRY;
+    }
+}
+
 struct Worker<D: Document> {
     file: Option<Watched<D>>,
     writable: bool,
@@ -257,12 +291,39 @@ impl<D: Document> Worker<D> {
         }
     }
 
+    /// Relève le fichier si le dossier a signalé un changement, si une
+    /// lecture est à refaire, ou si le relevé de sûreté est dû (lot « cpu ») :
+    /// sans signal du système, à chaque appel, comme avant.
+    fn poll(&mut self, signal: &mut Signal, now: Instant) {
+        let due = match signal.state.as_mut().map(crate::platform::dirwatch::DirSignal::changed) {
+            // Signal levé : quelque chose a changé dans le dossier.
+            Some(Some(true)) => true,
+            Some(Some(false)) => now >= signal.full_at || self.file.as_ref().is_some_and(|f| f.read_failures > 0),
+            // Abonnement perdu : relevé simple, et nouvel essai plus tard.
+            Some(None) => {
+                signal.state = None;
+                true
+            }
+            None => {
+                if now >= signal.retry_at {
+                    signal.open(self.file.as_ref().map(|f| f.path.as_path()), now);
+                }
+                true
+            }
+        };
+        if due {
+            self.check();
+            signal.full_at = now + self.cfg.poll * FULL_EVERY;
+        }
+    }
+
     fn run(mut self, rx: Receiver<Req<D>>) {
         let mut next_poll = Instant::now() + self.cfg.poll;
+        let mut signal = Signal::new(self.file.as_ref().map(|f| f.path.as_path()), Instant::now());
         loop {
             let now = Instant::now();
             if now >= next_poll {
-                self.check();
+                self.poll(&mut signal, now);
                 next_poll = now + self.cfg.poll;
             }
             if self.pending.as_ref().is_some_and(|(_, at)| now >= *at) {

@@ -14,6 +14,7 @@ use crate::i18n::table::social::t as so;
 use crate::images::{decode, disk::Disk, DiskConfig, Source};
 use crate::net::Wake;
 use crate::state::model::ImageRef;
+use crate::audio::sons::perso::Banque;
 use crate::state::notify::{Alert, DeskPrefs, Kind};
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -22,9 +23,10 @@ use tray_icon::menu::{CheckMenuItem, IsMenuItem, Menu, MenuEvent, MenuItem, Pred
 use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use windows::core::HSTRING;
 use windows::Data::Xml::Dom::XmlDocument;
-use windows::Foundation::{TypedEventHandler, Uri};
+use windows::Foundation::TypedEventHandler;
 use windows::Media::Core::MediaSource;
-use windows::Media::Playback::MediaPlayer;
+use windows::Media::Playback::{MediaPlaybackState, MediaPlayer};
+use windows::Storage::Streams::{DataWriter, InMemoryRandomAccessStream};
 use windows::UI::Notifications::{ToastNotification, ToastNotificationManager, ToastNotifier};
 
 /// Identifiant d'application des notifications (AppUserModelID).
@@ -41,6 +43,7 @@ enum Job {
     Save(DeskPrefs),
     Toast(Alert, [u8; 3]),
     Sound(Kind, u8),
+    Silence(Kind),
 }
 
 /// Bureau de Windows.
@@ -58,7 +61,7 @@ impl Desk {
         let (jobs, rx) = mpsc::channel();
         let (tx, events) = mpsc::channel();
         install_handlers(tx.clone(), wake.clone());
-        let worker = Worker { tx, wake, source, images, disk: None, notifier: None, registered: false, live: VecDeque::new(), player: None, slot: 0 };
+        let worker = Worker { tx, wake, source, images, disk: None, notifier: None, registered: false, live: VecDeque::new(), players: Vec::new(), sons: Banque::new(crate::audio::sons::perso::dossier()), slot: 0 };
         // Sans fil, les demandes sont perdues sans bruit : l'application reste utilisable.
         let _ = std::thread::Builder::new().name("ferrocord-bureau".into()).spawn(move || worker.run(rx));
         Desk { jobs, events, tray: None, accent: [0, 0, 0] }
@@ -80,6 +83,14 @@ impl Desktop for Desk {
 
     fn sound(&mut self, kind: Kind, volume: u8) {
         let _ = self.jobs.send(Job::Sound(kind, volume));
+    }
+
+    fn silence(&mut self, kind: Kind) {
+        let _ = self.jobs.send(Job::Silence(kind));
+    }
+
+    fn custom_sounds(&self) -> bool {
+        true
     }
 
     fn tray(&mut self, state: &TrayState) {
@@ -197,7 +208,10 @@ struct Worker {
     notifier: Option<ToastNotifier>,
     registered: bool,
     live: VecDeque<ToastNotification>,
-    player: Option<MediaPlayer>,
+    /// Lecteurs des sons, du moins récemment servi au plus récent.
+    players: Vec<(Kind, MediaPlayer)>,
+    /// Sons fabriqués à la demande (rien tant qu'aucun son n'est joué).
+    sons: Banque,
     slot: u32,
 }
 
@@ -223,6 +237,7 @@ impl Worker {
                 Job::Sound(kind, volume) => {
                     let _ = self.play(kind, volume);
                 }
+                Job::Silence(kind) => self.silence(kind),
             }
         }
     }
@@ -293,42 +308,63 @@ impl Worker {
     }
 
     fn play(&mut self, kind: Kind, volume: u8) -> windows::core::Result<()> {
-        let Some(file) = sound_file(kind).filter(|p| p.is_file()) else { return Ok(()) };
-        if self.player.is_none() {
-            self.player = Some(MediaPlayer::new()?);
-        }
-        let Some(player) = &self.player else { return Ok(()) };
-        let source = MediaSource::CreateFromUri(&Uri::CreateUri(&HSTRING::from(xml::file_uri(&file)))?)?;
+        // Fabriqué (ou lu dans le dossier de l'utilisateur) ici, hors du fil d'interface.
+        let son = self.sons.son(kind);
+        let source = media_source(&son.wav)?;
+        let player = self.player(kind)?;
         player.SetSource(&source)?;
         player.SetVolume(f64::from(volume.min(100)) / 100.0)?;
         player.Play()
     }
+
+    /// Lecteur pour `kind` : le sien s'il en a déjà un (le son repart du
+    /// début), sinon un lecteur au repos, sinon un nouveau ; au-delà de
+    /// [`PLAYERS`], le plus ancien est repris. Une arrivée dans le salon ne
+    /// coupe donc pas la sonnerie.
+    fn player(&mut self, kind: Kind) -> windows::core::Result<MediaPlayer> {
+        let at = match self.players.iter().position(|(k, _)| *k == kind).or_else(|| self.players.iter().position(|(_, p)| !playing(p))) {
+            Some(i) => i,
+            None if self.players.len() < PLAYERS => {
+                let player = MediaPlayer::new()?;
+                // Pas d'entrée dans les commandes multimédias de Windows (touches
+                // lecture/pause, volet du volume) pour un simple son d'interface.
+                let _ = player.CommandManager().and_then(|c| c.SetIsEnabled(false));
+                self.players.push((kind, player));
+                self.players.len() - 1
+            }
+            None => 0,
+        };
+        let (_, player) = self.players.remove(at);
+        self.players.push((kind, player.clone()));
+        Ok(player)
+    }
+
+    /// Arrête le son de `kind` s'il joue encore.
+    fn silence(&mut self, kind: Kind) {
+        for (_, p) in self.players.iter().filter(|(k, _)| *k == kind) {
+            let _ = p.Pause();
+        }
+    }
 }
 
-/// Sons de Windows (présents sur toute installation de Windows 10 et 11) :
-/// rien à embarquer dans l'exécutable, et des sons que l'utilisateur connaît.
-fn sound_file(kind: Kind) -> Option<PathBuf> {
-    let root = std::env::var_os("SystemRoot").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
-    let name = match kind {
-        Kind::Message => "Windows Notify Messaging.wav",
-        Kind::Mention => "Windows Notify System Generic.wav",
-        Kind::VoiceJoin => "Windows Hardware Insert.wav",
-        Kind::VoiceLeave => "Windows Hardware Remove.wav",
-        Kind::VoiceMute => "Windows Minimize.wav",
-        Kind::VoiceUnmute => "Windows Restore.wav",
-        Kind::Ring => "Ring01.wav",
-        // Lot FF : sons par événement, toujours ceux de Windows.
-        Kind::VoiceDeafen => "Windows Pop-up Blocked.wav",
-        Kind::VoiceUndeafen => "Windows Feed Discovered.wav",
-        Kind::CallOut => "Windows Ringout.wav",
-        Kind::StreamStart => "Windows Proximity Connection.wav",
-        Kind::StreamStop => "Windows Proximity Notification.wav",
-        Kind::FriendRequest => "Windows Message Nudge.wav",
-        Kind::EventStart => "Windows Notify Calendar.wav",
-        Kind::Reaction => "Windows Notify Messaging.wav",
-        Kind::Reminder => "Alarm01.wav",
-    };
-    Some(root.join("Media").join(name))
+/// Lecteurs gardés, au plus : sonnerie, son du vocal et notification peuvent se chevaucher.
+const PLAYERS: usize = 3;
+
+fn playing(p: &MediaPlayer) -> bool {
+    let state = p.PlaybackSession().and_then(|s| s.PlaybackState());
+    matches!(state, Ok(MediaPlaybackState::Playing | MediaPlaybackState::Opening | MediaPlaybackState::Buffering))
+}
+
+/// Source de lecture d'un fichier WAV tenu en mémoire (aucun fichier temporaire).
+fn media_source(wav: &[u8]) -> windows::core::Result<MediaSource> {
+    let stream = InMemoryRandomAccessStream::new()?;
+    let writer = DataWriter::CreateDataWriter(&stream)?;
+    writer.WriteBytes(wav)?;
+    writer.StoreAsync()?.join()?;
+    // Le flux reste ouvert quand l'écrivain est lâché.
+    writer.DetachStream()?;
+    stream.Seek(0)?;
+    MediaSource::CreateFromStream(&stream, &HSTRING::from("audio/wav"))
 }
 
 /// Écrit une image carrée RGBA en PNG (fichier voisin puis renommage).
@@ -341,4 +377,23 @@ fn write_png(path: &Path, side: u32, rgba: Vec<u8>) -> image::ImageResult<()> {
     img.save_with_format(&tmp, image::ImageFormat::Png)?;
     std::fs::rename(&tmp, path)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Windows sait ouvrir nos WAV depuis la mémoire et y lit la bonne durée.
+    /// La source est seulement ouverte : aucun lecteur, aucune sortie audio.
+    #[test]
+    fn windows_ouvre_les_sons_depuis_la_memoire() {
+        for kind in [Kind::VoiceMute, Kind::Ring] {
+            let pcm = crate::audio::sons::integre(kind);
+            let source = media_source(&crate::audio::sons::synth::wav(&pcm)).unwrap();
+            source.OpenAsync().unwrap().join().unwrap();
+            let ticks = source.Duration().unwrap().Value().unwrap().Duration;
+            let voulu = (pcm.len() / 2) as i64 * 10_000_000 / i64::from(crate::audio::sons::synth::FREQ);
+            assert!((ticks - voulu).abs() < 100_000, "{kind:?} : {ticks} pour {voulu}");
+        }
+    }
 }

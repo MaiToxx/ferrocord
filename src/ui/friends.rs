@@ -58,8 +58,8 @@ pub(super) struct FriendsPage {
     add_result: Option<(bool, String)>,
     /// Liste affichée et ce dont elle dépend : (révisions des relations et des présences, onglet, recherche, choix de groupe).
     cache: Option<(Revs, FriendTab, String, bool, Vec<u64>)>,
-    /// Amis qui ont une activité (« Actifs en ce moment »), refaits quand relations ou présences changent.
-    active: Option<(Revs, Vec<(u64, Presence)>)>,
+    /// Cartes de la colonne « En ligne » (`friends_active.rs`), refaites quand relations, présences ou états vocaux changent.
+    pub(super) active: super::friends_active::Cache,
     /// Création d'un groupe : amis choisis.
     pub(super) picking: Option<Vec<u64>>,
 }
@@ -97,6 +97,8 @@ pub(super) enum Lead {
     Screen,
     /// Casque : écoute (ligne d'un MP).
     Sound,
+    /// Haut-parleur vert : en vocal sur un serveur commun.
+    Voice,
 }
 
 /// Peint l'icône `lead` dans le carré `at` ; `ink` : couleur de la manette et
@@ -107,6 +109,7 @@ pub(super) fn paint_lead(ui: &egui::Ui, t: &Tokens, lead: Lead, at: egui::Rect, 
         Lead::Game => super::user_panel::paint_gamepad(ui.painter(), at, ink, bg),
         Lead::Screen => icons::paint(Icon::Screen, ui.painter(), at, t.colors.online),
         Lead::Sound => icons::paint(Icon::Headphones, ui.painter(), at, ink),
+        Lead::Voice => icons::paint(Icon::Speaker, ui.painter(), at, t.colors.online),
         Lead::None => {}
     }
 }
@@ -319,23 +322,6 @@ impl FriendsPage {
         }
     }
 
-    /// Amis qui jouent, écoutent ou regardent quelque chose (le statut
-    /// personnalisé seul ne compte pas), triés par nom.
-    fn active(&mut self, store: &Store) -> &[(u64, Presence)] {
-        let rev = (store.relations.rev(), store.people.lock().presence_rev());
-        if self.active.as_ref().is_none_or(|(r, _)| *r != rev) {
-            let mut list: Vec<(u64, Presence)> = store
-                .relations
-                .friends()
-                .map(|r| (r.id, presence(store, r.id)))
-                .filter(|(_, p)| p.status != OnlineStatus::Offline && p.activity.as_ref().is_some_and(|a| a.kind != ActivityKind::Custom))
-                .collect();
-            list.sort_by_cached_key(|(id, _)| (store.relations.display_name(*id).to_lowercase(), *id));
-            self.active = Some((rev, list));
-        }
-        watch_friends(store);
-        self.active.as_ref().map_or(&[], |(_, l)| l.as_slice())
-    }
 }
 
 /// Tous les amis comptent comme affichés : un ami qui se connecte ou lance une
@@ -468,10 +454,11 @@ impl App {
         let color = if selected || strong { t.colors.text_strong } else if hot { t.colors.text } else { t.colors.channel_idle };
         // L'icône occupe la place d'un avatar de conversation : les textes s'alignent.
         let (slot, left) = t.dm_row_parts(rect);
-        let side = t.typography.icon.min(slot.width());
+        // Dessin de 20 pour une icône de 24, comme dans le client.
+        let side = (t.typography.icon * 5.0 / 6.0).round().min(slot.width());
         icons::paint(icon, ui.painter(), pixel_square(ui, slot.center() - egui::Vec2::splat(side / 2.0), side), color);
         let text_rect = egui::Rect::from_min_max(egui::pos2(left, rect.top()), egui::pos2((rect.right() - t.spacing.item_x).max(left), rect.bottom()));
-        let lay = |ui: &egui::Ui, text: &str, width: f32| WidgetText::from(RichText::new(text).size(t.dm_text()).family(crate::ui::fonts::medium()).color(color)).into_galley(ui, Some(TextWrapMode::Truncate), width, TextStyle::Body);
+        let lay = |ui: &egui::Ui, text: &str, width: f32| WidgetText::from(RichText::new(text).size(t.dm_text()).family(if selected { crate::ui::fonts::demi() } else { crate::ui::fonts::medium() }).color(color)).into_galley(ui, Some(TextWrapMode::Truncate), width, TextStyle::Body);
         let mut galley = lay(ui, label, text_rect.width());
         if count > 0 && galley.elided {
             let n = ui.painter().layout_no_wrap(if count > 99 { "99+".to_owned() } else { count.to_string() }, crate::ui::fonts::demi_font(t.typography.small), t.colors.on_accent);
@@ -654,58 +641,9 @@ impl App {
         });
     }
 
-    /// Colonne « Actifs en ce moment » : une carte par ami qui a une activité.
+    /// Colonne « En ligne » : cartes des amis en vocal ou en activité (`friends_active.rs`).
     fn active_now(&mut self, ui: &mut egui::Ui, t: &Tokens) {
-        let lang = self.lang;
-        ui.label(RichText::new(ut::ACTIVE_NOW.get(lang)).family(crate::ui::fonts::demi()).strong().size(t.typography.title).color(t.colors.text_strong));
-        ui.add_space(f32::from(PAGE_Y));
-        let list = self.friends.active(&self.store).to_vec();
-        if list.is_empty() {
-            ui.vertical_centered(|ui| {
-                ui.add_space(f32::from(PAGE_Y));
-                ui.label(RichText::new(ut::ACTIVE_NONE_TITLE.get(lang)).family(crate::ui::fonts::demi()).strong().color(t.colors.text_strong));
-                ui.add(egui::Label::new(RichText::new(ut::ACTIVE_NONE.get(lang)).size(t.typography.body - 2.0).color(t.colors.muted)).wrap().halign(Align::Center));
-            });
-            return;
-        }
-        let mut open = None;
-        egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
-            ui.spacing_mut().item_spacing.y = f32::from(PAGE_Y);
-            for (id, pres) in &list {
-                let social = &self.store.relations;
-                let name = social.display_name(*id);
-                let card = egui::Frame::new().fill(t.colors.bg1).stroke(t.border()).corner_radius(t.r_row()).inner_margin(egui::Margin::same(PAGE_Y)).show(ui, |ui| {
-                    ui.set_width(ui.available_width());
-                    ui.horizontal(|ui| {
-                        let side = t.layout.small_avatar;
-                        let (slot, _) = ui.allocate_exact_size(egui::Vec2::splat(side), Sense::hover());
-                        let avatar = pixel_square(ui, slot.min, side);
-                        if t.avatars_shown()
-                            && let Some(person) = social.person(*id)
-                        {
-                            paint_avatar(ui, &self.images, t, avatar, &person.avatar, name);
-                        }
-                        paint_status(ui, t, avatar, pres.status, t.colors.bg1);
-                        ui.vertical(|ui| {
-                            ui.spacing_mut().item_spacing.y = 0.0;
-                            ui.add(egui::Label::new(RichText::new(name).family(crate::ui::fonts::demi()).strong().color(t.colors.text_strong)).truncate().selectable(false));
-                            ui.add(egui::Label::new(RichText::new(presence_line(lang, pres)).size(t.typography.body - 2.0).color(t.colors.muted)).truncate().selectable(false));
-                        });
-                    });
-                });
-                let resp = ui.interact(card.response.rect, ui.scope_id().with(("actif", *id)), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
-                resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, name));
-                if resp.clicked() {
-                    open = Some(*id);
-                }
-                if resp.secondary_clicked() {
-                    super::profile::open_menu(ui.ctx(), *id, name, resp.rect);
-                }
-            }
-        });
-        if let Some(id) = open {
-            self.friend_action(RowAction::Message(id));
-        }
+        self.active_column(ui, t);
     }
 
     /// Ouvre l'onglet « Ajouter » de la page Amis (aperçu, tests) ; `name` et
@@ -894,7 +832,8 @@ impl App {
             let bleed = egui::vec2(t.spacing.item_x, 0.0);
             ui.painter().with_clip_rect(ui.clip_rect().expand2(bleed)).rect_filled(rect.expand2(bleed), t.r_row(), t.colors.row_hover);
         } else {
-            ui.painter().hline(rect.x_range(), rect.top(), egui::Stroke::new(1.0, t.colors.separator));
+            // Filet en retrait des deux bords de la ligne, comme dans le client.
+            ui.painter().hline(rect.shrink2(egui::vec2(t.spacing.item_x, 0.0)).x_range(), rect.top(), egui::Stroke::new(1.0, t.colors.separator));
         }
         // Parures de la personne : sans plaque (le client n'en montre pas ici).
         let worn = who.look.map(|id| super::cosmetics::worn(ui.ctx(), None, id)).unwrap_or_default();
@@ -930,9 +869,12 @@ impl App {
         let width = text_rect.width();
         let chip = worn.look.tag().map(|tag| super::cosmetics::TagChip::new(ui, t, &tag, t.colors.text));
         let chip_w = chip.as_ref().map_or(0.0, |c| c.size.x + t.spacing.item_x);
-        // Nom dans la police et le style de la personne.
-        let body = t.dm_text();
-        let (name, backdrop) = name_line(ui, who.name, body, worn.look.name_style(), None, bg, t.colors.text_strong, (width - chip_w).max(1.0));
+        // Nom dans la police du style de la personne ; ses couleurs et son effet ne se montrent
+        // qu'au survol de la ligne (au repos : blanc, comme dans le client).
+        let body = t.dm_text() - 1.0;
+        let style = worn.look.name_style();
+        let style = if hovered { style } else { style.map(crate::state::cosmetics::NameStyle::plain) };
+        let (name, backdrop) = name_line(ui, who.name, body, style, None, bg, t.colors.text_strong, (width - chip_w).max(1.0));
         // Seconde ligne : son icône (manette, écran), puis le texte, emojis en image.
         let lead = if who.lead == Lead::None { 0.0 } else { Tokens::icon_side(second_size) };
         let lead_w = if lead > 0.0 { lead + t.spacing.item_y } else { 0.0 };
@@ -954,7 +896,8 @@ impl App {
         let second_at = egui::pos2(left + lead_w, top + name.size().y);
         if lead > 0.0 {
             let at = pixel_square(ui, egui::pos2(left, second_at.y + (second.size().y - lead) / 2.0), lead);
-            paint_lead(ui, t, who.lead, at, t.colors.muted, bg);
+            // Manette verte quand l'ami joue, comme dans le client.
+            paint_lead(ui, t, who.lead, at, if who.lead == Lead::Game { t.colors.online } else { t.colors.muted }, bg);
         }
         super::emoji::paint_spots(ui, second_at, &second, &second_spots);
         ui.painter().galley(second_at, second, t.colors.muted);
@@ -990,19 +933,29 @@ impl App {
     pub(super) fn dm_second(&self, peer: u64) -> Option<(Lead, String)> {
         use crate::state::people::ActivityKind as K;
         let (custom, other, sharing) = self.doing(peer);
-        let lead = match (&other, sharing) {
-            (_, true) => Lead::Screen,
-            (Some((K::Playing | K::Competing, ..)), _) => Lead::Game,
-            (Some((K::Streaming | K::Watching, ..)), _) => Lead::Screen,
-            (Some((K::Listening, ..)), _) => Lead::Sound,
+        // En vocal sur un serveur commun (état déjà reçu) : le haut-parleur vert passe
+        // devant la manette, comme dans le client ; le partage d'écran d'abord.
+        let lead = match (&other, sharing, self.in_guild_voice(peer)) {
+            (_, true, _) => Lead::Screen,
+            (_, _, true) => Lead::Voice,
+            (Some((K::Playing | K::Competing, ..)), ..) => Lead::Game,
+            (Some((K::Streaming | K::Watching, ..)), ..) => Lead::Screen,
+            (Some((K::Listening, ..)), ..) => Lead::Sound,
             _ => Lead::None,
         };
         match (lead, other, custom) {
             (Lead::None, _, custom) => custom.map(|c| (Lead::None, c)),
             (lead, _, Some(c)) => Some((lead, format!("• {c}"))),
             (lead, Some((_, name, _)), None) => Some((lead, name)),
+            (Lead::Voice, None, None) => Some((Lead::Voice, crate::i18n::table::voice::t::IN_VOICE.get(self.lang).to_string())),
             (lead, None, None) => Some((lead, st::SHARING.get(self.lang).to_string())),
         }
+    }
+
+    /// `id` est connecté à un salon vocal d'un serveur que je partage avec lui
+    /// (état vocal reçu par READY, GUILD_CREATE ou VOICE_STATE_UPDATE ; rien n'est demandé).
+    pub(super) fn in_guild_voice(&self, id: u64) -> bool {
+        self.store.voice.state(id).is_some_and(|s| s.guild_id.is_some())
     }
 
     /// Seconde ligne d'un ami, comme dans le client : une manette et le nom du
@@ -1019,6 +972,11 @@ impl App {
         if sharing {
             let sharing = st::SHARING.get(lang);
             return (Lead::Screen, custom.map_or_else(|| sharing.to_string(), |c| format!("{sharing} • {c}")));
+        }
+        // En vocal sur un serveur commun : « Dans un salon vocal • statut », comme dans le client.
+        if self.in_guild_voice(id) {
+            let voice = crate::i18n::table::voice::t::IN_VOICE.get(lang);
+            return (Lead::Voice, custom.map_or_else(|| voice.to_string(), |c| format!("{voice} • {c}")));
         }
         match (other, custom) {
             (Some((K::Playing, game, _)), _) => (Lead::Game, game),
@@ -1248,21 +1206,6 @@ mod tests {
         // Page au repos : aucune image redemandée (une fois passé le travail fini des autres fils).
         let out = super::super::tests::settle(&mut app);
         assert!(out.viewport_output.values().all(|v| v.repaint_delay == std::time::Duration::MAX), "redessin au repos");
-    }
-
-    /// « Actifs en ce moment » : les amis qui ont une activité, pas ceux qui n'ont qu'un statut.
-    #[test]
-    fn active_now_lists_friends_with_an_activity() {
-        use crate::state::people::{Activity as A, ActivityKind as K, ClientStatus, Presence as P, Status};
-        let (mut app, _) = app(vec![rel(2, RelKind::Friend, "Alice"), rel(3, RelKind::Friend, "Bob")]);
-        assert!(app.friends.active(&app.store).is_empty());
-        {
-            let mut p = app.store.people.lock();
-            p.set_presence(2, P { status: Status::Online, client: ClientStatus::default(), activities: vec![A { kind: K::Playing, name: "Jeu".into(), details: None, state: None, emoji: None, start_ms: None, rich: None }] });
-            p.set_presence(3, P { status: Status::Online, client: ClientStatus::default(), activities: Vec::new() });
-        }
-        let active: Vec<u64> = app.friends.active(&app.store).iter().map(|(id, _)| *id).collect();
-        assert_eq!(active, vec![2]);
     }
 
     /// Onglet « En ligne » : la présence vient du seul magasin des présences

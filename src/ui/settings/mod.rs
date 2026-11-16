@@ -175,6 +175,8 @@ const INDEX: &[(Page, Text)] = &[
     (Page::Advanced, s2::DEV_MODE),
     (Page::Advanced, s2::HW_ACCEL),
     (Page::Advanced, s2::DESKTOP_IDENTITY),
+    (Page::Advanced, s2::IDENTITY_VERSIONS),
+    (Page::Advanced, s2::NET_HEALTH),
     (Page::Advanced, s2::DEBUG_LOG),
     (Page::DataPrivacy, s2::ACCESS_DETECT),
     (Page::DataPrivacy, s2::USAGE_STATS),

@@ -52,7 +52,7 @@ impl App {
         let now = crate::state::store::now_ms();
         let shown = r.current().map(|(id, a)| (id, a.name.clone()));
         let index = self.store.activity.index.clone();
-        let name_of = |id: u64| index.as_ref()?.apps().iter().find(|a| a.id == id).map(|a| a.name.clone());
+        let name_of = |id: u64| index.as_ref()?.app(id).map(|a| a.name.to_string());
         for client in &r.clients {
             ui.horizontal_wrapped(|ui| {
                 ui.label(RichText::new(r.label(client, name_of)).strong().color(c.text));

@@ -12,6 +12,9 @@ use super::App;
 
 use eframe::egui;
 
+/// Marge autour de la carte du panneau (mesurée sur le client).
+const GAP: f32 = 8.0;
+
 fn asked_id() -> egui::Id {
     egui::Id::unique("ferrocord.mp.profil-demandé")
 }
@@ -25,9 +28,10 @@ impl App {
         self.dm_person(self.store.channel?).map(|(user, _)| user)
     }
 
-    /// Largeur du panneau s'il est demandé (avant le repli en fenêtre étroite).
+    /// Largeur du panneau s'il est demandé (avant le repli en fenêtre
+    /// étroite) : la carte et ses marges.
     pub(super) fn dm_profile_width(&self) -> Option<f32> {
-        (self.theme.members_shown() && self.dm_profile_user().is_some()).then_some(self.theme.layout.profile_width)
+        (self.theme.members_shown() && self.dm_profile_user().is_some()).then_some(self.theme.layout.profile_width + 2.0 * GAP)
     }
 
     /// Le panneau est-il affiché à cette image ?
@@ -35,7 +39,9 @@ impl App {
         self.dm_profile_width().is_some() && !self.mobile_active() && !self.place.fit.members_hidden
     }
 
-    /// Panneau de droite, à appeler avant la zone centrale.
+    /// Panneau de droite, à appeler sous l'en-tête du MP (qui court sur toute
+    /// la largeur, comme dans le client) et avant la zone des messages : une
+    /// carte arrondie et bordée, détachée des bords.
     pub(super) fn dm_profile_panel(&mut self, ui: &mut egui::Ui) {
         if !self.dm_profile_shown() {
             return;
@@ -54,24 +60,29 @@ impl App {
         let base = self.theme.clone();
         let mut themed = profile_theme(&base, &shown);
         if let Some(th) = &mut themed {
-            // Dégradé du thème sur toute la hauteur du panneau.
-            th.set_span(ui.available_height());
+            // Dégradé du thème sur toute la hauteur de la carte.
+            th.set_span((ui.available_height() - 2.0 * GAP).max(0.0));
         }
         let t = themed.as_ref().map_or(&base, |th| &th.tokens);
         let lang = self.lang;
         let width = t.layout.profile_width;
         let pad = t.profile_pad();
         let mut action = None;
-        let frame = egui::Frame::new().fill(t.colors.bg1);
-        egui::Panel::right("dm_profile").frame(frame).exact_size(width).resizable(false).show_separator_line(false).show(ui, |ui| {
-            // Place du fond en dégradé (thème du profil), derrière tout le contenu.
+        // Autour de la carte : le fond de la discussion.
+        let frame = egui::Frame::new().fill(base.colors.bg2).inner_margin(egui::Margin::same(GAP as i8));
+        egui::Panel::right("dm_profile").frame(frame).exact_size(width + 2.0 * GAP).resizable(false).show_separator_line(false).show(ui, |ui| {
+            super::look::backdrop(ui, super::look::Zone::Chat);
+            // Place du fond (uni, ou dégradé du thème du profil), derrière tout le contenu.
             let bg = ui.painter().add(egui::Shape::Noop);
             let whole = ui.max_rect();
+            let r = t.r_card();
+            // Rien ne dépasse des coins arrondis ni du filet de la carte.
+            ui.set_clip_rect(whole.intersect(ui.clip_rect()));
             if let Some(th) = &themed {
                 th.apply(ui);
             }
             let head = ui.cursor().min;
-            self.profile_header(ui, t, width, user, None, &shown, avatar, &name, Header { themed: themed.as_ref(), bubble: true, ..Header::default() });
+            self.profile_header(ui, t, width, user, None, &shown, avatar, &name, Header { themed: themed.as_ref(), bubble: true, panel: true, ..Header::default() });
             if let Some(p) = self.header_buttons(ui, t, egui::pos2(head.x + width - pad, head.y + pad), user) {
                 action = Some(Action::Head(p));
             }
@@ -80,22 +91,27 @@ impl App {
             egui::ScrollArea::vertical().id_salt("profil-mp").auto_shrink(false).max_height(body).show(ui, |ui| {
                 egui::Frame::new().inner_margin(egui::Margin { top: 0, ..t.profile_margin() }).show(ui, |ui| {
                     ui.set_width(width - 2.0 * pad);
-                    self.card_body(ui, t, user, None, &name, &shown, &mut action);
+                    self.card_body(ui, t, user, None, &name, &shown, false, &mut action);
                 });
             });
             if full_button(ui, t, lang, width) {
                 action = Some(Action::Full(super::profile_full::Tab::About));
             }
-            if let Some(th) = &themed {
-                themed_background(ui.painter(), th, bg, whole, egui::CornerRadius::ZERO, Some(th.edge(t)));
+            match &themed {
+                Some(th) => themed_background(ui.painter(), th, bg, whole, r, Some(th.edge(t))),
+                None => {
+                    ui.painter().set(bg, egui::Shape::rect_filled(whole, r, t.colors.bg1));
+                    ui.painter().rect_stroke(whole, r, t.border(), egui::StrokeKind::Inside);
+                }
             }
-            // Effet de profil (lot ND) : par-dessus le panneau, sans prendre les clics.
-            self.paint_profile_effect(ui.painter(), &shown, whole, egui::CornerRadius::ZERO);
+            // Effet de profil (lot ND) : par-dessus la carte, sans prendre les clics.
+            self.paint_profile_effect(ui.painter(), &shown, whole, r);
         });
         match action {
             Some(Action::Button(c)) => self.store.activity_button(user, &c.session_id, c.app_id, c.index),
             Some(Action::Full(tab)) => super::profile_full::open_full(ui.ctx(), user, None, &name, avatar, tab),
             Some(Action::Head(p)) => self.head_pick(ui.ctx(), user, &name, p),
+            Some(Action::ActivitySettings) => self.show_settings(super::settings::Page::Activity),
             _ => {}
         }
     }

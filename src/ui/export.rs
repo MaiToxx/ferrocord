@@ -26,8 +26,16 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-/// Pause entre deux pages d'historique (le limiteur du réseau borne déjà le débit).
-const PAGE_GAP: Duration = Duration::from_millis(if cfg!(test) { 0 } else { 400 });
+/// Pause entre deux pages d'historique : de cette durée à deux fois et demie
+/// plus, au hasard (lot « fiable »). Une page toutes les 400 ms pile, mille
+/// fois de suite, est une cadence de robot ; le limiteur du réseau borne le
+/// débit mais pas la régularité.
+const PAGE_GAP: Duration = Duration::from_millis(if cfg!(test) { 0 } else { 600 });
+
+/// Pause tirée au hasard avant la page suivante (600 à 1500 ms).
+fn page_gap() -> Duration {
+    crate::net::backoff::between(PAGE_GAP, PAGE_GAP.mul_f64(2.5), crate::net::backoff::unit())
+}
 /// Attente avant de redemander une page abandonnée par le réseau.
 const RETRY_GAP: Duration = Duration::from_millis(if cfg!(test) { 0 } else { 1500 });
 const MAX_RETRIES: u8 = 3;
@@ -291,7 +299,7 @@ impl App {
                 if done {
                     self.export_pages_done(&mut job);
                 } else {
-                    job.stage = Stage::Paging { waiting: None, next_at: Instant::now() + PAGE_GAP, retries: 0 };
+                    job.stage = Stage::Paging { waiting: None, next_at: Instant::now() + page_gap(), retries: 0 };
                 }
             }
             Event::HistoryError { error, .. } => job.stage = Stage::PageFailed(super::words::problem(self.lang, error, self.h24())),

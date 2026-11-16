@@ -133,6 +133,10 @@ pub enum EmbedKind {
     Link,
     /// Type inconnu ou propre à Discord (`poll_result`…) : affiché comme `Rich`.
     Other,
+    /// `safety_system_notification` : notification du compte système de
+    /// Discord, dont les `fields` portent l'objet en paires nom/valeur
+    /// ([`Embed::safety_notice`]).
+    SafetyNotification,
 }
 
 impl EmbedKind {
@@ -144,6 +148,7 @@ impl EmbedKind {
             Some("gifv") => EmbedKind::Gifv,
             Some("article") => EmbedKind::Article,
             Some("link") => EmbedKind::Link,
+            Some("safety_system_notification") => EmbedKind::SafetyNotification,
             Some(_) => EmbedKind::Other,
         }
     }
@@ -224,6 +229,29 @@ pub struct Embed {
     pub footer: Option<EmbedFooter>,
 }
 
+/// Champs connus d'une notification du compte système ([`Embed::safety_notice`]).
+const SAFETY_FIELDS: [&str; 9] = ["client_version_message", "classification_id", "body", "icon_type", "header", "timestamp", "theme", "ctas", "learn_more_link"];
+
+/// Ce qu'une notification du compte système montre.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SafetyNotice<'a> {
+    pub header: &'a str,
+    pub body: &'a str,
+    /// Instant de l'incident (ms Unix).
+    pub timestamp_ms: Option<i64>,
+    /// Adresse de « En savoir plus », telle que reçue (à vérifier avant de l'ouvrir).
+    pub learn_more: Option<&'a str>,
+    /// `ctas` demande le bouton « En savoir plus ».
+    pub learn_more_cta: bool,
+}
+
+impl<'a> SafetyNotice<'a> {
+    /// Adresse du pied de carte : seulement si `ctas` la demande.
+    pub fn link(&self) -> Option<&'a str> {
+        self.learn_more.filter(|_| self.learn_more_cta)
+    }
+}
+
 /// Rôle d'une image dans un embed (fait partie de sa clé).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EmbedSlot {
@@ -256,6 +284,41 @@ impl Embed {
     /// la vignette est montrée en grand, sans cadre de texte.
     pub fn is_bare_media(&self) -> bool {
         matches!(self.kind, EmbedKind::Image | EmbedKind::Gifv) || (self.kind == EmbedKind::Video && self.title.is_none() && self.description.is_none())
+    }
+
+    /// Notification du compte système (`type: "safety_system_notification"`),
+    /// lue dans les `fields` de l'embed. Forme relevée sur docs.discord.food,
+    /// « Safety Hub » › Safety System Notification : `client_version_message`,
+    /// `classification_id`, `body`, `icon_type`, `header`, `timestamp` (secondes
+    /// Unix, en texte comme toutes les valeurs), `theme`, `ctas` (liste séparée
+    /// par des virgules), `learn_more_link` (facultatif).
+    ///
+    /// `None` (l'embed s'affiche alors comme un embed ordinaire, champs
+    /// compris) : autre type, champ inconnu ou en double, ou ni titre ni texte.
+    pub fn safety_notice(&self) -> Option<SafetyNotice<'_>> {
+        if self.kind != EmbedKind::SafetyNotification {
+            return None;
+        }
+        let mut n = SafetyNotice::default();
+        let mut seen = 0u16;
+        for f in &self.fields {
+            let (bit, value) = (SAFETY_FIELDS.iter().position(|k| *k == f.name)?, f.value.trim());
+            if seen & (1 << bit) != 0 {
+                return None;
+            }
+            seen |= 1 << bit;
+            match f.name.as_str() {
+                "header" => n.header = value,
+                "body" => n.body = value,
+                // Secondes Unix à virgule ; illisible ou hors plage : pas de date.
+                "timestamp" => n.timestamp_ms = value.parse::<f64>().ok().filter(|s| s.is_finite() && (0.0..=4_102_444_800.0).contains(s)).map(|s| (s * 1000.0) as i64),
+                "ctas" => n.learn_more_cta = value.split(',').any(|c| c.trim() == "learn_more_link"),
+                "learn_more_link" => n.learn_more = Some(value).filter(|v| !v.is_empty()),
+                // Technique (message pour vieux clients, identifiant, icône, thème) : jamais montré.
+                _ => {}
+            }
+        }
+        (!n.header.is_empty() || !n.body.is_empty()).then_some(n)
     }
 
     /// Clé de l'image `slot` du `index`-ième embed du message `msg`.
@@ -296,6 +359,67 @@ mod tests {
         let b = Attachment { name: "x.webp".into(), content_type: Some("image/webp".into()), ..Attachment::default() }.analysed(ATTACHMENT_IS_SPOILER | MEDIA_IS_ANIMATED);
         assert!(b.spoiler && b.animated);
         assert_eq!(Attachment::file("SPOILER_", "u").display_name(), "SPOILER_");
+    }
+
+    /// Notification synthétique du compte système, à la forme documentée.
+    fn notice(fields: &[(&str, &str)]) -> Embed {
+        Embed {
+            kind: EmbedKind::parse(Some("safety_system_notification")),
+            title: Some("Message fictif concernant le compte".into()),
+            fields: fields.iter().map(|(n, v)| EmbedField { name: (*n).into(), value: (*v).into(), inline: false }).collect(),
+            ..Embed::default()
+        }
+    }
+
+    const NOTICE: [(&str, &str); 9] = [
+        ("client_version_message", "Mets l'application à jour pour lire cette notification."),
+        ("body", "Texte fictif de la notification."),
+        ("icon_type", "default"),
+        ("header", "Titre fictif"),
+        ("timestamp", "1794767947.766727"),
+        ("theme", "default"),
+        ("ctas", "learn_more_link"),
+        ("learn_more_link", "https://support.discord.com/hc/articles/1"),
+        ("classification_id", "1500000000000000001"),
+    ];
+
+    #[test]
+    fn safety_notice_is_read_from_the_fields() {
+        let e = notice(&NOTICE);
+        let n = e.safety_notice().unwrap_or_else(|| panic!("notification"));
+        assert_eq!((n.header, n.body), ("Titre fictif", "Texte fictif de la notification."));
+        assert_eq!(n.timestamp_ms, Some(1_794_767_947_766));
+        assert_eq!(n.link(), Some("https://support.discord.com/hc/articles/1"));
+        // Ordre quelconque, champs facultatifs absents, date illisible : toujours une carte.
+        let e = notice(&[("header", "T"), ("timestamp", "bientôt")]);
+        let n = e.safety_notice().unwrap_or_else(|| panic!("titre seul"));
+        assert_eq!((n.header, n.body, n.timestamp_ms, n.link()), ("T", "", None, None));
+        for bad in ["NaN", "inf", "-1", "1e300", ""] {
+            assert_eq!(notice(&[("body", "b"), ("timestamp", bad)]).safety_notice().and_then(|n| n.timestamp_ms), None, "{bad}");
+        }
+        // Lien présent mais pas demandé par `ctas`, ou demandé sans lien : pas de pied.
+        assert_eq!(notice(&[("body", "b"), ("learn_more_link", "https://discord.com/x")]).safety_notice().and_then(|n| n.link()), None);
+        assert_eq!(notice(&[("body", "b"), ("ctas", "learn_more_link, policy_violation_detail")]).safety_notice().and_then(|n| n.link()), None);
+        assert!(notice(&[("body", "b"), ("ctas", "policy_violation_detail,learn_more_link"), ("learn_more_link", "u")]).safety_notice().is_some_and(|n| n.link() == Some("u")));
+    }
+
+    /// Tout ce qui sort de la forme connue garde le rendu d'embed ordinaire :
+    /// rien n'est caché, et jamais de carte vide.
+    #[test]
+    fn unknown_safety_shapes_fall_back_to_the_ordinary_embed() {
+        // Autre type, même avec les bons champs.
+        for kind in [None, Some("rich"), Some("safety_policy_notice"), Some("age_verification_system_notification"), Some("inconnu")] {
+            let e = Embed { kind: EmbedKind::parse(kind), ..notice(&NOTICE) };
+            assert_eq!(e.safety_notice(), None, "{kind:?}");
+        }
+        // Champ inconnu, champ en double, ni titre ni texte, aucun champ.
+        let mut extra = NOTICE.to_vec();
+        extra.push(("champ_futur", "x"));
+        assert_eq!(notice(&extra).safety_notice(), None);
+        assert_eq!(notice(&[("header", "a"), ("header", "b")]).safety_notice(), None);
+        assert_eq!(notice(&[("header", "  "), ("body", ""), ("theme", "default")]).safety_notice(), None);
+        assert_eq!(notice(&[]).safety_notice(), None);
+        assert_eq!(notice(&[("Header", "casse différente")]).safety_notice(), None);
     }
 
     #[test]

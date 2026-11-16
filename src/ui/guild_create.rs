@@ -76,6 +76,8 @@ pub(super) struct ServersUi {
     /// Dossiers dépliés (clé : [`folder_key`]).
     pub open_folders: HashSet<u64>,
     pub cache: RailCache,
+    /// Amis en vocal par serveur (`rail_voice.rs`).
+    pub voice: super::rail_voice::RailVoice,
     pub dialog: Option<Dialog>,
     /// « Quitter le serveur » demandé : serveur à confirmer.
     pub leave: Option<u64>,

@@ -97,6 +97,9 @@ struct RawAssets {
 struct RawParty {
     #[serde(default, deserialize_with = "de_lenient")]
     id: Option<String>,
+    /// `[présents, places]`.
+    #[serde(default, deserialize_with = "de_lenient")]
+    size: Option<Vec<u32>>,
 }
 
 #[derive(Deserialize)]
@@ -166,6 +169,10 @@ impl RawActivity {
             sync_id: word(&self.sync_id),
             spotify,
             url,
+            party: self.party.as_ref().and_then(|p| p.size.as_deref()).and_then(|s| match s {
+                [now, max] if *now > 0 && now <= max => Some((*now, *max)),
+                _ => None,
+            }),
         };
         (r != Rich::default()).then(|| Box::new(r))
     }

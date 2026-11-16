@@ -39,6 +39,12 @@ pub(super) fn icon_side(t: &Tokens) -> f32 {
     if t.spacing.header_height > 0.0 { t.typography.icon.round() } else { Tokens::icon_side(t.typography.icon * 1.1) }
 }
 
+/// Côté du dessin d'un bouton de l'en-tête, et de l'avatar d'un MP : 20 dans
+/// une case de 24 (mesuré sur le client).
+pub(super) fn glyph_side(t: &Tokens) -> f32 {
+    (icon_side(t) * 5.0 / 6.0).round()
+}
+
 /// Largeur de la ligne d'en-tête sous laquelle la recherche se replie en
 /// loupe : un salon a quatre boutons, une conversation privée cinq (appel,
 /// vidéo, épingles, ajout d'amis, profil) et le client y garde un champ court.
@@ -58,8 +64,11 @@ pub(super) fn head_icon(ui: &mut egui::Ui, t: &Tokens, tip: &str, active: bool, 
     let hit = if crate::ui::mobile::is_active(ui.ctx()) { side.max(crate::ui::mobile::TOUCH) } else { side };
     let (rect, resp) = ui.allocate_exact_size(Vec2::splat(hit), Sense::click());
     let hot = resp.hovered() || resp.has_focus();
-    let color = if active || hot { t.colors.text_strong } else { t.colors.muted };
-    paint(ui.painter(), super::util::pixel_square(ui, rect.center() - Vec2::splat(side / 2.0), side), color);
+    // Au repos : gris clair, entre le texte estompé et le texte ; blanc au survol.
+    let color = if active || hot { t.colors.text_strong } else { t.colors.muted.lerp_to_gamma(t.colors.text, 0.45) };
+    // Le dessin est plus petit que sa case (20 dans 24), comme dans le client.
+    let glyph = glyph_side(t);
+    paint(ui.painter(), super::util::pixel_square(ui, rect.center() - Vec2::splat(glyph / 2.0), glyph), color);
     super::keys::focus_ring(ui, t, &resp);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
     resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
@@ -112,8 +121,10 @@ impl App {
                     // groupe pour un groupe), comme dans le client ; « @ » si le thème masque les avatars.
                     let dm_avatar = if is_dm && t.avatars_shown() { self.store.dms.iter().find(|d| d.id == cid).map(|d| d.avatar) } else { None };
                     if let Some(avatar) = dm_avatar {
+                        // Petit avatar (20), centré dans la case des icônes.
+                        let small = glyph_side(&t);
                         let (slot, _) = ui.allocate_exact_size(Vec2::splat(side), Sense::hover());
-                        let r = super::util::pixel_square(ui, slot.min, side);
+                        let r = super::util::pixel_square(ui, slot.center() - Vec2::splat(small / 2.0), small);
                         super::util::paint_avatar(ui, &self.images, &t, r, &avatar, name);
                         super::profile::dm_dot(ui, &t, r, cid, t.colors.bg2);
                     } else if is_dm {
@@ -162,6 +173,8 @@ impl App {
                             // Serveur ou MP de groupe : un seul bouton, un seul panneau.
                             self.members_toggle(ui);
                             // MP : profil du correspondant, « Ajouter des amis au MP » (lot U).
+                            // MP officiel de Discord : ni ajout d'amis (`dm_head_buttons`), ni appel (plus bas).
+                            let official = is_dm && super::official::shown(ui.ctx());
                             if is_dm {
                                 self.dm_head_buttons(ui, cid);
                             }
@@ -179,7 +192,7 @@ impl App {
                             // Salon d'annonces : « Suivre » (lot T13).
                             self.follow_button(ui, cid);
                             // MP ou groupe : « Démarrer un appel » (lot V6).
-                            if is_dm {
+                            if is_dm && !official {
                                 self.dm_video_button(ui, cid);
                                 self.call_button(ui, cid);
                             }
@@ -195,9 +208,12 @@ impl App {
                         let ui = &mut left;
                         let typing = !mobile && is_dm && self.store.typing.active(cid, self.store.now()).next().is_some();
                         let dots = egui::vec2(side * 1.4, side * 0.7);
-                        let title = RichText::new(name).family(crate::ui::fonts::demi()).strong().size(t.typography.title).color(t.colors.text_strong);
+                        // Nom d'un MP : graisse moyenne, comme dans le client ; un salon reste en demi-gras.
+                        let family = if is_dm { crate::ui::fonts::medium() } else { crate::ui::fonts::demi() };
+                        let title = RichText::new(name).family(family.clone()).size(t.typography.title).color(t.colors.text_strong);
+                        let title = if is_dm { title } else { title.strong() };
                         // Le sujet ne se montre que s'il lui reste de quoi se lire après le titre.
-                        let title_w = ui.painter().layout_no_wrap(name.to_owned(), egui::FontId::new(t.typography.title, crate::ui::fonts::demi()), t.colors.text_strong).size().x;
+                        let title_w = ui.painter().layout_no_wrap(name.to_owned(), egui::FontId::new(t.typography.title, family), t.colors.text_strong).size().x;
                         let room = ui.available_width() - if typing { dots.x + t.spacing.item_x } else { 0.0 };
                         let topic_shown = topic.as_deref().filter(|_| !mobile && room - title_w > side * 4.0);
                         let folded = topic.as_deref().filter(|_| topic_shown.is_none());

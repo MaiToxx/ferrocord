@@ -70,8 +70,11 @@ pub enum ReplyState {
 pub struct Forward {
     /// Texte source (mis en forme avec le message).
     pub content: String,
-    pub attachments: Vec<String>,
-    pub embeds: usize,
+    /// Pièces jointes, embeds et autocollants de l'instantané, montrés comme
+    /// ceux d'un message (images, vidéos, fichiers, cartes).
+    pub attachments: Vec<super::model::Attachment>,
+    pub embeds: Vec<super::model::Embed>,
+    pub stickers: Vec<super::emoji::StickerItem>,
     /// Salon d'origine, s'il est connu.
     pub channel_id: Option<u64>,
     pub guild_id: Option<u64>,

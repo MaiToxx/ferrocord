@@ -74,7 +74,8 @@ impl WebmSource {
     /// Ouvre un fichier WebM. Sur le fil du lecteur : le décodeur de
     /// Windows lui reste attaché.
     pub fn open(data: Vec<u8>) -> Result<Self, OpenError> {
-        let mut file = mkv::parse(&data).ok_or(OpenError::Unsupported)?;
+        // Fichier venu du réseau : une panique de l'analyseur devient un simple refus.
+        let mut file = crate::panics::contain(|| mkv::parse(&data)).flatten().ok_or(OpenError::Unsupported)?;
         let picture = match &file.video {
             Some(t) if !file.video_blocks.is_empty() => {
                 let c = if t.codec == CodecId::Vp9 { Codec::Vp9 } else { Codec::Vp8 };

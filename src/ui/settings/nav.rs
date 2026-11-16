@@ -135,6 +135,7 @@ pub(in crate::ui) const GROUPS: &[(Option<Text>, &[Entry])] = &[
                 Page::Activity,
                 &[
                     at(Page::Activity, crate::i18n::table::activity::t::SEC_DETECTED),
+                    at(Page::Activity, crate::i18n::table::activity::t::SEC_RECENT),
                     at(Page::Activity, crate::i18n::table::activity::t::SEC_ADDED),
                     at(Page::Activity, crate::i18n::table::rpc::t::SECTION),
                 ],

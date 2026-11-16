@@ -1,4 +1,4 @@
-//! Bureau de Windows : notifications (toasts), sons, icône de la zone de
+//! Bureau de Windows : notifications (toasts), sons (ceux de `audio::sons`), icône de la zone de
 //! notification, et le fichier `notify.toml`. L'interface ne parle qu'au
 //! trait [`Desktop`] ; ce qui touche au système ou au disque se fait dans le
 //! fil « ferrocord-bureau » (bloqué sur sa file : aucun réveil au repos),
@@ -67,6 +67,13 @@ pub trait Desktop {
     fn toast(&mut self, alert: &Alert);
     /// Joue le son de `kind` au volume donné (0 à 100), sans attendre.
     fn sound(&mut self, kind: Kind, volume: u8);
+    /// Arrête le son de `kind` s'il joue encore (sonnerie d'un appel décroché ou manqué).
+    fn silence(&mut self, _kind: Kind) {}
+    /// Ce bureau lit-il le dossier des sons personnels (`audio::sons::perso`) ?
+    /// Faux pour un bureau de test ou d'aperçu : la page des réglages ne lit alors aucun dossier.
+    fn custom_sounds(&self) -> bool {
+        false
+    }
     /// Met l'icône dans cet état (rien n'est fait s'il n'a pas changé).
     fn tray(&mut self, state: &TrayState);
     /// Événements arrivés depuis le dernier appel.
@@ -80,6 +87,7 @@ pub enum Call {
     Save(DeskPrefs),
     Toast(Alert),
     Sound(Kind, u8),
+    Silence(Kind),
     Tray(TrayState),
 }
 
@@ -124,6 +132,10 @@ impl Desktop for Recorder {
 
     fn sound(&mut self, kind: Kind, volume: u8) {
         self.record(Call::Sound(kind, volume));
+    }
+
+    fn silence(&mut self, kind: Kind) {
+        self.record(Call::Silence(kind));
     }
 
     fn tray(&mut self, state: &TrayState) {

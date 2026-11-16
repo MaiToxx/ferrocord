@@ -43,10 +43,10 @@ pub(super) fn items(list: Option<Vec<Item<RawSticker>>>) -> Vec<StickerItem> {
 }
 
 fn guild_list(list: Vec<Item<RawSticker>>) -> Vec<GuildSticker> {
-    list.into_iter()
-        .filter_map(|i| i.0?.item())
-        .map(|(s, available)| GuildSticker { id: s.id, name: s.name, format: s.format, available })
-        .collect()
+    let mut list: Vec<GuildSticker> = list.into_iter().filter_map(|i| i.0?.item()).map(|(s, available)| GuildSticker { id: s.id, name: s.name, format: s.format, available }).collect();
+    // Gardée toute la session : sans la réserve du tableau brut (lot « ram »).
+    list.shrink_to_fit();
+    list
 }
 
 /// Retire les autocollants d'un serveur reçu, à publier après lui ([`send`]).

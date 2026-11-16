@@ -1,5 +1,7 @@
 //! Vue d'appel (phase 5, lot M4) : dans la zone centrale quand on ouvre un
-//! salon vocal ou l'appel d'un MP où l'on est connecté. Grille de tuiles
+//! salon vocal, ou l'appel d'un MP mis en plein cadre (sinon l'appel d'un MP
+//! est un bandeau au-dessus de la conversation, `call_band.rs`, qui reprend
+//! les tuiles d'ici dès qu'une vidéo est là). Grille de tuiles
 //! (caméra ou avatar), directs avec « Regarder », tuile mise en avant avec
 //! une bande des autres, plein écran (F11, double-clic), fenêtres détachées
 //! (viewports immédiats, « toujours au-dessus »), barre de contrôle (micro,
@@ -51,6 +53,9 @@ fn round_button(ui: &mut egui::Ui, t: &Tokens, side: f32, tip: &str, fill: Color
     pill_button(ui, t, Vec2::splat(side), tip, fill, color, paint)
 }
 
+/// Hauteur de la zone des tuiles du bandeau d'un MP sous laquelle seules les vidéos sont montrées.
+const LEAD_ROOMY: f32 = 240.0;
+
 /// Largeur du bouton « Raccrocher » : une pilule, plus large que haute.
 const HANGUP_WIDTH: f32 = 1.6;
 
@@ -66,10 +71,12 @@ fn pill_button(ui: &mut egui::Ui, t: &Tokens, size: Vec2, tip: &str, fill: Color
 }
 
 impl App {
-    /// Salon ouvert = salon vocal (pas une conférence), ou appel de MP où je suis.
+    /// Salon ouvert = salon vocal (pas une conférence), ou appel de MP où je
+    /// suis, mis en plein cadre : sinon l'appel d'un MP est un bandeau
+    /// au-dessus de la conversation (`call_band.rs`).
     fn is_call_place(&self, cid: u64) -> bool {
         let v = &self.store.voice;
-        v.channel(cid).is_some_and(|c| !c.stage) || v.me == Some(MyVoice { guild_id: None, channel_id: cid })
+        v.channel(cid).is_some_and(|c| !c.stage) || (v.me == Some(MyVoice { guild_id: None, channel_id: cid }) && self.calls_ui.band.wide == Some(cid))
     }
 
     /// Appelé au début de la zone du salon : dessine la vue d'appel et rend
@@ -136,6 +143,9 @@ impl App {
         let joined = self.store.voice.me.is_some_and(|m| m.channel_id == cid);
         let name = self.store.voice.channel(cid).map(|c| c.name.clone()).or_else(|| self.store.dms.iter().find(|d| d.id == cid).map(|d| crate::ui::words::dm_name(lang, &d.name).to_string())).unwrap_or_default();
         let count = self.store.voice.count(cid) as u64;
+        // Appel d'un MP en plein cadre : la discussion est sous le bandeau, on y revient en réduisant l'appel.
+        let dm = self.store.voice.channel(cid).is_none();
+        let (back, back_tip) = if dm { (vt::SHRINK, vt::SHRINK_TIP) } else { (vt::SHOW_CHAT, vt::SHOW_CHAT_TIP) };
         let mut open_chat = false;
         egui::Panel::top("call_head").frame(egui::Frame::new().fill(t.colors.bg2).inner_margin(crate::ui::chat_head::head_margin(&t, t.spacing.chat_head_x))).show(ui, |ui| {
             ui.horizontal(|ui| {
@@ -149,7 +159,7 @@ impl App {
                     // Écran étroit : le bouton d'abord, le nom tronqué dans la place restante,
                     // sans le nombre de personnes qui le recouvrait.
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        open_chat = ui.button(vt::SHOW_CHAT.get(lang)).on_hover_text(vt::SHOW_CHAT_TIP.get(lang)).clicked();
+                        open_chat = ui.button(back.get(lang)).on_hover_text(back_tip.get(lang)).clicked();
                         let size = ui.available_size();
                         ui.allocate_ui_with_layout(size, egui::Layout::left_to_right(egui::Align::Center), |ui| ui.add(title()));
                     });
@@ -157,20 +167,41 @@ impl App {
                     ui.add(title());
                     ui.label(RichText::new(vp::people(lang, count)).small().color(t.colors.faint));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        open_chat = ui.button(vt::SHOW_CHAT.get(lang)).on_hover_text(vt::SHOW_CHAT_TIP.get(lang)).clicked();
+                        open_chat = ui.button(back.get(lang)).on_hover_text(back_tip.get(lang)).clicked();
                     });
                 }
             });
         });
-        if open_chat {
+        if open_chat && dm {
+            self.calls_ui.band.wide = None;
+        } else if open_chat {
             self.video_ui.chat_open.insert(cid);
         }
         self.call_controls(ui, cid, joined);
-        let views = self.tile_views(cid);
         // Fond de la vue d'appel : noir, comme dans le client.
         ui.painter().rect_filled(ui.available_rect_before_wrap(), 0.0, t.call_bg());
         let area = ui.available_rect_before_wrap().shrink(t.spacing.chat_pad);
         ui.allocate_rect(area, Sense::hover());
+        self.call_tiles_ui(ui, cid, area, false);
+    }
+
+    /// Une tuile au moins de cet appel montre une vidéo ou un direct (caméra
+    /// allumée, partage d'écran, le mien compris) : le bandeau d'un MP s'agrandit.
+    pub(in crate::ui) fn call_has_video(&self, cid: u64) -> bool {
+        self.store.call_tiles(cid).iter().any(|i| !matches!(i.kind, TileKind::Person { camera: false }))
+    }
+
+    /// Tuiles d'un appel dans `area` (déjà réservée) : grille, ou tuile mise en
+    /// avant et bande des autres ; F11 et double-clic passent en plein écran.
+    pub(in crate::ui) fn call_tiles_ui(&mut self, ui: &mut egui::Ui, cid: u64, area: Rect, lead: bool) {
+        let t = self.theme.clone();
+        let lang = self.lang;
+        let mut views = self.tile_views(cid);
+        let has_video = |v: &TileView| !matches!(v.kind, TileKind::Person { camera: false });
+        // Bandeau bas : seules les vidéos sont montrées, la place leur revient.
+        if lead && area.height() < LEAD_ROOMY && views.iter().any(has_video) {
+            views.retain(has_video);
+        }
         if views.is_empty() {
             ui.painter().text(area.center(), egui::Align2::CENTER_CENTER, vt::EMPTY.get(lang), egui::FontId::proportional(t.typography.body), t.colors.muted);
             return;
@@ -179,7 +210,9 @@ impl App {
         if self.video_ui.fullscreen.is_some() {
             return;
         }
-        let focus = self.store.video.focus.clone().filter(|f| views.iter().any(|v| &v.tile == f));
+        // `lead` (bandeau d'un MP) : sans tuile choisie, la vidéo passe devant (un direct d'abord).
+        let auto = || views.iter().filter(|v| has_video(v)).max_by_key(|v| matches!(v.kind, TileKind::Stream { .. })).map(|v| v.tile.clone());
+        let focus = self.store.video.focus.clone().filter(|f| views.iter().any(|v| &v.tile == f)).or_else(|| if lead { auto() } else { None });
         let gap = t.spacing.media_gap.max(2.0);
         let mut acts = Vec::new();
         let mut cx = Cx { t: &t, lang, images: &self.images, sink: &self.store.video.sink, screens: &mut self.video_ui.screens };
@@ -513,7 +546,7 @@ impl App {
 
     pub fn request_share_picker(&mut self) {
         if self.video_ui.picker_linked {
-            self.open_share_picker(crate::state::share::ShareTab::Screens);
+            self.open_share_picker(crate::state::share::ShareTab::default());
         } else {
             self.video_ui.picker_requested = true;
         }
@@ -549,6 +582,10 @@ impl App {
         self.store.guild = guild;
         self.open_channel(channel);
         self.video_ui.chat_open.remove(&channel);
+        // Appel d'un MP : en plein cadre (sinon c'est un bandeau au-dessus de la conversation).
+        if guild.is_none() {
+            self.calls_ui.band.wide = Some(channel);
+        }
     }
 
     /// Nombre de textures vidéo vivantes (tests).

@@ -1,0 +1,10 @@
+Icône de la fenêtre (lot « cpu »).
+
+egui-512.png : copie exacte de `data/icon.png` de la caisse eframe 0.37.0
+(projet egui, licence MIT ou Apache-2.0, déjà listée parmi les licences
+tierces). C'est l'icône qu'eframe pose quand l'application n'en fournit pas.
+
+egui-<taille>.png : la même, réduite d'avance par la chaîne d'eframe
+(décodage, `image::imageops::resize` avec le filtre Lanczos3, codage PNG).
+Le test `platform::app_icon::tests::stored_sizes_match_the_runtime_scaling_pixel_for_pixel`
+refait chaque réduction et compare les pixels.

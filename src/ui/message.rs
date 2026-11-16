@@ -63,6 +63,9 @@ fn message_inner<'a>(ui: &mut egui::Ui, t: &Tokens, lang: Lang, images: Option<&
     let live = images.is_some();
     acts.begin();
     let editing = acts.st.editing(m.id);
+    // Parures de l'auteur : celles du serveur affiché, ou du serveur du message (`Acts::home`).
+    let home = acts.home;
+    let worn_of = move |ctx: &egui::Context| if home { super::cosmetics::worn(ctx, m.guild_id, m.author_id) } else { super::cosmetics::author(ctx, m.author_id) };
     // Message survolé à l'image précédente : le nom de son auteur montre les couleurs de son style.
     let was_lit = live && ui.ctx().data(|d| d.get_temp::<u64>(lit_id())) == Some(m.id);
     // Voile de survol : sa place est prise avant le contenu, il est donc peint derrière le texte.
@@ -94,7 +97,7 @@ fn message_inner<'a>(ui: &mut egui::Ui, t: &Tokens, lang: Lang, images: Option<&
                 let mut lead = vec![
                     (time::clock(lang, ts, false, h24), t.colors.faint, None),
                     (" ".to_string(), t.colors.text, None),
-                    (f::compact_author(lang, &m.author), super::cosmetics::author_color(ui.ctx(), t, m.author_id, &super::cosmetics::author(ui.ctx(), m.author_id)), author),
+                    (f::compact_author(lang, &m.author), super::cosmetics::author_color(ui.ctx(), t, m.author_id, &worn_of(ui.ctx())), author),
                 ];
                 // En cours de modification, le texte est dans la zone d'édition.
                 let empty = Doc::default();
@@ -107,7 +110,7 @@ fn message_inner<'a>(ui: &mut egui::Ui, t: &Tokens, lang: Lang, images: Option<&
                     super::journal::trace_ui(ui, t, lang, m);
                     super::translate::under_ui(ui, t, lang, m, &mut hot);
                     msg_actions::edit_box(ui, t, lang, m, acts, live);
-                    msg_actions::forward_ui(ui, t, lang, m, doc, &mut links);
+                    msg_actions::forward_ui(ui, t, lang, images, m, doc, &mut links, &mut hot);
                     extras_ui(ui, t, lang, images, m, doc, &mut links, &mut hot);
                     super::components::body(ui, t, lang, images, m, doc, &mut links, &mut hot, acts);
                     super::polls::extras(ui, t, lang, images, m, acts);
@@ -133,7 +136,14 @@ fn message_inner<'a>(ui: &mut egui::Ui, t: &Tokens, lang: Lang, images: Option<&
                         // Couleur ou dégradé du rôle, tag de serveur (lot P).
                         // Police du style de nom, couleur ou dégradé du rôle, tag de serveur (lot P) ;
                         // les couleurs du style ne se montrent que sur le message survolé.
-                        name_at.set(Some(super::cosmetics::author_name(ui, t, images, &m.author, m.author_id, &super::cosmetics::author(ui.ctx(), m.author_id), was_lit)));
+                        let worn = worn_of(ui.ctx());
+                        name_at.set(Some(super::cosmetics::author_name(ui, t, images, &m.author, m.author_id, &worn, was_lit)));
+                        // Compte système de Discord : « ✓ OFFICIEL » après le nom.
+                        if super::official::is_peer(ui.ctx(), m.author_id) {
+                            super::official::tag(ui, t, lang, t.typography.body);
+                        } else if worn.bot || m.meta.app.is_some() {
+                            super::cosmetics::app_tag(ui, t, lang);
+                        }
                         // Comme dans le client : l'heure seule pour aujourd'hui ; la date complète en infobulle.
                         let stamp = ui.label(RichText::new(time::message(lang, ts, h24)).small().color(t.colors.faint));
                         if live {
@@ -161,7 +171,7 @@ fn message_inner<'a>(ui: &mut egui::Ui, t: &Tokens, lang: Lang, images: Option<&
                 super::journal::trace_ui(ui, t, lang, m);
                 // Traduction demandée d'un clic droit (lot E3).
                 super::translate::under_ui(ui, t, lang, m, hot);
-                msg_actions::forward_ui(ui, t, lang, m, doc, links);
+                msg_actions::forward_ui(ui, t, lang, images, m, doc, links, hot);
                 extras_ui(ui, t, lang, images, m, doc, links, hot);
                 super::components::body(ui, t, lang, images, m, doc, links, hot, acts);
                 super::polls::extras(ui, t, lang, images, m, acts);
@@ -179,7 +189,7 @@ fn message_inner<'a>(ui: &mut egui::Ui, t: &Tokens, lang: Lang, images: Option<&
                 let rect = pixel_square(ui, ui.cursor().min, side);
                 if let Some(images) = images {
                     // Avatar du serveur et décoration fixe (lot P).
-                    let worn = super::cosmetics::author(ui.ctx(), m.author_id);
+                    let worn = worn_of(ui.ctx());
                     paint_avatar(ui, images, t, rect, &worn.avatar(m.author_id, &m.author_avatar), &m.author);
                     super::cosmetics::row_decoration(ui, images, rect, &worn);
                     super::profile::message_dot(ui, t, rect, m.author_id);
@@ -200,6 +210,7 @@ fn message_inner<'a>(ui: &mut egui::Ui, t: &Tokens, lang: Lang, images: Option<&
         acts.hits.clear();
         super::journal::ghost_after(t, lang, m, &resp) || selected
     } else {
+        acts.grouped = grouped || compact;
         msg_actions::after(ui, t, lang, m, acts, &resp) || selected
     };
     // Survol commencé ou fini : retenu pour l'image suivante, qui est demandée (une seule ;
@@ -216,7 +227,8 @@ fn message_inner<'a>(ui: &mut egui::Ui, t: &Tokens, lang: Lang, images: Option<&
     }
     // Le voile arrive et repart en fondu ; seules la ligne survolée et les dernières quittées sont suivies.
     let k = super::motion::trail(ui.ctx(), Id::unique("ferrocord.messages.survol"), m.id, lit);
-    if crate::state::notify::mentioned(acts.store, m) {
+    // Dans la boîte de réception, toutes les mentions le seraient : pas de fond.
+    if !acts.home && crate::state::notify::mentioned(acts.store, m) {
         // Message qui me mentionne, comme dans le client : fond ambre translucide sur tout le
         // bloc (ligne de réponse comprise), un peu plus marqué au survol, et barre pleine à gauche.
         let row = t.markdown.mention_row;
@@ -248,7 +260,8 @@ fn message_inner<'a>(ui: &mut egui::Ui, t: &Tokens, lang: Lang, images: Option<&
     markdown::zones_ui(ui, t, m.id, links);
     hot.interact(ui, t, m.id);
     for (i, rect) in [avatar_at.get(), name_at.get()].into_iter().enumerate() {
-        if let Some(rect) = rect {
+        // Message reconstitué sans auteur connu (boîte de réception) : pas de carte de profil.
+        if let Some(rect) = rect.filter(|_| m.author_id != 0) {
             super::profile::hotspot(ui, lang, rect, (m.id, i), m.author_id, m.guild_id, &m.author, m.author_avatar);
         }
     }

@@ -120,7 +120,33 @@ $fonts = @(
     @{ nom = 'Orbitron (police, The Orbitron Project Authors)'; version = '2.001'; licence = 'OFL-1.1'; fichier = 'assets\fonts\noms\orbitron\OFL.txt' }
     @{ nom = 'Pixelify Sans (police, The Pixelify Sans Project Authors)'; version = '1.000'; licence = 'OFL-1.1'; fichier = 'assets\fonts\noms\pixelifysans\OFL.txt' }
     @{ nom = 'Playpen Sans (police, The Playpen Sans Project Authors)'; version = '2.000'; licence = 'OFL-1.1'; fichier = 'assets\fonts\noms\playpensans\OFL.txt' }
+    @{ nom = 'Ribes (police, Collletttivo)'; version = '2.100'; licence = 'OFL-1.1'; fichier = 'assets\fonts\noms\ribes\LICENSE.txt' }
+    @{ nom = 'Sinistre (police, Collletttivo)'; version = '69.420'; licence = 'OFL-1.1'; fichier = 'assets\fonts\noms\sinistre\LICENSE.txt' }
     @{ nom = 'Zilla Slab (police, The Mozilla Foundation)'; version = '1.1'; licence = 'OFL-1.1'; fichier = 'assets\fonts\noms\zillaslab\OFL.txt' }
+    # Bibliothèques ANGLE embarquées (assets\angle, lot « gl ») : rendu par Direct3D 11.
+    @{ nom = 'ANGLE (libEGL.dll et libGLESv2.dll, The ANGLE Project Authors)'; version = '2.1.28055'; licence = 'BSD-3-Clause'; fichier = 'assets\angle\LICENSE.txt' }
+    # Bibliothèques tierces liées dans ces deux fichiers : mentions extraites de LICENSES.chromium.html,
+    # dans l'archive Electron dont ils viennent (assets\angle\LISEZMOI.md).
+    @{ nom = 'ANGLE, bibliothèque liée : Abseil'; version = '2.1.28055'; licence = 'Apache-2.0'; fichier = 'assets\angle\tiers\abseil.txt' }
+    @{ nom = 'ANGLE, bibliothèque liée : compiler-rt (LLVM)'; version = '2.1.28055'; licence = 'Apache-2.0 WITH LLVM-exception'; fichier = 'assets\angle\tiers\compiler-rt.txt' }
+    @{ nom = 'ANGLE, bibliothèque liée : EGL-Registry (Khronos)'; version = '2.1.28055'; licence = 'Apache-2.0'; fichier = 'assets\angle\tiers\egl-registry.txt' }
+    @{ nom = 'ANGLE, bibliothèque liée : en-têtes Khronos'; version = '2.1.28055'; licence = 'MIT'; fichier = 'assets\angle\tiers\khronos-header-files.txt' }
+    @{ nom = 'ANGLE, bibliothèque liée : libc++ (LLVM)'; version = '2.1.28055'; licence = 'Apache-2.0 WITH LLVM-exception'; fichier = 'assets\angle\tiers\libcxx.txt' }
+    @{ nom = 'ANGLE, bibliothèque liée : libc++abi (LLVM)'; version = '2.1.28055'; licence = 'Apache-2.0 WITH LLVM-exception'; fichier = 'assets\angle\tiers\libcxxabi.txt' }
+    @{ nom = 'ANGLE, bibliothèque liée : llvm-libc'; version = '2.1.28055'; licence = 'Apache-2.0 WITH LLVM-exception'; fichier = 'assets\angle\tiers\llvm-libc.txt' }
+    @{ nom = 'ANGLE, bibliothèque liée : murmur3'; version = '2.1.28055'; licence = 'Apache-2.0'; fichier = 'assets\angle\tiers\murmur3.txt' }
+    @{ nom = 'ANGLE, bibliothèque liée : OpenGL-Registry (Khronos)'; version = '2.1.28055'; licence = 'Apache-2.0'; fichier = 'assets\angle\tiers\opengl-registry.txt' }
+    @{ nom = 'ANGLE, bibliothèque liée : SMHasher'; version = '2.1.28055'; licence = 'MIT'; fichier = 'assets\angle\tiers\smhasher.txt' }
+    @{ nom = 'ANGLE, bibliothèque liée : SPIRV-Headers'; version = '2.1.28055'; licence = 'MIT'; fichier = 'assets\angle\tiers\spirv-headers.txt' }
+    @{ nom = 'ANGLE, bibliothèque liée : SPIRV-Tools'; version = '2.1.28055'; licence = 'Apache-2.0'; fichier = 'assets\angle\tiers\spirv-tools.txt' }
+    @{ nom = 'ANGLE, bibliothèque liée : The Chromium Project (base)'; version = '2.1.28055'; licence = 'BSD-3-Clause'; fichier = 'assets\angle\tiers\the-chromium-project.txt' }
+    @{ nom = 'ANGLE, bibliothèque liée : volk'; version = '2.1.28055'; licence = 'MIT'; fichier = 'assets\angle\tiers\volk-meta-loader-for-vulkan-api.txt' }
+    @{ nom = 'ANGLE, bibliothèque liée : Vulkan-Headers'; version = '2.1.28055'; licence = 'Apache-2.0'; fichier = 'assets\angle\tiers\vulkan-api-headers.txt' }
+    @{ nom = 'ANGLE, bibliothèque liée : Vulkan Deps'; version = '2.1.28055'; licence = 'BSD-3-Clause'; fichier = 'assets\angle\tiers\vulkan-deps.txt' }
+    @{ nom = 'ANGLE, bibliothèque liée : VulkanMemoryAllocator'; version = '2.1.28055'; licence = 'MIT'; fichier = 'assets\angle\tiers\vulkanmemoryallocator.txt' }
+    @{ nom = 'ANGLE, bibliothèque liée : xxHash'; version = '2.1.28055'; licence = 'BSD-2-Clause'; fichier = 'assets\angle\tiers\xxhash.txt' }
+    @{ nom = 'ANGLE, bibliothèque liée : zlib (portions de Chromium)'; version = '2.1.28055'; licence = 'Zlib'; fichier = 'assets\angle\tiers\zlib-2.txt' }
+    @{ nom = 'ANGLE, bibliothèque liée : zlib'; version = '2.1.28055'; licence = 'Zlib'; fichier = 'assets\angle\tiers\zlib.txt' }
 )
 foreach ($f in $fonts) {
     $id = Add-Text (Read-Text (Join-Path $root $f.fichier))

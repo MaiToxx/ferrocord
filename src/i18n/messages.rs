@@ -44,6 +44,12 @@ pub mod t {
         LEAVING_BODY = "Ce lien vous emmène vers le site suivant\u{a0}:", "This link is taking you to the following website:";
         LEAVING_VISIT = "Visiter le site", "Visit Site";
         LEAVING_BACK = "Retour", "Go Back";
+        // MP du compte système de Discord et ses notifications (lot « messages »).
+        OFFICIAL_TAG = "OFFICIEL", "OFFICIAL";
+        OFFICIAL_ONLY = "Ce salon est réservé aux notifications officielles de Discord.", "This thread is reserved for official Discord notifications.";
+        OFFICIAL_NEVER = "Discord ne te demandera jamais ton mot de passe ou ton token de compte.", "Discord will never ask you for your password or account token.";
+        OFFICIAL_DM = "Message officiel de Discord", "Official Discord Message";
+        CREATED_ON = "Créé le", "Created on";
     }
 }
 

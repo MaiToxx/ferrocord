@@ -29,7 +29,7 @@ pub mod t {
         NONE_REQUESTS = "Aucune demande de message en attente.", "No pending message requests.";
         NONE_SPAM = "Aucune demande dans le dossier de spam.", "No requests in the spam folder.";
         REQUEST_HINT = "Ouvrir la conversation pour lire le message", "Open the conversation to read the message";
-        ACTIVE_NOW = "Actifs en ce moment", "Active Now";
+        ACTIVE_NOW = "En ligne", "Active Now";
         ACTIVE_NONE_TITLE = "C'est calme pour l'instant…", "It's quiet for now…";
         ACTIVE_NONE = "Dès qu'un ami lancera un jeu ou une autre activité, vous le verrez ici.", "As soon as a friend starts a game or another activity, you will see it here.";
         MORE = "Autres actions", "More";

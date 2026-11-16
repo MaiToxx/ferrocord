@@ -395,6 +395,16 @@ function Read-Journal([string]$Chemin, $Phases) {
         if ($l.Type.StartsWith('etape.') -and -not $etapes.Contains($l.Type)) { $etapes[$l.Type.Substring(6)] = $l.Ms }
     }
     if ($etapes.Count -gt 0) { $r['journal_etapes'] = $etapes }
+    # Mémoire (lot « ram ») : mémoire privée à chaque étape du démarrage, puis
+    # derniers compteurs et dernière répartition relevés (Mo).
+    $memEtapes = [ordered]@{}
+    $memFin = [ordered]@{}
+    foreach ($l in $lignes) {
+        if ($l.Type.StartsWith('mem.etape.')) { if (-not $memEtapes.Contains($l.Type.Substring(10))) { $memEtapes[$l.Type.Substring(10)] = $l.Ms } }
+        elseif ($l.Type.StartsWith('mem.')) { $memFin[$l.Type.Substring(4)] = $l.Ms }
+    }
+    if ($memEtapes.Count -gt 0) { $r['journal_memoire_etapes'] = $memEtapes }
+    if ($memFin.Count -gt 0) { $r['journal_memoire_fin'] = $memFin }
     # Ce qui a demandé les images du repos, et ce que la passerelle a fait de ses événements.
     if ($repos) {
         $causes = [ordered]@{}
@@ -593,6 +603,24 @@ function Write-Resultats($Noms, $Res, [string]$Fichier) {
             $md.Add('| Étape | ms |')
             $md.Add('|---|---:|')
             foreach ($e in $journal['journal_etapes'].Keys) { $md.Add("| $e | $(Format-Valeur $journal['journal_etapes'][$e] 1) |") }
+        }
+        if ($journal.Contains('journal_memoire_etapes')) {
+            $md.Add('')
+            $md.Add('### Mémoire privée à chaque étape du démarrage (Mo)')
+            $md.Add('')
+            $md.Add('| Étape | Mo |')
+            $md.Add('|---|---:|')
+            foreach ($e in $journal['journal_memoire_etapes'].Keys) { $md.Add("| $e | $(Format-Valeur $journal['journal_memoire_etapes'][$e] 1) |") }
+        }
+        if ($journal.Contains('journal_memoire_fin')) {
+            $md.Add('')
+            $md.Add('### Mémoire à la fin de la mesure : compteurs et répartition (Mo)')
+            $md.Add('')
+            $md.Add('`privee` : mémoire privée engagée ; `travail_privee` : colonne « Mémoire » du Gestionnaire des tâches ; `carte.module.<nom>` : pages modifiables d''une DLL (`atio6axx`, `nvoglv64`… : pilote OpenGL) ; `carte.tas` et `carte.tas_alloue` : tas engagé et blocs vivants (l''écart est la fragmentation) ; `carte.autre` : réservations directes, surtout du pilote graphique.')
+            $md.Add('')
+            $md.Add('| Poste | Mo |')
+            $md.Add('|---|---:|')
+            foreach ($e in $journal['journal_memoire_fin'].Keys) { $md.Add("| $e | $(Format-Valeur $journal['journal_memoire_fin'][$e] 1) |") }
         }
         if ($journal.Contains('journal_fils_demarrage')) {
             $md.Add('')

@@ -218,6 +218,9 @@ pub fn uninstall(h: &mut dyn Hive, places: &Places, wipe: bool) -> io::Result<Op
         remove_if_present(&link)?;
     }
     h.remove_tree(UNINSTALL_KEY)?;
+    // Préférence de carte graphique, si c'est encore la nôtre, et bibliothèques ANGLE (lot « gl »).
+    crate::rendu::angle::forget_saving(h, &target)?;
+    crate::rendu::angle::remove(&places.programs);
     if wipe {
         for dir in &places.data {
             // Garde-fou : seulement un dossier nommé « ferrocord ».

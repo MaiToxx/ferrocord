@@ -391,6 +391,8 @@ actuelle, c'est elle qu'il faut viser)*.
 | Tuile d'appel | rayon 8, fond `#1e1f22` (ou couleur dominante de l'avatar), avatar de 80, nom en bas à gauche dans une pastille noire à 60 %, anneau vert de 2 quand ça parle | rayon 12, fond `bg3`, nom sur `scrim` | rayon 8 ; fond plus sombre |
 | Barre de contrôle | flottante en bas, visible au mouvement ; boutons ronds de 56 (caméra, partage, activité, micro) ; raccrocher **rouge, en pilule large** | boutons ronds, actifs en accent, raccrocher rouge rond | pilule ; tailles |
 | Fond de la vue d'appel | noir `#000000` | `bg2` *(à vérifier)* | noir |
+| Appel dans un MP | bandeau noir d'environ 240 sous l'en-tête, la conversation reste affichée dessous ; avatars de 100 (anneau vert, points d'attente pour qui n'a pas décroché) ; blocs arrondis [micro ⌄ \| caméra ⌄] [partage, activités, sons, « … »] et raccrocher rouge 80 × 60 ; la vidéo agrandit le bandeau | **fait** (lot « appel », `ui/call_band.rs`). Avant : vue plein cadre à la place de la conversation, bouton « Discussion » | reste : pas de bouton « activités » (fonction absente) ; la sourdine est dans « … » |
+| Message d'appel dans l'historique | combiné vert (rouge : manqué), « **Nom** a commencé un appel qui a duré 2 minutes. », heure courte à droite | **fait** (lot « appel ») | — |
 
 ---
 

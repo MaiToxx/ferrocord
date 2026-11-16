@@ -89,6 +89,11 @@ pub trait Source: Send + Sync + 'static {
     fn media_url(&self, url: &str, width: u32, height: u32) -> String {
         cdn::media_url(url, width, height)
     }
+    /// Comme [`Source::media_url`], pour une image fixe : copie sans perte
+    /// de qualité ([`cdn::still_url`]). Une source locale garde `media_url`.
+    fn still_url(&self, url: &str, width: u32, height: u32) -> String {
+        self.media_url(url, width, height)
+    }
     fn fetch(&self, url: String) -> FetchFuture;
     /// Adresse de la version animée de `image` (GIF, WebP animé, WebM d'une
     /// plaque), s'il en existe une ; `None` : l'image est fixe.
@@ -100,6 +105,10 @@ pub trait Source: Send + Sync + 'static {
 impl Source for Cdn {
     fn url(&self, image: &ImageRef, size: u32) -> String {
         Cdn::url(self, image, size)
+    }
+
+    fn still_url(&self, url: &str, width: u32, height: u32) -> String {
+        cdn::still_url(url, width, height)
     }
 
     fn anim_url(&self, image: &ImageRef, size: u32) -> Option<String> {
@@ -191,6 +200,22 @@ enum Entry {
     Failed { retry_at: Option<Instant>, seen: u64 },
 }
 
+/// Couleurs moyennes d'avatars gardées au plus (au-delà, la table repart de zéro).
+const MAX_TINTS: usize = 2048;
+
+/// Couleur moyenne des pixels opaques de `img` (un pixel sur quelques-uns suffit).
+fn mean_color(img: &egui::ColorImage) -> Option<[u8; 3]> {
+    let step = (img.pixels.len() / 4096).max(1);
+    let (mut sum, mut n) = ([0u64; 3], 0u64);
+    for p in img.pixels.iter().step_by(step).filter(|p| p.a() > 127) {
+        for (s, v) in sum.iter_mut().zip([p.r(), p.g(), p.b()]) {
+            *s += u64::from(v);
+        }
+        n += 1;
+    }
+    (n > 0).then(|| sum.map(|s| (s / n) as u8))
+}
+
 /// Entrées gardées avant qu'on oublie les échecs qui ne sont plus affichés.
 const MAX_ENTRIES: usize = 8192;
 /// Intervalle le plus long entre deux recherches de textures inutilisées.
@@ -243,6 +268,9 @@ struct Inner {
     deferred: VecDeque<(Key, Arrived, Ticket)>,
     /// Prochaine image due parmi les animations jouées pendant l'image en cours.
     next_wake: Option<Instant>,
+    /// Couleur moyenne des avatars déjà décodés ([`Images::avatar_tint`]) :
+    /// calculée une fois, à l'envoi de la texture.
+    tints: HashMap<ImageRef, [u8; 3]>,
 }
 
 /// Demande d'une image recadrée ([`Images::get_fill_moving`]) : clé de
@@ -330,6 +358,7 @@ impl Images {
             purge_at: MAX_ENTRIES,
             deferred: VecDeque::new(),
             next_wake: None,
+            tints: HashMap::new(),
         };
         Images { ctx, rt: None, source, tx, rx, woken, shared, memory, inner: RefCell::new(inner) }
     }
@@ -350,7 +379,11 @@ impl Images {
     pub fn get_media(&self, image: ImageRef, url: &str, size: egui::Vec2) -> Image {
         let key = self.media_key(image, size);
         let Fit::Contain(w, h) = key.fit else { return Image::Failed };
-        self.request(key, || (self.source.media_url(url, w, h), decode::accepted_side(w.max(h))))
+        // Copie sans perte, demandée par paliers ; ramenée ici à la taille exacte de l'écran.
+        self.request(key, || {
+            let (sw, sh) = cdn::stepped(w, h, decode::MAX_SIDE);
+            (self.source.still_url(url, sw, sh), decode::accepted_side(sw.max(sh)))
+        })
     }
 
     /// Clé utilisée par [`Images::get_media`] pour cette taille en points.
@@ -661,6 +694,13 @@ impl Images {
         self.evict(&mut inner, frame.saturating_sub(1));
     }
 
+    /// Couleur moyenne de l'avatar `image`, connue dès qu'une de ses tailles a été
+    /// décodée : la bande d'un profil sans bannière ni couleur d'accent, comme dans
+    /// le client. Ne demande rien : `None` tant que l'avatar n'est pas arrivé.
+    pub fn avatar_tint(&self, image: ImageRef) -> Option<egui::Color32> {
+        self.inner.borrow().tints.get(&image).map(|[r, g, b]| egui::Color32::from_rgb(*r, *g, *b))
+    }
+
     /// Envoie une image prête au processeur graphique, si elle est encore
     /// attendue (arrivée après une annulation : jetée). `true` si envoyée.
     fn upload(&self, inner: &mut Inner, key: Key, img: Arrived, ticket: Ticket) -> bool {
@@ -668,6 +708,18 @@ impl Images {
             return false;
         }
         let (frame, now) = (inner.frame, inner.now);
+        if matches!(key.image, ImageRef::Avatar { .. } | ImageRef::MemberAvatar { .. }) && !inner.tints.contains_key(&key.image) {
+            let first = match &img {
+                Arrived::Still(i) => Some(i),
+                Arrived::Anim(f) => f.first().map(|(i, _)| i),
+            };
+            if let Some(tint) = first.and_then(mean_color) {
+                if inner.tints.len() >= MAX_TINTS {
+                    inner.tints.clear();
+                }
+                inner.tints.insert(key.image, tint);
+            }
+        }
         let entry = match img {
             Arrived::Anim(f) if f.len() > 1 => {
                 let (frames, delays): (Vec<Arc<egui::ColorImage>>, Vec<Duration>) = f.into_iter().map(|(i, d)| (Arc::new(i), d)).unzip();
@@ -964,6 +1016,48 @@ mod tests {
 
     fn all_ready(got: &[Image]) -> bool {
         got.iter().all(|i| matches!(i, Image::Ready(_)))
+    }
+
+    /// Partie D : une vignette est demandée sans perte de qualité et par
+    /// paliers ; la texture garde la taille exacte de l'écran.
+    #[test]
+    fn media_is_asked_lossless_and_by_steps() {
+        struct Stills(Mutex<Vec<String>>);
+        impl Source for Stills {
+            fn url(&self, _: &ImageRef, _: u32) -> String {
+                String::new()
+            }
+            fn still_url(&self, url: &str, width: u32, height: u32) -> String {
+                let u = cdn::still_url(url, width, height);
+                if let Ok(mut v) = self.0.lock() {
+                    v.push(u.clone());
+                }
+                u
+            }
+            fn fetch(&self, _: String) -> FetchFuture {
+                Box::pin(async { Ok(png(64, 1)) })
+            }
+        }
+        let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().unwrap_or_else(|e| panic!("{e}"));
+        let source = Arc::new(Stills(Mutex::new(Vec::new())));
+        let images = Images::start(egui::Context::default(), rt.handle(), source.clone(), None, Config::default(), Arc::new(|| {}));
+        let photo = "https://media.discordapp.net/attachments/1/2/photo.jpg?ex=0a&is=0b&hm=0c";
+        let image = |slot| ImageRef::Media { owner: 77, slot, rev: 0 };
+        // Proportion 16:10, de 641 à 704 pixels de large : un seul palier (704).
+        for (slot, width) in (641..=704u32).enumerate() {
+            images.get_media(image(slot as u16), photo, egui::vec2(width as f32, (width as f32 / 1.6).round()));
+        }
+        let asked = source.0.lock().map(|v| v.clone()).unwrap_or_default();
+        assert_eq!(asked.len(), 64);
+        let mut distinct = asked.clone();
+        distinct.sort();
+        distinct.dedup();
+        assert!(distinct.len() <= 2, "64 largeurs, un palier (hauteur à un pixel près) : {distinct:?}");
+        for u in &distinct {
+            assert!(u.starts_with(photo) && u.contains("&width=704&height=44") && u.ends_with("&format=webp&quality=lossless"), "{u}");
+        }
+        // La clé (taille de la texture) reste celle de l'écran, au pixel près.
+        assert_eq!(images.media_key(image(0), egui::vec2(688.0, 430.0)).fit, Fit::Contain(688, 430));
     }
 
     /// Animation (lot A6) : chargée seulement quand elle joue, image fixe

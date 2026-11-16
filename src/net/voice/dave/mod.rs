@@ -21,6 +21,8 @@ mod video;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod robust;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;

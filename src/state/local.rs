@@ -106,6 +106,8 @@ pub struct LocalPrefs {
     pub update_manifest: String,
     /// Programmes ajoutés à la main, montrés comme jeux (section `[jeux]`, lot C3).
     pub games: Vec<super::activity::ManualGame>,
+    /// Jeux vus récemment et leurs masques (même section, lot « activité »).
+    pub recent_games: Vec<super::activity::RecentGame>,
     /// Disposition mobile et marge du clavier virtuel (section `[mobile]`, phase 7).
     pub mobile: super::mobile::MobilePrefs,
     /// Plugins activés et leurs réglages (section `[plugins]`, lot P0). L'historique
@@ -124,7 +126,7 @@ pub struct LocalPrefs {
 
 impl Default for LocalPrefs {
     fn default() -> Self {
-        LocalPrefs { motion: Motion::System, intensity: Intensity::Full, saturation: 100, scroll_speed: 100, underline_links: false, role_colors: true, instant_tooltips: false, streamer: Streamer::default(), debug_log: false, voice: Default::default(), audio: Default::default(), video: Default::default(), update_manifest: String::new(), games: Vec::new(), mobile: Default::default(), plugins: Default::default(), identity: Default::default(), look: Default::default(), keywords: Default::default(), windows: Default::default() }
+        LocalPrefs { motion: Motion::System, intensity: Intensity::Full, saturation: 100, scroll_speed: 100, underline_links: false, role_colors: true, instant_tooltips: false, streamer: Streamer::default(), debug_log: false, voice: Default::default(), audio: Default::default(), video: Default::default(), update_manifest: String::new(), games: Vec::new(), recent_games: Vec::new(), mobile: Default::default(), plugins: Default::default(), identity: Default::default(), look: Default::default(), keywords: Default::default(), windows: Default::default() }
     }
 }
 
@@ -211,7 +213,7 @@ impl LocalPrefs {
             + &self.video.to_toml()
             + &format!("\n[{S_UPDATES}]\n# Adresse HTTPS du manifeste signé ; vide : pas de mise à jour automatique.\n{K_MANIFEST} = {}\n", toml_string(&self.update_manifest))
             + "\n"
-            + &super::activity::games_toml(&self.games)
+            + &super::activity::games_toml(&self.games, &self.recent_games)
             + "\n"
             + &self.mobile.to_toml()
             + "\n"
@@ -361,6 +363,7 @@ impl LocalPrefs {
                 super::activity::SECTION => {
                     if let Some(t) = v.as_table() {
                         p.games = super::activity::games_from_table(t);
+                        p.recent_games = super::activity::recent_from_table(t);
                     }
                 }
                 super::mobile::SECTION => {

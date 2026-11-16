@@ -232,6 +232,13 @@ async fn run(ep: &RemoteAuthEndpoints, send: &(impl Fn(RemoteEvent) + Sync)) -> 
     let mut req = format!("{}/?v=2", ep.gateway).into_client_request().map_err(network)?;
     req.headers_mut().insert("Origin", HeaderValue::from_str(&ep.origin).map_err(protocol)?);
     req.headers_mut().insert("User-Agent", HeaderValue::from_str(&ep.identity.user_agent()).map_err(protocol)?);
+    // Comme la passerelle principale (lot « fiable ») : le client de bureau
+    // annonce sa langue à l'ouverture de chaque WebSocket.
+    for (name, value) in ep.identity.ws_headers() {
+        if name == "Accept-Language" {
+            req.headers_mut().insert(name, HeaderValue::from_str(&value).map_err(protocol)?);
+        }
+    }
     let cfg = WebSocketConfig::default().max_message_size(Some(MAX_MESSAGE)).max_frame_size(Some(MAX_MESSAGE));
     let step = ep.step_timeout;
     let (mut ws, _) = tokio::time::timeout(step, tokio_tungstenite::connect_async_with_config(req, Some(cfg), false))

@@ -12,6 +12,30 @@ pub fn initials(name: &str) -> String {
     if s.is_empty() { "?".into() } else { s.to_uppercase() }
 }
 
+/// Acronyme d'un serveur sans icône, comme dans le client : la première
+/// lettre de chaque mot (casse gardée), la ponctuation gardée, les espaces
+/// retirés ; le « 's » possessif est ignoré. « Projet.cool » donne « P.c »,
+/// « Les amis d'Ada » donne « Lad'A ».
+pub fn guild_acronym(name: &str) -> String {
+    let name = name.replace("'s ", " ");
+    let mut out = String::new();
+    let mut in_word = false;
+    for c in name.chars() {
+        if c.is_alphanumeric() || c == '_' {
+            if !in_word {
+                out.push(c);
+            }
+            in_word = true;
+        } else {
+            in_word = false;
+            if !c.is_whitespace() {
+                out.push(c);
+            }
+        }
+    }
+    if out.is_empty() { "?".into() } else { out }
+}
+
 /// Initiales d'un avatar dessiné sans image (deux au plus).
 pub fn avatar_initials(name: &str) -> String {
     initials(name).chars().take(2).collect()
@@ -105,5 +129,18 @@ mod tests {
         assert_eq!(initials("été"), "É");
         assert_eq!(initials("Bob (vocal)"), "BV");
         assert_eq!(initials("-- !"), "?");
+    }
+
+    /// Même règle que le client : un mot = une lettre, ponctuation gardée, casse gardée.
+    #[test]
+    fn guild_acronyms() {
+        assert_eq!(guild_acronym("Projet.cool"), "P.c");
+        assert_eq!(guild_acronym("rust france"), "rf");
+        assert_eq!(guild_acronym("Le Club des Cinq"), "LCdC");
+        assert_eq!(guild_acronym("Ada's server"), "As");
+        assert_eq!(guild_acronym("Les amis d'Ada"), "Lad'A");
+        assert_eq!(guild_acronym("Bob (vocal)"), "B(v)");
+        assert_eq!(guild_acronym("Été 2024"), "É2");
+        assert_eq!(guild_acronym("   "), "?");
     }
 }

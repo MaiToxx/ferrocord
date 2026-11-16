@@ -110,7 +110,7 @@ pub(super) const QUICK_REACTIONS: usize = 3;
 /// Celles d'un compte qui n'a encore réagi à rien.
 const DEFAULT_QUICK: [&str; QUICK_REACTIONS] = ["\u{1f44d}", "\u{2764}\u{fe0f}", "\u{1f602}"];
 
-/// Les réactions rapides : les derniers emojis choisis, complétés par les
+/// Les réactions rapides : les emojis les plus utilisés, puis les derniers choisis, complétés par les
 /// réactions par défaut.
 pub(super) fn quick_reactions<'a>(recent: impl Iterator<Item = &'a Emoji>) -> Vec<Emoji> {
     let mut out: Vec<Emoji> = Vec::with_capacity(QUICK_REACTIONS);
@@ -123,6 +123,19 @@ pub(super) fn quick_reactions<'a>(recent: impl Iterator<Item = &'a Emoji>) -> Ve
         }
     }
     out
+}
+
+/// Emojis les plus utilisés du compte, prêts à servir de réactions dans ce
+/// salon : l'usage fait dans Ferrocord (gardé sur cet ordinateur), puis la
+/// fréquence du compte si le sélecteur l'a déjà lue. Aucune requête ici.
+pub(super) fn frequent_reactions(store: &Store, channel: u64) -> Vec<Emoji> {
+    let mut usable = None;
+    let mut of_key = |key: &String| match key.parse::<u64>() {
+        // Emoji personnalisé : seulement s'il est utilisable dans ce salon.
+        Ok(id) => usable.get_or_insert_with(|| store.usable_emojis(channel)).iter().find(|e| e.id == id).map(|e| Emoji::Custom { id, name: e.name.clone(), animated: e.animated }),
+        Err(_) => crate::state::emoji::by_name(key).map(|u| Emoji::Unicode(u.text())),
+    };
+    store.gifs.frecency.frequent.iter().filter_map(&mut of_key).take(QUICK_REACTIONS).collect()
 }
 
 /// État de l'interface des actions (appartient à `App`).
@@ -205,9 +218,16 @@ pub(super) struct Acts<'a> {
     /// Message montré hors de sa liste (résultat de recherche, lot T12) :
     /// ni barre d'actions ni menu, un clic va au message.
     pub browse: bool,
+    /// Message montré hors du serveur affiché (boîte de réception) : les
+    /// parures de son auteur sont lues sur le serveur du message, pas sur
+    /// celui de la discussion ouverte.
+    pub home: bool,
     /// Réactions rapides de la barre de survol et du menu (lot M) ; vide :
     /// aucune (recherche, épingles, tests).
     pub quick: Vec<Emoji>,
+    /// Le message en cours suit un message du même auteur (pas d'en-tête) : la
+    /// barre de survol se pose plus haut, pour ne pas couvrir sa ligne de texte.
+    pub grouped: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -224,7 +244,7 @@ pub(super) enum Hit {
 
 impl<'a> Acts<'a> {
     pub(super) fn new(st: &'a mut ActionsUi, store: &'a Store, channel_id: u64, ctx: egui::Context) -> Self {
-        Acts { st, rights: store.rights(channel_id), store, ctx, hits: Vec::new(), browse: false, quick: Vec::new() }
+        Acts { st, rights: store.rights(channel_id), store, ctx, hits: Vec::new(), browse: false, home: false, quick: Vec::new(), grouped: false }
     }
 
     /// Début d'un message.
@@ -341,29 +361,38 @@ pub(super) fn edit_box(ui: &mut egui::Ui, t: &Tokens, lang: Lang, m: &Message, a
     }
 }
 
-/// Message transféré : son instantané derrière une barre, comme une citation.
-pub(super) fn forward_ui(ui: &mut egui::Ui, t: &Tokens, lang: Lang, m: &Message, doc: &crate::state::markdown::Doc, zones: &mut super::markdown::Zones) {
-    let Some(fw) = &m.meta.forward else { return };
+/// Message transféré : son instantané derrière une barre, comme dans le
+/// client — « ↪ Transféré » en italique marqué, puis le texte, les pièces
+/// jointes (images, vidéos, fichiers : même rendu que dans le fil), les
+/// embeds et les autocollants. `images` absent : mesure seule (même place).
+#[allow(clippy::too_many_arguments)]
+pub(super) fn forward_ui<'a>(ui: &mut egui::Ui, t: &Tokens, lang: Lang, images: Option<&crate::images::Images>, m: &'a Message, doc: &crate::state::markdown::Doc, zones: &mut super::markdown::Zones, hot: &mut super::attachments::Hot<'a>) {
+    let Some(fw) = m.meta.forward.as_deref() else { return };
     let block = egui::Frame::new().inner_margin(t.quote_indent()).show(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.horizontal(|ui| {
-            glyph(ui, Glyph::Forward, t.typography.small, t.colors.faint);
-            ui.label(RichText::new(tx::FORWARDED.get(lang)).size(t.typography.small).italics().color(t.colors.faint));
+            ui.spacing_mut().item_spacing.x = t.spacing.item_x / 2.0;
+            glyph(ui, Glyph::Forward, t.typography.body, t.colors.muted);
+            ui.label(RichText::new(tx::FORWARDED.get(lang)).family(crate::ui::fonts::demi()).size(t.typography.body).italics().color(t.colors.muted));
         });
-        match doc.forward.as_deref() {
-            Some(d) => super::markdown::doc_ui(ui, t, lang, m.id, d, &[], false, zones),
+        let empty = crate::state::markdown::Doc::default();
+        let inner = doc.forward.as_deref();
+        match inner {
+            Some(d) if !d.is_empty() => super::markdown::doc_ui(ui, t, lang, m.id, d, &[], false, zones),
             None if !fw.content.is_empty() => {
                 ui.add(egui::Label::new(RichText::new(&fw.content).color(t.colors.text)).wrap().selectable(true));
             }
-            None => {}
+            _ => {}
         }
-        for a in &fw.attachments {
-            ui.label(RichText::new(a).color(t.colors.link));
-        }
+        super::attachments::attachments_list(ui, t, lang, images, &fw.attachments, hot);
+        super::embeds::embeds_list(ui, t, lang, images, m.id, &fw.embeds, inner.unwrap_or(&empty), zones, hot);
+        super::stickers::stickers_list(ui, t, lang, &fw.stickers);
     });
     let r = block.response.rect;
     let w = t.markdown.quote_width;
-    ui.painter().rect_filled(Rect::from_min_max(r.min, pos2(r.left() + w, r.bottom())), w / 2.0, t.markdown.quote_bar);
+    // Barre plus claire que celle d'une citation, comme dans le client.
+    let bar = super::motion::mix(t.markdown.quote_bar, t.colors.muted, 0.35);
+    ui.painter().rect_filled(Rect::from_min_max(r.min, pos2(r.left() + w, r.bottom())), w / 2.0, bar);
 }
 
 // ====================================================================== après le message
@@ -422,7 +451,8 @@ pub(super) fn after(ui: &mut egui::Ui, t: &Tokens, lang: Lang, m: &Message, acts
     let hovered = (resp.contains_pointer() && pointer.is_some_and(|p| p.y >= resp.rect.top() && p.y < resp.rect.bottom())) || on_bar || more.is_some();
     // Disposition mobile : pas de survol au doigt, l'appui long ouvre le menu (phase 7).
     let had_bar = acts.st.bar.is_some_and(|(id, _)| id == m.id);
-    if hovered && !acts.st.editing(m.id) && !super::mobile::is_active(ui.ctx()) {
+    // MP officiel de Discord : pas de barre (le menu du clic droit garde copier et « non lu »).
+    if hovered && !acts.st.editing(m.id) && !super::mobile::is_active(ui.ctx()) && !acts.rights.official {
         let bar = hover_bar(ui, t, lang, m, acts, resp.rect);
         acts.st.bar = Some((m.id, bar));
     } else if had_bar {
@@ -473,7 +503,7 @@ pub(super) fn allowed(m: &Message, r: &Rights) -> Allowed {
         delete: mine || r.manage,
         pin: normal && r.pin,
         // Un transfert ne se transfère pas (imbrication limitée à un niveau).
-        forward: normal && m.meta.forward.is_none(),
+        forward: normal && m.meta.forward.is_none() && !r.official,
         thread: normal && r.thread && m.meta.thread.is_none(),
     }
 }
@@ -690,10 +720,14 @@ fn hover_bar(ui: &mut egui::Ui, t: &Tokens, lang: Lang, m: &Message, acts: &mut 
     let rule = if quick.is_empty() { 0.0 } else { t.spacing.item_x };
     let margin = egui::Vec2::splat(2.0 * t.shapes.border);
     let size = vec2(side * count as f32 + rule, side) + margin;
-    // Moitié au-dessus du message, comme dans Discord ; jamais hors de la liste.
+    // À cheval sur le bord haut du message, comme dans Discord ; jamais hors de la liste.
+    // Ce bord est sous la marge qui sépare deux groupes (elle fait partie de la ligne
+    // ici) ; une suite de groupe n'a qu'une ligne de texte : la barre n'y mord que de
+    // quelques points (dans le client : 25 au-dessus pour une barre de 32).
     let clip = ui.clip_rect();
     let x = rect.right() - t.spacing.message_x - size.x;
-    let y = (rect.top() - size.y / 2.0).max(clip.top());
+    let edge = if acts.grouped { rect.top() - (size.y * 0.28).round() } else { rect.top() + (t.spacing.message_gap - t.spacing.message_gap_grouped).max(0.0) };
+    let y = (edge - size.y / 2.0).max(clip.top());
     // Un seul identifiant pour la barre, quel que soit le message, et pas de
     // fondu : la barre réapparaît après chaque changement de salon sous la
     // souris, et le fondu d'egui coûtait une dizaine d'images à chaque fois.
@@ -1109,6 +1143,26 @@ mod tests {
     use super::*;
     use crate::state::social::MessageMeta;
 
+    /// Partie E : les réactions rapides suivent les emojis les plus utilisés
+    /// (usage local, sans fichier ici), puis les récents, puis les défauts.
+    #[test]
+    fn quick_reactions_follow_the_most_used_emojis() {
+        let mut s = Store::new();
+        assert!(frequent_reactions(&s, 2).is_empty(), "rien de connu : la liste fixe");
+        let defaults = quick_reactions(std::iter::empty());
+        assert_eq!(defaults.len(), QUICK_REACTIONS);
+        // « fire » deux fois, « tada » une fois, un emoji personnalisé inutilisable ici trois fois.
+        for key in ["fire", "fire", "tada", "424242", "424242", "424242", "pas_un_emoji"] {
+            s.gifs.frecency.note_use(key, 1_000);
+        }
+        let frequent = frequent_reactions(&s, 2);
+        let glyph = |name: &str| Emoji::Unicode(crate::state::emoji::by_name(name).map(|u| u.text()).unwrap_or_default());
+        assert_eq!(frequent, vec![glyph("fire"), glyph("tada")], "personnalisé hors du salon et clé inconnue écartés");
+        let recent = [glyph("eyes"), glyph("fire")];
+        let quick = quick_reactions(frequent.iter().chain(recent.iter()));
+        assert_eq!(quick, vec![glyph("fire"), glyph("tada"), glyph("eyes")], "fréquents, puis récents, sans doublon");
+    }
+
     fn msg(author_id: u64) -> Message {
         Message {
             id: 5,
@@ -1130,7 +1184,7 @@ mod tests {
 
     #[test]
     fn actions_follow_rights() {
-        let r = Rights { me: 7, dm: false, send: true, react: true, react_existing: true, manage: false, pin: false, thread: false };
+        let r = Rights { me: 7, dm: false, send: true, react: true, react_existing: true, manage: false, pin: false, thread: false, official: false };
         let a = allowed(&msg(7), &r);
         assert!(a.reply && a.react && a.edit && a.delete && !a.pin && a.forward);
         let a = allowed(&msg(8), &r);

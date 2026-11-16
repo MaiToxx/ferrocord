@@ -290,6 +290,7 @@ pub mod t {
         MEMBERS_LOADING = "Chargement de la liste des membres…", "Loading the member list…";
         MEMBERS_BOT = "Discord n'envoie pas la liste des membres à un compte bot.", "Discord doesn't send the member list to a bot account.";
         BOT_TAG = "BOT", "BOT";
+        APP_TAG = "APP", "APP";
 
         // Fichier de thème.
         THEME_PARSER_PANIC = "fichier illisible (erreur interne de l'analyseur)", "unreadable file (internal parser error)";

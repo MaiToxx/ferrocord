@@ -68,7 +68,7 @@ fn to_i16(x: f32) -> i16 {
 }
 
 /// Des `f32` entrelacés à `rate` vers 48 kHz (`channels` : 1 ou 2).
-fn to_48k(samples: &[f32], rate: u32, channels: usize) -> Vec<i16> {
+pub(crate) fn to_48k(samples: &[f32], rate: u32, channels: usize) -> Vec<i16> {
     let mut rs = Resampler::new(rate, SAMPLE_RATE, channels);
     if rs.is_passthrough() {
         return samples.iter().map(|s| to_i16(*s)).collect();

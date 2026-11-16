@@ -70,12 +70,21 @@ impl App {
         // celui-ci lui garde la place (`layout::Place`, `rail.rs`).
         let reach = if self.mobile_active() || self.local.prefs.look.hide_rail { 0.0 } else { t.rail_panel_width() };
         let sub = self.user_panel_line();
+        // Activité annoncée : manette verte puis « • » devant le statut
+        // personnalisé, comme dans le client (même ligne que les MP).
+        let (playing, sub) = match (self.panel_activity(), self.user_panel_custom()) {
+            (true, Some(custom)) => (true, Some(format!("• {custom}"))),
+            (true, None) => (true, self.user_panel_game().or(sub)),
+            (false, _) => (false, sub),
+        };
+        // Jeu détecté : son encart est le haut de la carte (`game_card.rs`).
+        let game = self.game_card_shown();
         // En vocal, le panneau de connexion est le haut de la même carte (lot V) :
         // pas d'air entre les deux, coins du haut droits.
         let in_voice = self.store.voice.me.is_some();
         let gap = t.spacing.item_x as i8;
         let footer = egui::Panel::bottom("me")
-            .frame(egui::Frame::new().fill(self.mica_inner(t.colors.bg1)).inner_margin(egui::Margin { left: gap, right: gap, top: if in_voice { 0 } else { gap }, bottom: gap }))
+            .frame(egui::Frame::new().fill(self.mica_inner(t.colors.bg1)).inner_margin(egui::Margin { left: gap, right: gap, top: if in_voice || game { 0 } else { gap }, bottom: gap }))
             .show_separator_line(false)
             .show(ui, |ui| {
                 // Thème à dégradé ou à image : le pied porte le même fond que la colonne,
@@ -91,7 +100,7 @@ impl App {
                 // Le panneau des salons découpe à son bord : élargi jusque sous le rail.
                 let clip = ui.clip_rect();
                 let clip = egui::Rect::from_min_max(egui::pos2(clip.left() - reach, clip.top()), clip.max);
-                let round = if in_voice { egui::CornerRadius { nw: 0, ne: 0, ..t.r_card() } } else { t.r_card() };
+                let round = if in_voice || game { egui::CornerRadius { nw: 0, ne: 0, ..t.r_card() } } else { t.r_card() };
                 // `with_clip_rect` croise avec la découpe du panneau : la carte s'arrêtait au
                 // bord de la colonne. La découpe élargie est donc posée telle quelle.
                 let mut wide = ui.painter().clone();
@@ -143,12 +152,19 @@ impl App {
                             let width = rect.width();
                             let size = TextStyle::Body.resolve(ui.style()).size;
                             let (name, glow) = super::cosmetics::styled_line(ui, &name, size, worn.look.name_style(), under, t.colors.text_strong, width);
-                            let sub = sub.as_deref().map(|l| super::emoji::truncated(ui, l, &TextStyle::Small.resolve(ui.style()), t.colors.muted, width));
+                            let lead_side = if playing { Tokens::icon_side(t.typography.small) } else { 0.0 };
+                            let lead_w = if playing { lead_side + t.spacing.item_y } else { 0.0 };
+                            let sub = sub.as_deref().map(|l| super::emoji::truncated(ui, l, &TextStyle::Small.resolve(ui.style()), t.colors.muted, (width - lead_w).max(1.0)));
                             let name_h = name.size().y;
                             let top = rect.top() + Tokens::centered_top(rect.height(), name_h + sub.as_ref().map_or(0.0, |(s, _)| s.size().y));
                             super::cosmetics::paint_styled(ui.painter(), egui::pos2(rect.left(), top), name, glow, t.colors.text_strong);
                             if let Some((s, spots)) = sub {
-                                let pos = egui::pos2(rect.left(), top + name_h);
+                                let line = egui::pos2(rect.left(), top + name_h);
+                                if playing {
+                                    let icon = pixel_square(ui, egui::pos2(line.x, line.y + (s.size().y - lead_side) / 2.0), lead_side);
+                                    super::friends::paint_lead(ui, &t, super::friends::Lead::Game, icon, t.colors.online, under);
+                                }
+                                let pos = egui::pos2(line.x + lead_w, line.y);
                                 super::emoji::paint_spots(ui, pos, &s, &spots);
                                 ui.painter().galley(pos, s, t.colors.muted);
                             }
@@ -183,6 +199,13 @@ impl App {
             just_opened = true;
         }
         self.account_menu(ui, rect.left_top(), rect.width(), just_opened);
+        // Jeu détecté : encart posé sur le panneau utilisateur (lot « activité »).
+        let mut rect = rect;
+        if let Some(card) = self.game_card(ui, reach) {
+            rect = card.union(rect);
+            self.place.card = Some(rect);
+            self.place.foot += card.height();
+        }
         // Connexion vocale, au-dessus du panneau utilisateur (phase 4) : le
         // rail lui laisse la place aussi, son filet s'arrête au haut de la carte.
         if let Some(voice) = self.voice_panel(ui, reach) {
@@ -356,10 +379,14 @@ impl App {
                                         let collapsed = rules.collapsed(c.id);
                                         let head = ui.horizontal(|ui| {
                                             ui.spacing_mut().item_spacing.x = t.spacing.item_y;
-                                            let (r, _) = ui.allocate_exact_size(egui::Vec2::splat(Tokens::icon_side(t.typography.small) * 0.75), Sense::hover());
+                                            // Comme dans le client : le nom dans sa casse d'origine, puis le chevron.
+                                            let chevron = Tokens::icon_side(t.typography.small) * 0.75;
+                                            let text = RichText::new(&c.name).size(t.typography.body - 2.0).family(crate::ui::fonts::medium()).color(t.colors.muted);
+                                            // Le « + » (au survol) et le chevron gardent leur place : le nom se coupe avant.
+                                            let room = (ui.available_width() - chevron - 3.0 * t.spacing.item_x - Tokens::icon_side(t.typography.button)).max(chevron);
+                                            ui.allocate_ui_with_layout(egui::vec2(room, ui.text_style_height(&TextStyle::Body)), Layout::left_to_right(Align::Center), |ui| ui.add(egui::Label::new(text).truncate().selectable(false)));
+                                            let (r, _) = ui.allocate_exact_size(egui::Vec2::splat(chevron), Sense::hover());
                                             paint_chevron(ui.painter(), r, t.colors.muted, collapsed);
-                                            let text = RichText::new(c.name.to_uppercase()).small().family(crate::ui::fonts::demi()).strong().color(t.colors.muted);
-                                            ui.add(egui::Label::new(text).truncate().selectable(false));
                                         });
                                         // Toute la largeur de la liste : le « + » se place à droite.
                                         let row = egui::Rect::from_min_max(head.response.rect.min, egui::pos2(ui.max_rect().right(), head.response.rect.max.y));
@@ -679,12 +706,16 @@ impl App {
                 // Comme dans le client : la police du style toujours, ses couleurs et son effet au survol.
                 let style = if hovered { style } else { style.map(crate::state::cosmetics::NameStyle::plain) };
                 let line = |width: f32| super::friends::name_line(ui, name, font.size, style, Some(font.family.clone()), bg, text_color, width);
-                // Le nom d'abord : le tag ne reste que s'il tient après le nom entier.
+                // Le tag reste toujours sur la ligne, comme dans le client : c'est le nom
+                // qui se coupe pour lui faire place (sauf ligne trop étroite pour les deux).
                 let (mut g, mut backdrop) = line(f32::INFINITY);
                 if g.size().x + chip_w > text_rect.width() {
-                    chip = None;
-                    if g.size().x > text_rect.width() {
-                        (g, backdrop) = line(text_rect.width());
+                    if text_rect.width() < 2.0 * chip_w {
+                        chip = None;
+                    }
+                    let room = text_rect.width() - if chip.is_some() { chip_w } else { 0.0 };
+                    if g.size().x > room {
+                        (g, backdrop) = line(room);
                     }
                 }
                 (g, Vec::new(), backdrop)
@@ -696,7 +727,9 @@ impl App {
         };
         // MP à deux : sous le nom, l'icône de l'activité du correspondant puis son statut
         // personnalisé, comme dans le client (même seconde ligne que la page Amis).
-        let second = peer.and_then(|peer| self.dm_second(peer));
+        // MP du compte système de Discord : « Message officiel de Discord » et l'étiquette après le nom.
+        let official = dm_row && self.store.is_official_dm(id);
+        let second = if official { Some((super::friends::Lead::None, crate::i18n::table::messages::t::OFFICIAL_DM.get(self.lang).to_string())) } else { peer.and_then(|peer| self.dm_second(peer)) };
         let lead = second.as_ref().map_or(super::friends::Lead::None, |(lead, _)| *lead);
         let lead_side = if lead == super::friends::Lead::None { 0.0 } else { Tokens::icon_side(t.typography.small) };
         let lead_w = if lead_side > 0.0 { lead_side + t.spacing.item_y } else { 0.0 };
@@ -713,6 +746,13 @@ impl App {
             let size = chip.size;
             let at = egui::pos2(pos.x + galley.size().x + t.spacing.item_x, (pos.y + (name_h - size.y) / 2.0).round());
             chip.paint(ui, &self.images, t, egui::Rect::from_min_size(at, size), c.bg3);
+        }
+        if official {
+            let size = super::official::tag_size(ui, self.lang, font.size);
+            let at = egui::pos2(pos.x + galley.size().x + t.spacing.item_x / 2.0, (pos.y + (name_h - size.y) / 2.0).round());
+            if at.x + size.x <= text_rect.right() {
+                super::official::paint_tag(ui, t, self.lang, egui::Rect::from_min_size(at, size), font.size);
+            }
         }
         super::emoji::paint_spots(ui, pos, &galley, &spots);
         super::cosmetics::paint_styled(ui.painter(), pos, galley, backdrop, text_color);

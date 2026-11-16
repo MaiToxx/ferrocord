@@ -119,8 +119,7 @@ struct Lenient<T>(Option<T>);
 
 impl<'de, T: DeserializeOwned> Deserialize<'de> for Lenient<T> {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let raw = Box::<RawValue>::deserialize(d)?;
-        Ok(Lenient(serde_json::from_str(raw.get()).ok()))
+        super::raw::with_raw(d, |raw| Lenient(serde_json::from_str(raw).ok()))
     }
 }
 

@@ -12,6 +12,8 @@ pub mod dave;
 pub mod e2ee;
 pub mod rtp;
 pub mod video;
+#[cfg(test)]
+mod robust;
 
 pub use crate::state::admin::webhooks::Secret;
 

@@ -64,11 +64,15 @@ pub enum Kind {
     Reaction,
     /// Un rappel de message enregistré arrive à échéance (lot FF2).
     Reminder,
+    /// J'entre dans un salon vocal, j'en sors (lot « sons ») : plus marqués que
+    /// l'arrivée et le départ de quelqu'un d'autre.
+    VoiceConnect,
+    VoiceDisconnect,
 }
 
 impl Kind {
     /// Tous les sons, dans l'ordre de la page « Sons ».
-    pub const ALL: [Kind; 16] = [
+    pub const ALL: [Kind; 18] = [
         Kind::Message,
         Kind::Mention,
         Kind::VoiceDeafen,
@@ -77,6 +81,8 @@ impl Kind {
         Kind::VoiceUnmute,
         Kind::VoiceJoin,
         Kind::VoiceLeave,
+        Kind::VoiceConnect,
+        Kind::VoiceDisconnect,
         Kind::CallOut,
         Kind::Ring,
         Kind::StreamStart,
@@ -106,6 +112,8 @@ impl Kind {
             Kind::EventStart => 13,
             Kind::Reaction => 14,
             Kind::Reminder => 15,
+            Kind::VoiceConnect => 16,
+            Kind::VoiceDisconnect => 17,
         }
     }
 }
@@ -265,7 +273,7 @@ impl Alert {
             Kind::Message => self.body = xt::TOAST_HIDDEN.get(lang).to_string(),
             // Sonnerie et sons du vocal : leur texte ne cite aucun message.
             Kind::VoiceJoin | Kind::VoiceLeave | Kind::VoiceMute | Kind::VoiceUnmute | Kind::Ring => {}
-            Kind::VoiceDeafen | Kind::VoiceUndeafen | Kind::CallOut | Kind::StreamStart | Kind::StreamStop | Kind::FriendRequest | Kind::EventStart | Kind::Reaction | Kind::Reminder => {}
+            Kind::VoiceDeafen | Kind::VoiceUndeafen | Kind::CallOut | Kind::StreamStart | Kind::StreamStop | Kind::FriendRequest | Kind::EventStart | Kind::Reaction | Kind::Reminder | Kind::VoiceConnect | Kind::VoiceDisconnect => {}
         }
         self
     }

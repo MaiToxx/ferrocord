@@ -1,5 +1,9 @@
 # Lot « d3d » — Direct3D 12 par wgpu contre OpenGL (15 novembre 2026)
 
+> **Mise à jour du 16 novembre (lot « gl »)** : « garder OpenGL » vaut toujours contre
+> wgpu, mais le contexte OpenGL vient désormais d'ANGLE (Direct3D 11) : 60 à 130 Mo de
+> moins que le pilote OpenGL d'AMD sur cette machine. Voir la dernière section.
+
 **Décision : garder OpenGL.** Sur la machine de l'utilisateur, le rendu `wgpu`
 d'eframe sur Direct3D 12 est plus lourd et plus lent qu'OpenGL sur tous les
 points mesurés sauf un (le travail du pilote hors du fil d'interface) :
@@ -179,3 +183,50 @@ est le même, et l'image est plus longue.
   maintenu pour egui 0.37). Hors de proportion.
 - Le vrai levier contre les 91 Mo du pilote reste hors du rendu : rien à
   gagner en changeant d'API tant que le pilote AMD pèse ce poids.
+
+## Lot « gl » (16 novembre 2026) : wgpu remesuré, Direct3D 11 par ANGLE retenu
+
+Deux choses ont changé depuis ce document.
+
+**Direct3D 11 est mesurable, et c'est lui qui gagne** : non par wgpu, mais
+par ANGLE (la traduction OpenGL ES → Direct3D 11 de Chromium), qui donne à
+`glow` le même contexte qu'avant. Le rendu d'egui ne change pas ; seul le
+pilote chargé change (`atidxx64.dll`, 31 Mo d'image, au lieu de
+`atio6axx.dll`, 62 Mo, ou des deux `amdxc64.dll` de Direct3D 12). Détail,
+méthode et réserves : `docs/mesures.md`, lot « gl ».
+
+**wgpu a été remesuré** avec les réglages qui comptent, dans une fenêtre
+d'essai minimale (egui seul, 1100 × 720, 200 images forcées puis 3 s de
+repos ; médiane de 3 passes ; la machine compilait en même temps, les temps
+sont donc indicatifs, la mémoire non) :
+
+| Rendu | Carte | Privée (Mo) | De travail privée (Mo) | Première image (ms) | Image médiane / p95 (ms) | Processeur par image (ms) |
+|---|---|---:|---:|---:|---:|---:|
+| glow, pilote OpenGL (avant) | dédiée¹ | 99,7 | 68,2 | 207 | 2,17 / 2,74 | 3,1 |
+| glow, pilote OpenGL | intégrée | 167,5 | 145,4 | 611 | 2,10 / 2,63 | 4,6 |
+| **glow, ANGLE (Direct3D 11)** | dédiée | 60,5 | 29,9 | 207 | 2,22 / 2,76 | 3,1 |
+| **glow, ANGLE (Direct3D 11)** | **intégrée** | **39,1** | **18,0** | **157** | 2,15 / 2,81 | 2,5 |
+| wgpu, Direct3D 12, `LowPower` | intégrée | 263,3 | 173,6 | 682 | 2,19 / 2,71 | 7,4 |
+| wgpu, Direct3D 12, `HighPerformance` | dédiée | 276,9 | 182,1 | 708 | 2,17 / 2,81 | 11,3 |
+| wgpu, Direct3D 12, latence maximale 1 | intégrée | 264,2 | 173,1 | 663 | 2,17 / 2,91 | 7,5 |
+| wgpu, Vulkan, `LowPower` | intégrée | 91,0 | 64,6 | 337 | 1,87 / 2,47 | 3,5 |
+| wgpu, Vulkan, `HighPerformance` | dédiée | 209,7 | 176,1 | 425 | 1,88 / 2,56 | 8,3 |
+| wgpu, OpenGL (WGL) | dédiée | 122,0 | 61,9 | 299 | 2,38 / 3,20 | 4,7 |
+
+¹ Sur cette machine, branchée au secteur, le pilote AMD envoie par défaut un
+programme inconnu sur la carte **dédiée**, alors que l'écran est branché sur
+l'intégrée.
+
+Tous les essais wgpu : `MemoryHints::MemoryUsage`, sans validation, FXC pour
+Direct3D 12, pas de MSAA, présentation `Fifo`. `desired_maximum_frame_latency`
+ne change rien à la mémoire. Le premier essai n'était donc pas mal réglé :
+Direct3D 12 charge toujours le pilote de chaque carte, WARP compris. Vulkan
+est le meilleur wgpu (91 Mo sur l'intégrée), mais reste deux fois plus lourd
+qu'ANGLE sur la même carte, deux fois plus lent à la première image, et
+coûterait les 4,5 Mo d'exécutable et les réserves de transparence relevées
+plus haut. **wgpu reste écarté** ; la fonctionnalité `rendu-wgpu` est gardée
+telle quelle pour refaire la mesure.
+
+`FERROCORD_RENDU` accepte maintenant `angle` (ou `d3d11`), `opengl` et
+`d3d12` ; sans la variable : ANGLE s'il est posé à côté de l'exécutable,
+OpenGL sinon.

@@ -430,7 +430,11 @@ impl App {
                 }
             }
         }
-        if super::chat_head::head_icon_drawn(ui, &t, Icon::FriendAdd, ut::ADD_TO_DM.get(lang), false).clicked() {
+        // MP officiel de Discord : on n'y ajoute personne.
+        if super::official::shown(ui.ctx()) {
+            return;
+        }
+        if super::chat_head::head_icon_drawn(ui, &t, Icon::GroupAdd, ut::ADD_TO_DM.get(lang), false).clicked() {
             match person {
                 // MP à deux : un nouveau groupe avec ce correspondant déjà coché.
                 Some((user, _)) => self.pick_friends(vec![user]),

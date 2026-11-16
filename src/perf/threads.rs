@@ -68,11 +68,16 @@ impl Sampler {
                 let mut reader = os::Reader::default();
                 let mut scan = Scan::default();
                 let mut before: HashMap<u32, u64> = HashMap::new();
+                #[cfg(windows)]
+                let mut memory = super::memory::Journal::default();
                 while !flag.load(Ordering::Relaxed) {
                     let now = scan.read(&mut reader, Instant::now());
                     for (name, ms) in deltas(&mut before, now, main) {
                         rec.record_key(Cow::Owned(format!("fil.{name}")), ms);
                     }
+                    // Mémoire du processus et, de loin en loin, sa répartition (lot « ram »).
+                    #[cfg(windows)]
+                    memory.sample(&rec, started.elapsed());
                     let wait = if started.elapsed() < FAST_FOR { FAST } else { SLOW };
                     // Un seul sommeil par relevé ; la fin de vie du relevé le réveille (`unpark`).
                     let until = Instant::now() + wait;
@@ -145,6 +150,23 @@ pub fn totals() -> (f64, f64) {
         *(if t.id == me { &mut mine } else { &mut others }) += t.cpu as f64 / 10_000.0;
     }
     (mine, others)
+}
+
+/// Temps processeur cumulé du processus entier (ms, noyau et utilisateur,
+/// fils finis compris) : un seul appel au système (lot « cpu »).
+pub fn process_cpu_ms() -> f64 {
+    os::process_cpu() as f64 / 10_000.0
+}
+
+/// Temps processeur cumulé de chaque fil vivant, par nom (ms), du plus
+/// gourmand au plus sobre ; `principal` : le fil appelant. Refait la liste des
+/// fils : coûteux, à n'appeler qu'aux bornes d'une mesure (banc, lot « cpu »).
+pub fn by_name() -> Vec<(String, f64)> {
+    let mut reader = os::Reader::default();
+    reader.rescan();
+    let mut v = deltas(&mut HashMap::new(), reader.read(), os::current_thread());
+    v.sort_by(|a, b| b.1.total_cmp(&a.1));
+    v
 }
 
 /// Un fil vu au relevé : identifiant, nom, temps processeur total (100 ns).

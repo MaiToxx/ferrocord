@@ -198,7 +198,7 @@ cargo run --example preview -- --set mise_en_page.avatar_shape=carres --set mise
 | `src/account/` | Jeton enveloppé (jamais affiché), coffre à jetons (Gestionnaire d'identifiants de Windows ; en mémoire pour les tests et l'aperçu), migration de l'ancien fichier, fil des comptes. |
 | `src/settings.rs` | Réglages persistants (`settings.toml`) : comptes connus, dernier salon par compte, fenêtre, panneau Apparence. Même mécanisme que `theme.toml`. |
 | `src/theme/` | Jetons d'apparence, préréglages, lecture/écriture de `theme.toml` et surveillance du fichier dans un fil à part. |
-| `src/desk/` | Bureau de Windows : notifications (toasts WinRT), sons de Windows, icône de la zone de notification, `notify.toml`. Fil à part bloqué sur sa file ; la décision de notifier est dans `src/state/notify.rs`. |
+| `src/desk/` | Bureau de Windows : notifications (toasts WinRT), lecture des sons d'interface (fabriqués par `src/audio/sons/`), icône de la zone de notification, `notify.toml`. Fil à part bloqué sur sa file ; la décision de notifier est dans `src/state/notify.rs`. |
 | `src/ui/` | Interface egui, un module par zone (rail, salons, discussion, connexion, fenêtre Paramètres). Lit le magasin et parle au reste par le trait `ui::Backend` ; ni réseau ni disque. |
 | `tests/` | Faux serveur Discord local et tests de bout en bout sur des jeux de données fictifs. |
 | `examples/preview.rs` | Aperçu hors ligne de l'interface (sans réseau ni jeton), avec capture d'écran. |

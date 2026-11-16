@@ -5,6 +5,53 @@ lui-même, puis se met à jour depuis les « Releases » d'un dépôt GitHub
 **public**. Rien ici ne publie quoi que ce soit à ta place : `tools\publier.ps1`
 prépare les fichiers et affiche la commande, c'est toi qui la lances.
 
+Depuis le lot « gl », l'exécutable installé pose à côté de lui, à son lancement,
+deux bibliothèques qu'il embarque : `libEGL.dll` et `libGLESv2.dll` (ANGLE, le
+rendu par Direct3D 11 ; `assets/angle/LISEZMOI.md`), plus un témoin
+`angle.essai` le temps du démarrage. Il n'y a toujours qu'un fichier à publier ;
+la désinstallation retire ces fichiers. Un exécutable lancé hors de son dossier
+d'installation ne pose rien et dessine par le pilote OpenGL, comme avant.
+
+Ce que garantit cette pose (lot « gl2 », `src/rendu/angle.rs`, tout est couvert
+par des tests sur un dossier temporaire et un registre simulé) :
+
+- **Écriture atomique** : chaque bibliothèque est écrite dans un fichier à part
+  (`<nom>.<pid>.part`), vidée sur le disque, puis renommée. Jamais de fichier à
+  moitié écrit ; deux exemplaires lancés ensemble ne s'écrasent pas ; les restes
+  d'une pose interrompue sont balayés à la pose suivante et à la désinstallation.
+- **Vérification avant chargement** : à chaque lancement, les deux fichiers sont
+  relus en entier et comparés au sha256 embarqué dans l'exécutable, puis chargés
+  **par leur chemin complet** (`LoadLibraryExW`, dépendances cherchées seulement
+  à côté d'eux et dans System32 ; le compilateur de nuanceurs `d3dcompiler_47.dll`
+  est pris dans System32). Ils sont tenus ouverts, écriture et effacement
+  interdits, de la vérification au chargement. Un fichier altéré n'est pas
+  chargé : il est effacé, la fenêtre s'ouvre sur le pilote OpenGL, et le
+  lancement suivant le repose.
+- **Dossier non inscriptible, fichier en service, disque plein** : pas d'erreur
+  montrée, la fenêtre s'ouvre sur le pilote OpenGL.
+- **Mise à jour** : si la version d'ANGLE embarquée change, les fichiers sont
+  remplacés au premier lancement de la nouvelle version.
+- **Témoin de démarrage** `angle.essai` : il contient la version de Ferrocord et
+  reste ouvert sans partage pendant le démarrage. Fermer la fenêtre pendant le
+  démarrage le retire (ce n'est pas un échec) ; un second exemplaire lancé au
+  même moment le voit « occupé », pas « raté ». S'il reste après un démarrage
+  qui a planté, les lancements suivants **de la même version** passent par le
+  pilote OpenGL ; la version suivante de Ferrocord réessaie ANGLE. Le repli est
+  noté dans le journal technique (`rendu_repli_opengl`), pas dans l'interface.
+- **Rendu perdu en cours de route** (pilote graphique réinitialisé ou mis à
+  jour, carte retirée) : Ferrocord se relance de lui-même, comme après une mise
+  à jour. Si cela arrive moins de vingt secondes après le lancement, la relance
+  se fait sur le pilote OpenGL et ANGLE attend la version suivante (pas de
+  boucle de relances).
+- **Carte graphique** : l'exécutable installé demande à Windows la carte économe
+  pour lui-même (Paramètres › Système › Écran › Graphiques), seulement si rien
+  n'y est déjà choisi : un choix de l'utilisateur n'est jamais remplacé, et la
+  désinstallation ne retire que cette valeur-là. Le partage d'écran et la caméra
+  n'en dépendent pas : l'encodeur H.264 matériel est demandé à Media Foundation
+  parmi tous les encodeurs matériels de la machine (pas seulement ceux de la
+  carte qui dessine), il reçoit des images en mémoire ordinaire, et si aucun ne
+  s'ouvre, l'encodeur logiciel OpenH264 prend le relais (`src/video/codec`).
+
 ## Avant la première publication (une seule fois, dans cet ordre)
 
 1. **Créer le dépôt GitHub public** (vide suffit, il ne sert qu'aux

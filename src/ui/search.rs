@@ -30,6 +30,9 @@ use std::sync::Arc;
 const UI_SALT: u64 = 1 << 63;
 /// Propositions affichées au plus.
 const MAX_SUGGESTIONS: usize = 8;
+/// Champ de recherche de l'en-tête, comme dans le client : 244 de large au plus, 32 de haut.
+const FIELD_WIDTH: f32 = 244.0;
+const FIELD_HEIGHT: f32 = 32.0;
 /// Noms choisis dans l'autocomplétion gardés au plus (les plus anciens partent).
 const MAX_PICKED: usize = 32;
 
@@ -377,6 +380,7 @@ impl App {
         }
         let focused = ui.memory(|m| m.has_focus(id));
         let local = self.local_search_wanted();
+        let peer = if self.store.guild.is_none() { self.store.channel.and_then(|c| self.dm_person(c)).and_then(|(user, _)| self.store.people.lock().user(user).map(|u| u.username.clone())) } else { None };
         let st = &mut self.search;
         let typed = st.text != st.last_text;
         if typed {
@@ -429,20 +433,30 @@ impl App {
                 }
             });
         }
+        // Champ comme dans Discord : cadre de 32 de haut, loupe au bout ; le sélecteur
+        // « Local » (plugin Recherche locale) est rangé dedans, avant la loupe.
+        let side = crate::theme::Tokens::icon_side(tk.typography.small);
+        let pad = tk.spacing.item_x;
+        let small = egui::FontId::proportional(tk.typography.button);
+        let hint = ui.painter().layout_no_wrap(t::SEARCH_HINT.get(lang).to_owned(), small.clone(), tk.colors.faint).size().x;
+        let chip = super::local_search::chip_width(ui, &tk, lang);
         // Jamais plus étroit que l'invite et la loupe : elles se chevauchaient dans une fenêtre étroite.
-        let hint = ui.painter().layout_no_wrap(t::SEARCH_HINT.get(lang).to_owned(), egui::TextStyle::Body.resolve(ui.style()), tk.colors.faint).size().x;
-        let need = hint + crate::theme::Tokens::icon_side(tk.typography.small) + 4.0 * ui.spacing().button_padding.x;
-        let width = (row / 3.0).min(tk.layout.members_width).max(need.min(row / 2.0)).min(ui.available_width());
-        let resp = ui
-            .add(egui::TextEdit::singleline(&mut st.text).id(id).hint_text(if local { super::local_search::hint(lang) } else { t::SEARCH_HINT.get(lang) }).desired_width(width))
-            .on_hover_text(t::SEARCH_TIP.get(lang));
-        // Loupe au bout du champ tant qu'il est vide, comme dans Discord (phase 10, lot S).
-        // Champ trop court pour l'invite et la loupe : l'invite seule, jamais l'une sur l'autre.
-        if st.text.is_empty() && resp.rect.width() >= need {
-            let side = crate::theme::Tokens::icon_side(tk.typography.small);
-            let at = egui::Rect::from_center_size(egui::pos2(resp.rect.right() - ui.spacing().button_padding.x - side / 2.0, resp.rect.center().y), egui::Vec2::splat(side));
-            crate::theme::icons::paint(crate::theme::icons::Icon::Search, ui.painter(), at, tk.colors.faint);
-        }
+        let need = hint + side + 3.0 * pad + chip;
+        let width = (row / 3.0).min(FIELD_WIDTH).max(need.min(row / 2.0)).min(ui.available_width());
+        let (frame, _) = ui.allocate_exact_size(egui::vec2(width, FIELD_HEIGHT), egui::Sense::hover());
+        let stroke = if focused { egui::Stroke::new(tk.border().width.max(1.0), tk.colors.accent) } else { tk.border() };
+        ui.painter().rect(frame, tk.r_row(), tk.colors.bg1, stroke, egui::StrokeKind::Inside);
+        let glass = egui::Rect::from_center_size(egui::pos2(frame.right() - pad - side / 2.0, frame.center().y), egui::Vec2::splat(side));
+        crate::theme::icons::paint(crate::theme::icons::Icon::Search, ui.painter(), glass, tk.colors.muted);
+        let inner = egui::Rect::from_min_max(egui::pos2(frame.left() + pad, frame.top()), egui::pos2(glass.left() - pad / 2.0, frame.bottom()));
+        let mut field = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::right_to_left(egui::Align::Center)));
+        field.spacing_mut().item_spacing.x = pad / 2.0;
+        let flip = super::local_search::chip(&mut field, &tk, lang, local);
+        // « Rechercher <nom d'utilisateur> » dans un MP à deux, comme dans le client.
+        let hint_text = if local { super::local_search::hint(lang).to_string() } else { peer.map_or_else(|| t::SEARCH_HINT.get(lang).to_string(), |name| f::search_in(lang, name)) };
+        let edit = egui::TextEdit::singleline(&mut st.text).id(id).frame(egui::Frame::NONE).font(small.clone()).hint_text(RichText::new(hint_text).font(small).color(tk.colors.faint)).desired_width(field.available_width()).align(egui::Align2::LEFT_CENTER).min_size(egui::vec2(0.0, FIELD_HEIGHT - 2.0));
+        // Les propositions s'ouvrent sous le cadre entier, pas sous le seul texte.
+        let resp = field.add(edit).on_hover_text(t::SEARCH_TIP.get(lang)).with_new_rect(frame);
         // Recherches récentes (F16) : sous les filtres, tant que le champ est vide.
         let recent: Vec<String> = if focused && !st.hidden && st.text.trim().is_empty() && !local { st.recent.clone() } else { Vec::new() };
         let (mut rerun, mut forget) = (None, false);
@@ -511,8 +525,8 @@ impl App {
         if run {
             self.run_search();
         }
-        // Recherche locale (plugin, lot E1) : bouton « Local », résultats pendant la frappe.
-        self.local_search_field(ui, typed && !run);
+        // Recherche locale (plugin, lot E1) : mode changé dans le champ, résultats pendant la frappe.
+        self.local_search_typed(flip, typed && !run);
     }
 
     /// Panneau des résultats, à droite de la discussion.

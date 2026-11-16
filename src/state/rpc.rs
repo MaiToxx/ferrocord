@@ -285,6 +285,7 @@ impl RichOut {
             small: image(&a.small_image, &a.small_text),
             // Mes propres boutons : pas de session à interroger, libellés seuls.
             buttons: a.buttons.iter().map(|b| b.label.clone()).collect(),
+            party: a.party_size.filter(|(now, max)| *now > 0 && now <= max),
             ..Default::default()
         };
         Activity {

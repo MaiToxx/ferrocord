@@ -218,6 +218,26 @@ impl App {
         })
     }
 
+    /// Bouton des applications, tout à droite comme dans le client : ouvre la
+    /// liste des commandes « / » (la même entrée que « Utiliser une
+    /// application » du menu « + »). Un brouillon déjà commencé est gardé.
+    pub(super) fn apps_button(&mut self, ui: &mut egui::Ui, t: &Tokens) {
+        let tip = crate::i18n::table::ff::t::PLUS_APPS.get(self.lang);
+        let side = emoji::row_height(ui, &egui::TextStyle::Body.resolve(ui.style()));
+        let hit = Tokens::icon_button_side(t.typography.button, ui.spacing().button_padding.y).max(side);
+        let (rect, resp) = ui.allocate_exact_size(egui::Vec2::splat(hit), Sense::click());
+        let k = crate::ui::motion::hover(ui.ctx(), resp.id, resp.hovered() || resp.has_focus());
+        if k > 0.0 {
+            ui.painter().rect_filled(rect, t.r_row(), t.colors.row_hover.gamma_multiply(k));
+        }
+        let at = crate::ui::util::pixel_square(ui, rect.center() - egui::Vec2::splat(side / 2.0), side);
+        crate::theme::icons::paint(crate::theme::icons::Icon::Apps, ui.painter(), at.shrink(side * 0.06), crate::ui::motion::mix(t.colors.muted, t.colors.text_strong, k));
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
+        if resp.on_hover_text(tip).clicked() {
+            self.open_command_list();
+        }
+    }
+
     /// Bouton « GIF » : le mot dans un cadre arrondi.
     pub(super) fn gif_button(&mut self, ui: &mut egui::Ui, t: &Tokens) {
         let tip = gt::OPEN_GIFS.get(self.lang);

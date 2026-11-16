@@ -12,7 +12,6 @@ use crate::state::model::{Avatar, ImageHash};
 use crate::state::relations::{DmInfo, Person, ReadState, RelKind, Relation, RelationsEvent};
 use crate::state::Event;
 use serde::{de::DeserializeOwned, Deserialize, Deserializer};
-use serde_json::value::RawValue;
 use std::collections::{HashMap, HashSet};
 
 /// Élément lu à part : `None` s'il a une forme inattendue.
@@ -20,8 +19,7 @@ struct Lenient<T>(Option<T>);
 
 impl<'de, T: DeserializeOwned> Deserialize<'de> for Lenient<T> {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let raw = Box::<RawValue>::deserialize(d)?;
-        Ok(Lenient(serde_json::from_str(raw.get()).ok()))
+        super::raw::with_raw(d, |raw| Lenient(serde_json::from_str(raw).ok()))
     }
 }
 
@@ -31,18 +29,12 @@ fn lenient<'de, D: Deserializer<'de>, T: DeserializeOwned>(d: D) -> Result<Optio
 
 /// Identifiant en chaîne (forme documentée) ou en nombre ; `None` sinon.
 fn loose_id<'de, D: Deserializer<'de>>(d: D) -> Result<Option<u64>, D::Error> {
-    let v: Option<serde_json::Value> = lenient(d)?;
-    Ok(match v {
-        Some(serde_json::Value::String(s)) => s.parse().ok(),
-        Some(serde_json::Value::Number(n)) => n.as_u64(),
-        _ => None,
-    })
+    super::raw::de_loose_id(d)
 }
 
 /// Champ présent (même `null`) : `Some`, avec sa valeur si c'est un texte.
 fn present_str<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Option<String>>, D::Error> {
-    let raw = Box::<RawValue>::deserialize(d)?;
-    Ok(Some(serde_json::from_str::<String>(raw.get()).ok()))
+    super::raw::with_raw(d, |raw| Some(serde_json::from_str::<String>(raw).ok()))
 }
 
 fn items<T>(v: Option<Vec<Lenient<T>>>) -> impl Iterator<Item = T> {
@@ -131,11 +123,13 @@ impl<'de> Deserialize<'de> for RawReadStates {
         struct Versioned {
             entries: Vec<Lenient<RawReadState>>,
         }
-        let raw = Box::<RawValue>::deserialize(d)?;
-        if let Ok(v) = serde_json::from_str::<Versioned>(raw.get()) {
-            return Ok(RawReadStates::Versioned { entries: v.entries });
-        }
-        serde_json::from_str(raw.get()).map(RawReadStates::List).map_err(serde::de::Error::custom)
+        super::raw::with_raw(d, |raw| {
+            if let Ok(v) = serde_json::from_str::<Versioned>(raw) {
+                return Ok(RawReadStates::Versioned { entries: v.entries });
+            }
+            serde_json::from_str(raw).map(RawReadStates::List)
+        })?
+        .map_err(serde::de::Error::custom)
     }
 }
 

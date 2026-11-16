@@ -220,7 +220,7 @@ fn laces(d: &[u8], mut at: usize, end: usize, lacing: u8) -> Option<(usize, Vec<
                 let (v, n) = vint(d, at, false)?;
                 at += n;
                 // Les suivantes sont des écarts signés (biais de la moitié de l'étendue).
-                last = if i == 1 { i64::try_from(v).ok()? } else { last + i64::try_from(v).ok()? - ((1i64 << (7 * n - 1)) - 1) };
+                last = if i == 1 { i64::try_from(v).ok()? } else { last.checked_add(i64::try_from(v).ok()?)?.checked_sub((1i64 << (7 * n - 1)) - 1)? };
                 sizes.push(usize::try_from(last).ok()?);
             }
         }
@@ -229,7 +229,8 @@ fn laces(d: &[u8], mut at: usize, end: usize, lacing: u8) -> Option<(usize, Vec<
             sizes.extend(std::iter::repeat_n(each, count - 1));
         }
     }
-    let used: usize = sizes.iter().sum();
+    // Tailles hostiles : la somme ne doit pas déborder.
+    let used = sizes.iter().try_fold(0usize, |a, b| a.checked_add(*b))?;
     sizes.push(end.checked_sub(at)?.checked_sub(used)?);
     Some((at, sizes))
 }
@@ -293,7 +294,7 @@ impl Reader<'_> {
             return Some(());
         }
         let step = if video { &self.out.video } else { &self.out.audio }.as_ref().map_or(0, |t| t.frame_us);
-        let pts_us = self.us(i64::try_from(self.cluster).ok()? + rel);
+        let pts_us = self.us(i64::try_from(self.cluster).ok()?.checked_add(rel)?);
         let key = audio || !simple || flags & 0x80 != 0;
         let lacing = (flags >> 1) & 3;
         let (mut at, sizes) = if lacing == 0 { (at, vec![end.checked_sub(at)?]) } else { laces(d, at, end, lacing)? };
@@ -302,11 +303,11 @@ impl Reader<'_> {
             self.group = Some(list.len());
         }
         for (i, len) in sizes.into_iter().enumerate() {
-            if at + len > end || list.len() >= MAX_BLOCKS {
+            if at.checked_add(len).is_none_or(|e| e > end) || list.len() >= MAX_BLOCKS {
                 return None;
             }
             if len > 0 {
-                list.push(Block { pts_us: pts_us + i as u64 * step, key, start: at, len, alpha: None });
+                list.push(Block { pts_us: pts_us.saturating_add((i as u64).saturating_mul(step)), key, start: at, len, alpha: None });
             }
             at += len;
         }

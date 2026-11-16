@@ -3,9 +3,9 @@
 //! glissé déplace l'image ; « Ouvrir l'original », « Copier le lien »,
 //! « Copier l'image » et « Enregistrer l'image » (lot VID, `image_ops.rs`).
 //!
-//! L'image est demandée une fois, à la taille de la fenêtre (bornée pour
-//! qu'une seule texture ne remplisse jamais le cache) ; le zoom agrandit
-//! cette texture sans nouvelle demande. Rien n'est animé : aucun redessin
+//! L'image est demandée à la taille de la fenêtre (bornée pour
+//! qu'une seule texture ne remplisse jamais le cache) ; zoomée, c'est la
+//! source entière qui est demandée (même borne). Rien n'est animé : aucun redessin
 //! tant que rien ne bouge.
 
 use crate::images::{Image, Images};
@@ -100,6 +100,23 @@ pub(super) fn request(fitted: Vec2, ppp: f32, max_bytes: usize) -> Vec2 {
     fitted * (max_bytes as f32 / bytes).sqrt()
 }
 
+/// Taille demandée (points) une fois l'image zoomée : la source entière,
+/// réduite pour tenir dans `max_bytes` et dans le plus grand côté décodé.
+/// `None` si elle n'apporte rien de plus que `wanted` (la copie à la taille
+/// de la fenêtre) ou si la taille de la source est inconnue. Sans elle, le
+/// zoom (jusqu'à 8 fois) étirait la copie réduite : une image floue.
+pub(super) fn detail(width: u32, height: u32, wanted: Vec2, ppp: f32, max_bytes: usize) -> Option<Vec2> {
+    if width == 0 || height == 0 {
+        return None;
+    }
+    let ppp = ppp.max(f32::EPSILON);
+    let px = Vec2::new(width as f32, height as f32);
+    let side = crate::images::decode::MAX_SIDE as f32;
+    let px = px * (side / px.max_elem()).min(1.0);
+    let full = request(px / ppp, ppp, max_bytes);
+    (full.x > wanted.x * 1.05 || full.y > wanted.y * 1.05).then_some(full)
+}
+
 /// Dessine la visionneuse si elle est ouverte. À appeler avant le reste de
 /// l'interface : elle prend Échap et la molette pour elle.
 pub(super) fn show(ui: &mut egui::Ui, t: &Tokens, lang: Lang, images: &Images) {
@@ -140,7 +157,13 @@ pub(super) fn show(ui: &mut egui::Ui, t: &Tokens, lang: Lang, images: &Images) {
             v.pan = Vec2::ZERO;
         }
         let rect = Rect::from_center_size(bg.center() + v.pan, base * v.zoom);
-        match images.get_media(v.image, &v.fetch, wanted) {
+        // Zoomée : la source entière (bornée), dès qu'elle est prête ; d'ici là, et à zoom 1, la copie à la taille de la fenêtre.
+        let close_up = (v.zoom > ZOOM_MIN).then(|| detail(v.width, v.height, wanted, ppp, images.max_texture_bytes())).flatten();
+        let shown = match close_up.map(|size| images.get_media(v.image, &v.fetch, size)) {
+            Some(Image::Ready(tex)) => Image::Ready(tex),
+            _ => images.get_media(v.image, &v.fetch, wanted),
+        };
+        match shown {
             Image::Ready(tex) => {
                 let uv = Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
                 ui.painter().add(egui::Shape::Rect(egui::epaint::RectShape::filled(rect, t.r_media(), egui::Color32::WHITE).with_texture(tex, uv)));
@@ -212,6 +235,39 @@ mod tests {
         let r = request(Vec2::new(2000.0, 2000.0), 1.0, 4_000_000);
         assert!(r.x * r.y * 4.0 <= 4_000_001.0, "{r:?}");
         assert_eq!(request(Vec2::new(100.0, 100.0), 2.0, 4_000_000), Vec2::new(100.0, 100.0));
+    }
+
+    /// Partie D : zoomée, la visionneuse demande la source (bornée), plus la
+    /// copie réduite à la fenêtre. Coût en mémoire, avant et après.
+    #[test]
+    fn zoom_asks_for_the_source_within_the_budget() {
+        const MAX: usize = crate::images::VIEWER_MAX_BYTES;
+        let bytes = |points: Vec2, ppp: f32| (points.x * ppp).round() as usize * (points.y * ppp).round() as usize * 4;
+        // Fenêtre de 1375 × 900 pixels à 125 % : environ 1000 × 650 points pour l'image.
+        let (area, ppp) = (Vec2::new(1000.0, 650.0), 1.25);
+        // Photo de 4000 × 3000 : avant, une copie de 1083 × 812 pixels (3,5 Mo), étirée jusqu'à 8 fois.
+        let base = request(fitted(4000, 3000, area, ppp), ppp, MAX);
+        assert_eq!(((base.x * ppp).round(), (base.y * ppp).round()), (1083.0, 813.0));
+        let before = bytes(base, ppp);
+        assert!((3_400_000..3_600_000).contains(&before), "{before}");
+        // Après, zoomée : la source ramenée au budget d'une texture (12 Mio), 1,9 fois plus de pixels par côté.
+        let full = detail(4000, 3000, base, ppp, MAX).unwrap_or_else(|| panic!("la source apporte du détail"));
+        let after = bytes(full, ppp);
+        assert!(after <= MAX + 16_000 && after > MAX * 9 / 10, "{after}");
+        assert!(full.x / base.x > 1.85, "{full:?} {base:?}");
+        assert!(before + after < 16 << 20, "les deux textures ensemble, le temps du zoom : moins de 16 Mio");
+        // Capture d'écran de 1920 × 1080 : la source exacte (8,3 Mo), sous le budget.
+        let base = request(fitted(1920, 1080, area, ppp), ppp, MAX);
+        let full = detail(1920, 1080, base, ppp, MAX).unwrap_or_else(|| panic!("détail"));
+        assert_eq!(((full.x * ppp).round(), (full.y * ppp).round()), (1920.0, 1080.0));
+        assert_eq!(bytes(full, ppp), 1920 * 1080 * 4);
+        // Rien de plus à montrer : aucune seconde demande.
+        let small = request(fitted(500, 400, area, ppp), ppp, MAX);
+        assert_eq!(detail(500, 400, small, ppp, MAX), None, "image déjà entière");
+        assert_eq!(detail(0, 0, area, ppp, MAX), None, "taille inconnue");
+        // Très longue : le plus grand côté décodé borne aussi.
+        let long = detail(20_000, 200, Vec2::new(1000.0, 10.0), 1.0, MAX).unwrap_or_else(|| panic!("détail"));
+        assert_eq!(long.x, crate::images::decode::MAX_SIDE as f32);
     }
 
     /// Ouverte puis fermée par Échap ; un clic sur le fond la ferme aussi.

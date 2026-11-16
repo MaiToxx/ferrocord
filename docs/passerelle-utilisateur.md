@@ -1175,7 +1175,7 @@ d'images habituelle (limiteur, cache borné, seulement pour ce qui est affiché)
 | `collectibles.nameplate` (`asset`, `palette`) | user | oui | fond de la ligne (membres, MP), image fixe |
 | `primary_guild` (`tag`, `badge`, `identity_guild_id`, `identity_enabled`) | user | oui | pastille à côté du nom |
 | `colors` | role | oui | nom en dégradé (deux couleurs) ou holographique (trois) |
-| `display_name_styles.colors`, `effect_id`, `font_id` | user | non | couleur ou dégradé du nom, décor de l'effet (1 à 8), police du style (douze polices libres embarquées, `docs/design.md` § 3) |
+| `display_name_styles.colors`, `effect_id`, `font_id` | user | non | couleur ou dégradé du nom, décor de l'effet (1 à 8), police du style (quatorze polices libres embarquées, `docs/design.md` § 3) |
 | `user_profile.theme_colors` | profil | non | fond en dégradé du profil, texte au contraste calculé |
 
 ### Adresses du CDN
@@ -1308,10 +1308,10 @@ false, `large_threshold` : 50.
 
 | Où | En-têtes |
 |---|---|
-| API REST (toute requête, `rest::api_req`) | `User-Agent`, `X-Super-Properties`, `X-Discord-Locale` (langue de Discord la plus proche de celle du système), `X-Discord-Timezone` (fuseau IANA du système ; omis s'il est inconnu), `Accept-Language` (`fr-FR,fr;q=0.9`), `Referer: https://discord.com/channels/@me`, `Sec-CH-UA` (`"Not?A_Brand";v="24", "Chromium";v="152"`, dérivé de la version de Chromium), `Sec-CH-UA-Mobile: ?0`, `Sec-CH-UA-Platform: "Windows"`, `Sec-Fetch-Dest: empty`, `Sec-Fetch-Mode: cors`, `Sec-Fetch-Site: same-origin` ; `Origin: https://discord.com` hors GET et HEAD |
+| API REST (toute requête, `rest::api_req`) | `User-Agent`, `X-Super-Properties`, `X-Discord-Locale` (depuis le lot « fiable » : la langue choisie dans Ferrocord, `fr` ou `en-US`, comme le client officiel annonce la sienne ; sans choix, la langue de Discord la plus proche de celle du système ; figée pour la connexion), `X-Discord-Timezone` (fuseau IANA du système ; omis s'il est inconnu), `Accept-Language` (`fr-FR,fr;q=0.9`), `Referer: https://discord.com/channels/@me`, `Sec-CH-UA` (`"Not?A_Brand";v="24", "Chromium";v="152"`, dérivé de la version de Chromium), `Sec-CH-UA-Mobile: ?0`, `Sec-CH-UA-Platform: "Windows"`, `Sec-Fetch-Dest: empty`, `Sec-Fetch-Mode: cors`, `Sec-Fetch-Site: same-origin` ; `Origin: https://discord.com` hors GET et HEAD |
 | Passerelle principale et passerelle vocale (ouverture du WebSocket) | `User-Agent`, `Origin: https://discord.com`, `Accept-Language` |
-| CDN | `User-Agent` seulement (jamais de jeton ni de propriétés) |
-| Connexion par QR code | WebSocket : `User-Agent` et l'`Origin` déjà exigé ; échange du ticket : comme l'API |
+| CDN (images, et depuis le lot « fiable » les sons et fichiers joints lus par `voice::clips`, qui partaient sans `User-Agent`) | `User-Agent` seulement (jamais de jeton ni de propriétés) |
+| Connexion par QR code | WebSocket : `User-Agent`, `Accept-Language` (lot « fiable ») et l'`Origin` déjà exigé ; échange du ticket : comme l'API |
 
 L'Identify de la passerelle vocale (op 0) ne contient aucune propriété du
 client : inchangé.
@@ -1384,8 +1384,9 @@ Une valeur de `local.toml` l'emporte sur le rafraîchissement.
 - Numéros de version : Electron et Chromium vieillissent entre deux versions
   de Ferrocord ; le build du client web change souvent, le rafraîchissement
   est quotidien et ne vaut qu'au lancement suivant.
-- `Accept-Language` et `X-Discord-Locale` suivent la langue du système, pas
-  la langue choisie dans Discord ; la valeur exacte d'`Accept-Language` pour
+- `Accept-Language` suit la langue du système ; `X-Discord-Locale` suit la
+  langue choisie dans Ferrocord (lot « fiable »), qui peut différer de la
+  langue enregistrée dans les réglages Discord du compte ; la valeur exacte d'`Accept-Language` pour
   une langue autre que `en-US` n'est pas établie par les sources.
 - Connexion par QR code : ses identifiants de lancement ne sont pas ceux de
   la session qui suit.
@@ -1551,6 +1552,7 @@ sans jeton (client HTTP du CDN ou des sons, `User-Agent` seul).
 | Requête | Quand | Documentée |
 |---|---|---|
 | `GET https://media.discordapp.net/attachments/…/video.mp4?…&format=jpeg&width=…&height=…` | affiche d'une vidéo jointe visible (sa première image), comme une vignette d'image : même cache, même réglage « charger les médias » ; jamais pour un spoiler | non : paramètre `format` du proxy média. Forme relevée dans une source publique : `https://github.com/dannycake/discord-resolution-vuln` (README, lu le 15 novembre 2026), qui montre la vignette d'une vidéo jointe à l'adresse `https://media.discordapp.net/attachments/…/output.mp4?format=jpeg&width=400&height=225` ; en cas de refus, la case reste sombre avec son bouton de lecture |
+| `GET https://media.discordapp.net/attachments/…/image.jpg?…&width=…&height=…&format=webp&quality=lossless` (de même sur `images-ext-N.discordapp.net`) | vignette ou image agrandie d'un message visible : la même demande qu'avant, avec deux paramètres de plus pour que le proxy ne recompresse pas l'image (JPEG, PNG : `format=webp&quality=lossless` ; WebP : `quality=lossless` seul ; GIF, extension inconnue ou `format` déjà présent : rien). La taille demandée est arrondie au palier supérieur (32, 64 ou 128 pixels) ; zoomée dans la visionneuse, l'image est redemandée à la taille de la source (12 Mio de texture au plus) | en partie : `quality` (`lossless`, `high`, `low`, « Only supported with WebP and JPG formats ») et `format` sont décrits par `https://docs.discord.food/reference` (« CDN Formats », lu le 15 novembre 2026) ; leur emploi sur le proxy média est la forme des liens d'images que le client officiel copie (`…&format=webp&quality=lossless&width=…&height=…`). Non vérifié face au vrai proxy (aucun test ne contacte Discord) : en cas de refus, la vignette reste sur son fond d'attente |
 | `GET` de `video.proxy_url` d'un embed `video` ou `gifv` (hôtes `cdn.discordapp.com`, `media.discordapp.net`, `images-ext-N.discordapp.net` seulement, 64 Mio au plus) | clic sur la vignette : lecture sur place (lien direct vers un fichier vidéo, GIF de Tenor en MP4 lu en boucle et sans son) ; jamais avant le clic, un seul fichier à la fois | oui (objet Embed, « Embed Video Structure » : `proxy_url`) |
 | `GET` du fichier d'une image (pièce jointe : adresse d'origine du CDN ; image d'embed : copie du proxy) | « Copier l'image » ou « Enregistrer l'image » (visionneuse, clic droit) ; 10 Mio au plus | oui (CDN) |
 
@@ -2358,3 +2360,251 @@ rythme : `src/install/service.rs`.
 
 Essais : `install::update::bout_en_bout` (faux serveur sur 127.0.0.1 : les
 en-têtes reçus y sont vérifiés un par un).
+
+## Activité détectée : détection sans ouvrir de processus (lot « activité »)
+
+Complète « Activité de jeu détectée et présence enrichie (lot C3) » plus
+haut ; ce qui suit remplace ce que cette section dit du relevé.
+
+### Sources (relues le 15 novembre 2026)
+
+- docs.discord.food, page « Game » : « List Detectable Games »,
+  `GET /games/detectable`, sans paramètre ; objet « Detectable Application »
+  (`id`, `name`, `icon_hash`, `aliases`, `executables[]`, `themes`, `hook`,
+  `overlay`…) ; « Application Executable » : `os`, `name`, `is_launcher`.
+- docs.discord.food, page « Reference », « CDN Endpoints » : icône d'une
+  application, `app-icons/{application_id}/{application_icon}.png`.
+- docs.discord.food, page « Gateway Events », « Update Presence » (op 3) :
+  inchangé, 5 mises à jour par 20 s au plus.
+
+### Ce qui part chez Discord
+
+| Quand | Quoi | Rythme |
+|---|---|---|
+| Connexion, « Partager l'activité détectée avec les autres » actif, cache absent, de plus d'un jour ou d'une forme plus ancienne | `GET /games/detectable` (inchangée) | 60 s après la connexion, au plus une fois par jour ; limiteur commun. Un cache périmé sert tout de suite, sans attendre la réponse |
+| Encart du jeu détecté affiché | image `app-icons/{id}/{icon_hash}` sur le CDN | une fois, puis cache des images |
+| Le jeu annoncé change (début, fin, autre jeu au premier plan, jeu masqué) | op 3 : statut personnalisé (type 4) puis le jeu (type 0, `name`, `application_id`, `timestamps.start` = premier relevé où il tournait) | un envoi par changement ; 4 s au moins entre deux op 3 |
+
+Aucune autre requête : ni télémétrie, ni événement « science », ni
+`/games/detectable/exclusions`, ni `/applications/non-games/detectable`.
+Un jeu masqué (Paramètres › Activités › « Jeux vus récemment ») n'est
+jamais envoyé ; la liste des jeux vus et leurs masques restent dans
+`local.toml` (section `[jeux]`, clé `recents`).
+
+### Sur cet ordinateur
+
+- Relevé toutes les 10 s, sur un fil d'arrière-plan : un instantané
+  ToolHelp (identifiant et nom de fichier de chaque programme) et le
+  processus de la fenêtre de premier plan (`GetForegroundWindow`,
+  `GetWindowThreadProcessId`). Aucun processus n'est ouvert ni lu : le
+  relevé précédent ouvrait chaque candidat pour lire son chemin, ce qu'un
+  anti-triche ou un programme lancé en administrateur refuse — le jeu
+  n'était alors jamais reconnu.
+- Conséquence : la correspondance se fait sur le nom de fichier seul. Un
+  motif sans dossier (`jeu.exe`) correspond tel quel ; un motif à dossier
+  (`win64/jeu.exe`) n'est accepté que si une seule application de la liste
+  revendique ce nom de fichier ; les lanceurs (`is_launcher`), les
+  exécutables d'un autre système et ceux qui exigent des arguments sont
+  ignorés. L'heure de début est celle de la détection, pas celle du
+  lancement du processus.
+- Plusieurs jeux : celui qui a eu le premier plan le plus récemment, puis
+  le dernier lancé.
+- Rien n'est signalé à l'interface tant que les jeux ne changent pas : aucun
+  redessin au repos. Avec un jeu en cours, l'encart demande une image par
+  minute (le temps écoulé).
+
+Essais : `net::games::tests` (cause du défaut, noms d'exécutables, premier
+plan, coût), `state::activity::tests` (masques, présence), `ui::game_card`
+(encart, redessins), `tests/e2e/activity.rs` (op 3 face au faux serveur).
+
+## Fiabilité et cohérence (lot « fiable »)
+
+Audit complet, état avant et tests : `docs/fiabilite.md`. Ce qui suit ne
+consigne que ce qui change **sur le fil**. Aucune requête ni aucun champ
+nouveau n'est envoyé à Discord par ce lot.
+
+### Sources (lues le 15 novembre 2026)
+
+- docs.discord.food, « Gateway » (connexion, heartbeat, reprise, codes de
+  fermeture, `capabilities`, propriétés du client, `has_client_mods`,
+  `launch_signature`) et « Gateway Events » (exemple d'Identify) ;
+- documentation officielle des développeurs, « Gateway » : attente aléatoire
+  de 1 à 5 s après Invalid Session, premier heartbeat à
+  `heartbeat_interval × jitter`, codes de fermeture. L'attente de 1 à 5 s
+  ne figure pas sur docs.discord.food : elle vient de la doc officielle
+  seule.
+
+### Passerelle
+
+| Situation | Ce que Ferrocord fait désormais |
+|---|---|
+| Premier heartbeat | à `heartbeat_interval × aléa(0..1)`, puis toutes les `heartbeat_interval` (avant : toujours à la moitié de l'intervalle, donc au même instant à chaque connexion) ; un battement manqué ne se rattrape plus en rafale (`MissedTickBehavior::Delay`) |
+| Heartbeat sans accusé (connexion zombie), op 7, saut d'horloge (veille de l'ordinateur) | fermeture avec le code **4000** (toute fermeture autre que 1000 et 1001 garde la session reprenable), puis RESUME sur `resume_gateway_url` |
+| Op 9 (Invalid Session) | attente aléatoire de **1 à 5 s**, puis fermeture 4000 et RESUME si `d: true`, fermeture **1000** et Identify neuf sinon |
+| Codes 4008 (trop de commandes) et 4015 | session gardée, attente d'une fenêtre entière (60 s) avant de revenir |
+| Codes 4004, 4010 à 4014 | arrêt définitif, aucune reconnexion (inchangé) |
+| Reconnexion | recul exponentiel (1 s, 2 s, 4 s… plafond 60 s) avec gigue (entre la moitié et la totalité du délai) ; le compteur ne revient à zéro qu'après 30 s de session établie, plus à chaque READY |
+| RESUME refusé 3 fois de suite | Identify neuf (plus de reprise en boucle) |
+| Adresse de reprise injoignable 3 fois de suite | retour à l'adresse de passerelle par défaut |
+| Connexion, attente du Hello, envoi d'une trame | 20 s au plus chacun |
+| Identify | toujours par `gwlimit` : 5 s entre deux, 1000 par jour (inchangé) |
+
+Codes de fermeture **envoyés** par Ferrocord : 1000 (session abandonnée) et
+4000 (session à reprendre) seulement.
+
+### REST
+
+- **Nouveaux essais** : seulement pour les lectures (GET, HEAD), après une
+  coupure réseau (pas un dépassement de délai) ou un 500, 502, 503, 504 ;
+  deux au plus, après 0,5 s puis 1 s environ (gigue, plafond 4 s),
+  annulables. Une écriture n'est **jamais** renvoyée d'elle-même (l'envoi de
+  message garde son propre mécanisme à `nonce`, voir plus haut). 401, 403 et
+  404 ne sont jamais retentés.
+- **Mémoire des refus** : un GET qui a reçu 403 ou 404 n'est pas renvoyé au
+  serveur avant 10 s, puis 20 s, 40 s… jusqu'à 5 min (oubli au bout de
+  15 min sans nouvelle demande, 128 adresses au plus) ; la réponse gardée
+  est rendue à la place. Une écriture réussie vide cette mémoire (les droits
+  ont pu changer).
+- **Corps des réponses** : 16 Mio au plus, lus par morceaux. Message d'erreur
+  du serveur : 300 caractères au plus, jeton retiré s'il y figurait.
+- **Connexion** : 10 s au plus (30 s pour la requête entière, inchangé).
+- **Redirections** : suivies seulement vers le même hôte (schéma et port
+  compris), cinq au plus ; vers un autre hôte, la réponse 3xx est rendue
+  telle quelle. Les en-têtes d'identité ne partent donc jamais chez un tiers
+  (reqwest ne retire de lui-même que `Authorization`).
+
+### En-têtes et identité
+
+- `X-Discord-Locale` : langue choisie dans Ferrocord (`fr`, `en-US`), sinon
+  langue du système ; figé pour la connexion (voir « En-têtes »).
+- Sons et fichiers joints lus par `voice::clips` (CDN de Discord) : envoient
+  désormais le `User-Agent` de la session ; ils n'en envoyaient aucun.
+- Connexion par QR code : le WebSocket envoie désormais `Accept-Language`,
+  comme la passerelle principale (mode bureau seulement).
+- `has_client_mods` : documenté sur docs.discord.food comme propriété du
+  client (« le client a été modifié ») ; Ferrocord envoie `false`, à
+  l'identique dans l'Identify et dans `X-Super-Properties` (même structure
+  sérialisée, test `super_properties_match_the_identify…`). Les bits de
+  détection de `launch_signature` restent à zéro. Rien d'autre n'est
+  documenté à ce sujet, rien d'autre n'est envoyé.
+
+### `capabilities`, `presence`, `client_state` : décision
+
+**Non envoyés, et aucune option pour les activer.** Bits documentés
+(docs.discord.food, « Gateway Capabilities ») :
+
+| Bit | Nom | Effet |
+|---|---|---|
+| 0 | LAZY_USER_NOTES | retire `notes` du READY |
+| 1 | NO_AFFINE_USER_IDS | pas de synchronisation pour les relations implicites |
+| 2 | VERSIONED_READ_STATES | `read_state` devient un objet versionné |
+| 3 | VERSIONED_USER_GUILD_SETTINGS | `user_guild_settings` devient un objet versionné |
+| 4 | DEDUPE_USER_OBJECTS | READY déshydraté (`users`, `merged_members`) |
+| 5 | PRIORITIZED_READY_PAYLOAD | READY puis READY_SUPPLEMENTAL (exige le bit 4) |
+| 6 | MULTIPLE_GUILD_EXPERIMENT_POPULATIONS | `populations` devient un tableau |
+| 7 | NON_CHANNEL_READ_STATES | états de lecture hors salons |
+| 8 | AUTH_TOKEN_REFRESH | `auth_token` possible dans le READY |
+| 9 | USER_SETTINGS_PROTO | plus de `user_settings` dans le READY |
+| 10 | CLIENT_STATE_V2 | cache d'état du client, version 2 |
+| 11 | PASSIVE_GUILD_UPDATE | PASSIVE_UPDATE_V1 pour les serveurs non suivis |
+| 12 | AUTO_CALL_CONNECT | CALL_CREATE sans demande |
+| 13 | DEBOUNCE_MESSAGE_REACTIONS | MESSAGE_REACTION_ADD_MANY |
+| 14 | PASSIVE_GUILD_UPDATE_V2 | PASSIVE_UPDATE_V2 (remplace le bit 11) |
+| 15 | CHANNEL_OBFUSCATION | salons invisibles masqués |
+| 16 | AUTO_LOBBY_CONNECT | `lobbies` dans le READY |
+
+Raisons de ne pas les envoyer :
+
+1. la page ne donne pas la valeur du client officiel ; son seul exemple
+   (`1734653`) contient les bits 17, 19 et 20, **non documentés** : les
+   envoyer serait annoncer des comportements inconnus ;
+2. une valeur partielle (les seuls bits que Ferrocord saurait lire) est une
+   valeur qu'aucun client officiel n'envoie : aussi distinguable que
+   l'absence du champ ;
+3. chaque bit change la forme de ce qui est reçu (READY déshydraté, READY
+   en deux temps, PASSIVE_UPDATE_V2, réactions groupées, `client_state`
+   à tenir à jour) : sans capture d'un vrai compte, la lecture casserait,
+   et un client qui demande des formes qu'il lit mal est moins fiable.
+
+À reprendre seulement avec une capture d'un vrai compte (forme du READY
+pour une valeur donnée) et la gestion complète des événements concernés.
+
+### Numéros de version : péremption
+
+Aucune requête ajoutée. Paramètres › Avancés affiche les versions annoncées
+(lues dans le cache et `local.toml`) et avertit :
+
+- relevé embarqué de plus de **56 jours** (Electron et Chromium ne se
+  renouvellent que par une mise à jour de Ferrocord) ;
+- numéro de build non renouvelé depuis plus de **21 jours**
+  (`identite.json` garde désormais `build_at`, date du dernier relevé
+  réussi).
+
+Pas d'avertissement si `local.toml` impose une valeur.
+
+**À arbitrer** : le rafraîchissement quotidien décrit plus haut
+(`GET https://discord.com/login` sans jeton avec le `User-Agent` du client
+de bureau, et le manifeste avec un `install_id`) est une requête que le
+client officiel ne fait pas sous cette forme (il charge son application,
+avec ses en-têtes de navigation). Elle part au plus une fois par jour, sans
+jeton ; elle n'a pas été retirée par ce lot (décision du lot
+identité-bureau), mais elle est signalée dans `docs/fiabilite.md` comme
+candidate au retrait au profit des seules valeurs embarquées.
+
+### Rythme
+
+- Export d'une conversation (`ui::export`) : la page suivante est demandée
+  après une pause aléatoire de 0,6 à 1,5 s (avant : 600 ms fixes, jusqu'à
+  1000 pages à cadence parfaitement régulière).
+- « Marquer tout comme lu » (palette) : un seul `POST /read-states/ack-bulk`
+  par 100 salons, serveurs et conversations confondus (avant : un `ack-bulk`
+  par serveur et un `/ack` par conversation, lancés ensemble). De même pour
+  « Marquer comme lu » sur un dossier de serveurs : un seul `ack-bulk`.
+- Présence (op 3) : l'écart entre deux envois est tiré entre 4 et 7 s
+  (avant : 4 s fixes).
+- `GET /games/detectable` : 60 à 90 s après la connexion (avant : 60 s
+  fixes) ; après un échec sans cache, pas redemandée dans l'heure par un
+  nouveau READY de la même connexion.
+- Navigation au clavier, touche maintenue : au plus un changement de salon
+  (donc un `GET …/messages`) par 250 ms.
+- `GET /invites/{code}` des cartes visibles : 4 en vol au plus (avant :
+  jusqu'à 64 d'un coup).
+- Suppression d'une sélection de messages (compte utilisateur, un `DELETE`
+  par message) : pause tirée entre 0,35 et 0,9 s entre deux.
+- Session vocale expirée (fermetures 4006, 4009 de la passerelle vocale) :
+  l'op 4 de reprise repart au plus 3 fois par 5 minutes, puis l'appel
+  s'arrête sur un message.
+- Inchangés et vérifiés : saisie (au plus un POST `/typing` par 8 s, en
+  tapant seulement), accusés de lecture (groupés sur 3 s), présence op 3
+  (au moins 4 s entre deux), 120 commandes de passerelle par minute au plus.
+
+### Compteurs
+
+`net::health` compte, par connexion : requêtes, 4xx, 429, 5xx, nouveaux
+essais, requêtes épargnées par la mémoire des refus, connexions à la
+passerelle, Identify. Affichés dans Paramètres › Avancés › Débogage. Rien
+n'est envoyé nulle part.
+
+### Tests
+
+`tests/e2e/fiable.rs` (faux serveur local) : session coupée après chaque
+READY, 4008, RESUME refusé trois fois, adresse de reprise morte, zombie fermé
+en 4000, attente bornée après l'op 9, mémoire des refus, 502 retenté en
+lecture et jamais en écriture, panne durable arrêtée à trois requêtes, 401
+jamais retenté, session ordinaire sans aucun refus, aucun jeton dans ce qui
+peut être journalisé, redirection vers un autre hôte jamais suivie, pause
+entre deux suppressions. `tests/remote_auth.rs` : en-têtes du WebSocket de
+la connexion par QR code. Unitaires : `net::backoff`, `net::health`,
+`net::gateway::tests`, `net::identity::tests` (langue, péremption),
+`voice::clips::fiable_tests`, `net::voice::robust`, `net::voice::dave::robust`.
+
+### À vérifier sur un vrai compte
+
+- qu'une reprise après veille de l'ordinateur donne bien RESUMED et non un
+  READY neuf ;
+- que la fermeture 4000 côté client garde la session (documenté, non
+  observé) ;
+- le compteur de Paramètres › Avancés après une journée d'usage : 4xx et 429
+  attendus à zéro ; tout autre chiffre désigne une requête à corriger ;
+- que `X-Discord-Locale: en-US` avec un système en français ne change rien
+  aux textes renvoyés par Discord que Ferrocord affiche.

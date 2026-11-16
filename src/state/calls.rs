@@ -257,6 +257,10 @@ impl Store {
     /// « Appeler » depuis un MP ou un groupe : rejoindre, puis faire sonner les
     /// autres quand l'appel existe. Appel déjà en cours : on le rejoint seulement.
     pub fn start_call(&mut self, channel_id: u64) {
+        // Jamais d'appel vers le compte système de Discord.
+        if self.is_official_dm(channel_id) {
+            return;
+        }
         if !self.calls.calls.contains_key(&channel_id) {
             self.calls.pending_ring.insert(channel_id);
         }

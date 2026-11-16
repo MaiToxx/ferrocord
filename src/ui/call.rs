@@ -1,14 +1,14 @@
 //! Appels privés et de groupe (lot V6) : bouton « Démarrer un appel » dans
-//! l'en-tête d'un MP, bandeau de l'appel en haut du MP (durée, participants,
-//! sonnerie, rejoindre, raccrocher), fenêtre d'appel entrant (accepter,
-//! refuser) avec sonnerie et notification de bureau, messages d'échec du lot.
+//! l'en-tête d'un MP, fenêtre d'appel entrant (accepter, refuser) avec
+//! sonnerie et notification de bureau, messages d'échec du lot. Le bandeau de
+//! l'appel au-dessus de la conversation est dans `call_band.rs`.
 //!
 //! La connexion vocale n'est pas ici : « Rejoindre », « Accepter » et
 //! « Raccrocher » déposent une demande dans `state::calls` (câblée par V7).
 //! Les icônes du lot sont dessinées ici pour ne pas toucher au thème.
 //!
-//! Réveils : la sonnerie (toutes les quatre secondes, une minute au plus)
-//! et la durée de l'appel affiché (chaque seconde), seulement pendant un appel.
+//! Réveils : la sonnerie (toutes les quatre secondes, une minute au plus),
+//! seulement pendant un appel entrant.
 
 use super::util::{paint_avatar, pixel_square};
 use super::App;
@@ -38,12 +38,13 @@ pub(super) struct CallsUi {
     pub(super) status_edit: Option<(u64, String)>,
     /// Sujet de conférence en cours de saisie : (salon, texte, prévenir @everyone).
     pub(super) topic_edit: Option<(u64, String, bool)>,
+    /// Bandeau de l'appel d'un MP (`call_band.rs`).
+    pub(super) band: super::call_band::BandUi,
 }
 
 /// Icônes du lot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Glyph {
-    Phone,
     Speaker,
     Stage,
     Hand,
@@ -53,7 +54,6 @@ pub(super) enum Glyph {
 pub(super) fn paint_glyph(g: Glyph, painter: &Painter, rect: Rect, color: Color32) {
     // Jeu plein du thème ; la main levée n'y est pas.
     let full = match g {
-        Glyph::Phone => Some(Icon::Phone),
         Glyph::Speaker => Some(Icon::Speaker),
         Glyph::Stage => Some(Icon::Stage),
         Glyph::Hand => None,
@@ -208,7 +208,10 @@ impl App {
         let mut act = None;
         let step = t.layout.avatar_size + 3.0 * t.spacing.card_pad;
         let area = self.chat_rect.unwrap_or_else(|| ui.ctx().content_rect());
-        for (i, c) in self.calls_ui.ringing.clone().into_iter().enumerate() {
+        // Le MP affiché montre déjà « Accepter / Refuser » dans son bandeau : pas de doublon.
+        let frame = ui.ctx().cumulative_frame_nr();
+        let rings: Vec<u64> = self.calls_ui.ringing.iter().copied().filter(|c| !self.calls_ui.band.answers(*c, frame)).collect();
+        for (i, c) in rings.into_iter().enumerate() {
             let (name, avatar) = self.caller(c);
             let at = incoming_slot(area, i, step);
             egui::Area::new(Id::unique(("appel_entrant", c))).pivot(egui::Align2::CENTER_CENTER).fixed_pos(at).order(egui::Order::Foreground).show(ui.ctx(), |ui| {
@@ -256,79 +259,8 @@ impl App {
             return;
         }
         let t = self.theme.clone();
-        if super::chat_head::head_icon(ui, &t, tx::START_CALL.get(self.lang), false, |p, r, c| paint_glyph(Glyph::Phone, p, r, c)).clicked() {
+        if super::chat_head::head_icon(ui, &t, tx::START_CALL.get(self.lang), false, |p, r, c| crate::theme::icons::paint(crate::theme::icons::Icon::PhoneCall, p, r, c)).clicked() {
             self.store.start_call(cid);
-            self.flush_commands();
-        }
-    }
-
-    /// Bandeau de l'appel en haut d'un MP.
-    pub(super) fn call_banner(&mut self, ui: &mut egui::Ui, cid: u64) {
-        let calling = self.store.calls.calling(cid);
-        let Some(call) = self.store.calls.call(cid).cloned().or_else(|| calling.then(Default::default)) else { return };
-        let t = self.theme.clone();
-        let lang = self.lang;
-        let me = self.store.me.as_ref().map(|u| u.id);
-        let in_call = self.store.in_voice(cid);
-        let people: Vec<(u64, bool)> = self.store.voice.members(cid).map(|s| (s.user_id, s.muted())).collect();
-        let mut act = None;
-        egui::Panel::top("call_banner").frame(egui::Frame::new().fill(t.colors.bg1).inner_margin(super::chat_head::head_margin(&t, t.spacing.chat_head_x))).show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.set_min_height(super::chat_head::head_row(&t));
-                let (rect, _) = ui.allocate_exact_size(Vec2::splat(Tokens::icon_side(t.typography.body)), Sense::hover());
-                paint_glyph(Glyph::Phone, ui.painter(), rect, t.colors.online);
-                let title = if calling { tx::CALLING } else { tx::IN_CALL };
-                ui.label(RichText::new(title.get(lang)).family(crate::ui::fonts::demi()).strong().color(t.colors.text_strong));
-                if let Some(start) = call.started_ms() {
-                    let now = self.store.now();
-                    ui.label(RichText::new(clock(now - start)).color(t.colors.muted));
-                    // La seconde suivante, seulement tant que le bandeau est affiché.
-                    let wait = 1000 - (now - start).rem_euclid(1000);
-                    ui.ctx().request_repaint_after(Duration::from_millis(u64::try_from(wait).unwrap_or(1000)));
-                }
-                if call.unavailable {
-                    ui.label(RichText::new(tx::UNAVAILABLE.get(lang)).color(t.colors.danger));
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if in_call {
-                        if filled_button(ui, &t, tx::LEAVE.get(lang), t.danger_fill()).clicked() {
-                            act = Some(BannerAct::Leave);
-                        }
-                    } else if !calling && filled_button(ui, &t, tx::JOIN.get(lang), t.colors.online).clicked() {
-                        act = Some(BannerAct::Join);
-                    }
-                    let others_ringing = call.ringing.iter().any(|u| Some(*u) != me);
-                    if in_call && others_ringing && !self.store.calls.is_busy(CallAction::StopRinging, cid) && ui.button(tx::STOP_RINGING.get(lang)).clicked() {
-                        act = Some(BannerAct::StopRinging);
-                    }
-                    if in_call && !others_ringing && !calling && !self.store.calls.is_busy(CallAction::Ring, cid) && ui.button(tx::RING.get(lang)).clicked() {
-                        act = Some(BannerAct::Ring);
-                    }
-                });
-            });
-            ui.horizontal_wrapped(|ui| {
-                for (u, muted) in &people {
-                    self.person_row(ui, *u, muted.then(|| tx::MUTED.get(lang)));
-                    ui.add_space(t.spacing.item_x);
-                }
-                for u in call.ringing.iter().filter(|u| !people.iter().any(|(p, _)| p == *u)) {
-                    self.person_row(ui, *u, Some(tx::RINGING.get(lang)));
-                    ui.add_space(t.spacing.item_x);
-                }
-            });
-        });
-        match act {
-            Some(BannerAct::Join) => self.store.voice_join_call(cid),
-            Some(BannerAct::Leave) => self.store.voice_leave(),
-            Some(BannerAct::StopRinging) => {
-                self.store.stop_ringing(cid);
-            }
-            Some(BannerAct::Ring) => {
-                self.store.ring(cid, None);
-            }
-            None => {}
-        }
-        if act.is_some() {
             self.flush_commands();
         }
     }
@@ -355,13 +287,6 @@ fn incoming_slot(area: Rect, i: usize, step: f32) -> egui::Pos2 {
     pos2(area.center().x, y.min(area.bottom() - step / 2.0).max(area.top() + step / 2.0))
 }
 
-#[derive(Clone, Copy)]
-enum BannerAct {
-    Join,
-    Leave,
-    StopRinging,
-    Ring,
-}
 
 #[cfg(test)]
 mod tests {

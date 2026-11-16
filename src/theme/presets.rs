@@ -105,12 +105,23 @@ impl Preset {
         t
     }
 
+    /// Ce que valait ce préréglage dans un fichier de version 5 : celui
+    /// d'aujourd'hui, avec la zone de saisie des préréglages calqués à 16 des
+    /// bords et du bas (8 depuis le lot « profils », comme le client).
+    pub(super) fn tokens_v5(self) -> Tokens {
+        let mut t = self.tokens();
+        if t.spacing.composer_inner_y == 14.0 && t.spacing.composer_bottom == 8.0 {
+            (t.spacing.composer_x, t.spacing.composer_bottom) = (16.0, 16.0);
+        }
+        t
+    }
+
     /// Ce que valait ce préréglage dans un fichier de version 4 : celui
     /// d'aujourd'hui, avec la pastille de statut sur les avatars des messages
     /// (le client n'en met pas : elle est masquée depuis le lot « chatmp ») et
     /// la zone de saisie plus basse des préréglages calqués.
     pub(super) fn tokens_v4(self) -> Tokens {
-        let mut t = self.tokens();
+        let mut t = self.tokens_v5();
         t.layout.status_dots = StatusDots::Shown;
         // Zone de saisie des préréglages calqués : 50 de haut avant, 56 depuis.
         if t.spacing.composer_inner_y == 14.0 {
@@ -651,6 +662,9 @@ fn discord() -> Tokens {
     s.header_height = 48.0;
     // Zone de saisie de 56 de haut (une ligne de boutons de 28 et ses marges), comme le client.
     s.composer_inner_y = 14.0;
+    // Zone de saisie à 8 des bords et du bas de la fenêtre, alignée sur le panneau utilisateur.
+    s.composer_x = 8.0;
+    s.composer_bottom = 8.0;
     // 17 entre deux groupes, plus les 2 de marge de chaque message.
     s.message_gap = 19.0;
     s.message_right = 48.0;

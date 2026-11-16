@@ -44,6 +44,10 @@ pub mod speech;
 // Horloge de dernière entrée, pour le statut inactif automatique (lot FF).
 pub mod idle;
 
+// Signal de changement d'un dossier, icône de la fenêtre (lot « cpu »).
+pub mod dirwatch;
+pub mod app_icon;
+
 use crate::desk::Desktop;
 use crate::images::Source;
 use crate::net::Wake;

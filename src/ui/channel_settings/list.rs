@@ -53,6 +53,12 @@ fn voice_pick_id() -> egui::Id {
     egui::Id::unique("ferrocord.salons.choix-vocal")
 }
 
+/// Dépose un choix fait sur la ligne d'un salon vocal (ses boutons de survol, `voice/list.rs`).
+pub(in crate::ui) fn set_voice_pick(ctx: &egui::Context, pick: AdminPick) {
+    ctx.data_mut(|d| d.insert_temp(voice_pick_id(), pick));
+    ctx.request_repaint();
+}
+
 /// Ligne affichée, pour le glisser-déposer : (rectangle, salon, catégorie ?,
 /// rangé dans une catégorie ?).
 pub(in crate::ui) type Hit = (Rect, u64, bool, bool);

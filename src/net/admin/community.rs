@@ -20,7 +20,7 @@
 //! serveur), les écritures un clic ; tout passe par le limiteur commun.
 
 use super::events::{failed, list, RawEvent};
-use crate::net::raw::{de_lenient, de_loose_id, Item};
+use crate::net::raw::{de_lenient, de_loose_id, Item, Parts, Shared};
 use crate::net::ratelimit::Route;
 use crate::net::rest::{api, Ctx};
 use crate::net::Out;
@@ -117,23 +117,20 @@ impl RawGuildPart {
     }
 }
 
-#[derive(Deserialize)]
-struct RawReady {
-    #[serde(default)]
-    guilds: Vec<Item<RawGuildPart>>,
+/// Paquets de la passerelle qui intéressent ce lot.
+#[cfg(test)]
+pub(in crate::net) fn decode(kind: &str, d: &str) -> Vec<Event> {
+    decode_shared(kind, d, &Shared::of(kind, d))
 }
 
-/// Paquets de la passerelle qui intéressent ce lot.
-pub(in crate::net) fn decode(kind: &str, d: &str) -> Vec<Event> {
+/// Comme [`decode`], avec le découpage du READY ou du GUILD_CREATE déjà fait
+/// pour tous les décodeurs du paquet.
+pub(in crate::net) fn decode_shared(kind: &str, d: &str, shared: &Shared) -> Vec<Event> {
     let mut out = Vec::new();
     match kind {
-        "READY" => {
-            if let Ok(r) = serde_json::from_str::<RawReady>(d) {
-                r.guilds.into_iter().filter_map(|g| g.0).for_each(|g| g.full(&mut out));
-            }
-        }
+        "READY" => shared.guilds().iter().filter_map(|g| g.read::<RawGuildPart>().ok()).for_each(|g| g.full(&mut out)),
         "GUILD_CREATE" => {
-            if let Ok(g) = serde_json::from_str::<RawGuildPart>(d) {
+            if let Some(Ok(g)) = shared.guild().map(Parts::read::<RawGuildPart>) {
                 g.full(&mut out);
             }
         }
@@ -170,9 +167,9 @@ pub(in crate::net) fn decode(kind: &str, d: &str) -> Vec<Event> {
     out
 }
 
-pub(in crate::net) fn dispatch(kind: &str, d: &str, out: &Out) {
+pub(in crate::net) fn dispatch(kind: &str, d: &str, shared: &Shared, out: &Out) {
     if matches!(kind, "READY" | "GUILD_CREATE" | "GUILD_UPDATE" | "CHANNEL_CREATE" | "CHANNEL_UPDATE" | "CHANNEL_DELETE") {
-        decode(kind, d).into_iter().for_each(|e| out.send(e));
+        decode_shared(kind, d, shared).into_iter().for_each(|e| out.send(e));
     }
 }
 
@@ -430,6 +427,41 @@ mod tests {
         assert!(matches!(evs.as_slice(), [Event::Community(CommunityEvent::VenueUpsert { guild_id: 9, venue: Venue { id: 8, stage: true, .. } })]), "{evs:?}");
         assert!(decode("CHANNEL_CREATE", r#"{ "id": "8", "guild_id": "9", "type": 0, "name": "écrit" }"#).is_empty());
         assert!(matches!(decode("CHANNEL_DELETE", r#"{ "id": "8", "guild_id": "9", "type": 2 }"#).as_slice(), [Event::Community(CommunityEvent::VenueDelete { id: 8, .. })]));
+    }
+
+    /// Le découpage partagé rend exactement ce que rendait la lecture du
+    /// texte entier (ancienne écriture, gardée ici comme référence).
+    #[test]
+    fn shared_split_reads_like_the_whole_text() {
+        fn whole(kind: &str, d: &str) -> Vec<Event> {
+            #[derive(Deserialize)]
+            struct RawReady {
+                #[serde(default)]
+                guilds: Vec<Item<RawGuildPart>>,
+            }
+            let mut out = Vec::new();
+            match kind {
+                "READY" => {
+                    if let Ok(r) = serde_json::from_str::<RawReady>(d) {
+                        r.guilds.into_iter().filter_map(|g| g.0).for_each(|g| g.full(&mut out));
+                    }
+                }
+                "GUILD_CREATE" => {
+                    if let Ok(g) = serde_json::from_str::<RawGuildPart>(d) {
+                        g.full(&mut out);
+                    }
+                }
+                _ => {}
+            }
+            out
+        }
+        let mut events = 0;
+        for (kind, d) in crate::net::raw::guild_texts() {
+            let got = decode(kind, &d);
+            events += got.len();
+            assert_eq!(format!("{got:?}"), format!("{:?}", whole(kind, &d)), "{kind} {d}");
+        }
+        assert!(events > 20, "{events} événements comparés");
     }
 
     #[test]

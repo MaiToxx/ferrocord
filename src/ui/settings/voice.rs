@@ -241,6 +241,23 @@ impl App {
         if input { self.voice_cfg.inputs.clone() } else { self.voice_cfg.outputs.clone() }
     }
 
+    /// Caméras connues, pour le menu du chevron de la caméra (bandeau d'un
+    /// appel) : la liste est demandée une fois si elle manque, sans en allumer aucune.
+    pub(in crate::ui) fn camera_devices(&mut self) -> Option<Vec<DeviceInfo>> {
+        if self.voice_cfg.cameras.is_none() && !self.voice_cfg.cam_listing {
+            self.voice_cfg.cam_listing = true;
+            self.voice_cfg.camera.list();
+        }
+        self.voice_cfg.cameras.clone()
+    }
+
+    /// Enregistre les réglages vidéo choisis hors de la page (menu de la caméra).
+    pub(in crate::ui) fn video_prefs_set(&mut self, v: crate::state::video_prefs::VideoPrefs) {
+        let mut p = self.local.prefs.clone();
+        p.video = Box::new(v);
+        self.set_local_prefs(p);
+    }
+
     /// Enregistre les réglages audio choisis hors de la page (menus du panneau utilisateur).
     pub(in crate::ui) fn audio_prefs_set(&mut self, v: AudioPrefs) {
         self.commit_voice(v);
@@ -786,11 +803,10 @@ mod video_tests {
         previews: Arc<Mutex<Vec<String>>>,
     }
     impl CaptureService for FakeCapture {
-        fn list(&mut self) {
+        fn watch(&mut self, _: ShareTab) {
             let lists = SourceLists { cameras: vec![cam("camera:a", "Webcam intégrée"), cam("camera:b", "Webcam USB")], ..Default::default() };
             self.queue.lock().unwrap().push(ShareEvent::Sources(lists));
         }
-        fn thumbnails(&mut self, _: &[Source]) {}
         fn preview(&mut self, s: &Source) {
             self.previews.lock().unwrap().push(s.id.clone());
         }

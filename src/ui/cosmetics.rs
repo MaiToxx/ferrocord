@@ -142,6 +142,8 @@ pub(super) struct Worn {
     guild: Option<u64>,
     /// Avatar propre au serveur.
     pub(super) member_avatar: Option<ImageHash>,
+    /// Robot ou application (étiquette « APP » après son nom).
+    pub(super) bot: bool,
     /// Décoration propre au serveur, sinon celle du compte.
     pub(super) decoration: Option<Asset>,
 }
@@ -200,7 +202,8 @@ pub(super) fn worn(ctx: &egui::Context, guild_id: Option<u64>, user_id: u64) -> 
         (Some(g), Some(r)) => role_colors(ctx, g, r),
         _ => NameColors::default(),
     };
-    Worn { look, role, guild: guild_id, member_avatar: member.and_then(|m| m.avatar), decoration: member.and_then(|m| m.decoration).or(look.decoration()) }
+    let bot = people.user(user_id).is_some_and(|u| u.bot);
+    Worn { look, role, guild: guild_id, bot, member_avatar: member.and_then(|m| m.avatar), decoration: member.and_then(|m| m.decoration).or(look.decoration()) }
 }
 
 /// Parures de l'auteur d'un message du salon affiché.
@@ -238,6 +241,14 @@ pub(super) fn author_name(ui: &mut egui::Ui, t: &Tokens, images: Option<&Images>
         tag_ui(ui, images, t, &tag);
     }
     rect
+}
+
+/// Étiquette « APP » après le nom d'un robot ou d'une application, comme dans le client.
+pub(super) fn app_tag(ui: &mut egui::Ui, t: &Tokens, lang: crate::i18n::Lang) {
+    let galley = ui.painter().layout_no_wrap(crate::i18n::t::APP_TAG.get(lang).to_owned(), super::fonts::demi_font((t.typography.small - 1.0).max(8.0)), t.colors.on_accent);
+    let (rect, _) = ui.allocate_exact_size(galley.size() + egui::vec2(8.0, 2.0), Sense::hover());
+    ui.painter().rect_filled(rect, 4.0, t.colors.accent);
+    ui.painter().galley(rect.center() - galley.size() / 2.0, galley, t.colors.on_accent);
 }
 
 /// Couleur unie du nom de l'auteur (mode compact : une seule couleur par nom) :
@@ -535,12 +546,19 @@ impl RowLook {
         row_decoration(ui, images, avatar, &self.worn);
     }
 
-    /// Nom de la ligne : en dégradé s'il en a un, à la couleur de son style
-    /// s'il n'a pas de rôle coloré, sinon `color` (déjà choisie par la ligne).
-    /// `plain` : ligne estompée (hors ligne), sans couleur propre.
+    /// Nom de la ligne, comme dans le client : dans la police de son style de
+    /// nom, mais sans les couleurs ni l'effet de ce style (réservés à la
+    /// discussion et aux profils) ; en dégradé si son rôle en a un, sinon
+    /// `color` (déjà choisie par la ligne). `plain` : ligne estompée (hors
+    /// ligne), sans couleur propre.
     pub(super) fn name(&self, ui: &egui::Ui, name: &str, font: FontId, color: Color32, plain: bool) -> egui::WidgetText {
-        let colors = self.worn.name_colors(ui.ctx());
-        if !plain && (is_gradient(colors) || (self.worn.role.primary == 0 && colors.primary != 0)) {
+        // Police du style, sauf celle de l'interface (la ligne garde alors sa graisse).
+        let font = match self.worn.look.name_style() {
+            Some(s) if s.font_id != super::fonts::DEFAULT_NAME_FONT => FontId::new(font.size, super::fonts::styled(ui.ctx(), s.font_id)),
+            _ => font,
+        };
+        let colors = self.worn.role_colors(ui.ctx());
+        if !plain && is_gradient(colors) {
             return name_job(name, font, colors, self.bg, color).into();
         }
         egui::RichText::new(name).font(font).color(color).into()

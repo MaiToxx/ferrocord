@@ -46,6 +46,11 @@ enum Tile<'a> {
     Guild(&'a str, Option<ImageRef>),
 }
 
+/// Durée du déroulement d'un dossier (ouverture et fermeture).
+const FOLD_SECS: f32 = 0.18;
+/// Côté d'un serveur rangé dans un dossier déplié, en part de la pastille (40 pour 48).
+const FOLDER_TILE: f32 = 40.0 / 48.0;
+
 /// Part de la couleur choisie par l'utilisateur dans le fond sombre d'un dossier :
 /// très atténuée, elle reste reconnaissable sans écraser les icônes.
 const FOLDER_TINT: f32 = 0.22;
@@ -68,6 +73,8 @@ impl App {
     pub(super) fn guild_rail(&mut self, ui: &mut egui::Ui) {
         let list = self.theme.layout.rail_style == RailStyle::List;
         self.servers.cache.refresh(&self.store.account.snapshot().folders, &self.store.guilds);
+        // Amis en vocal par serveur (pastilles et infobulles), refaits quand quelque chose change.
+        self.servers.voice.refresh(&self.store);
         // Le bas du rail reste libre : la carte du panneau utilisateur y passe (`channels.rs`).
         let foot = if self.mobile_active() { 0.0 } else { (self.place.foot - self.theme.spacing.rail_y).max(0.0) };
         let room = (ui.available_height() - foot).max(0.0);
@@ -111,9 +118,14 @@ impl App {
                             let tint = color.map(color_of);
                             let shade = tint.unwrap_or(self.theme.colors.accent);
                             let ids: Vec<u64> = guilds.iter().map(|g| g.0).collect();
+                            // Ouverture et fermeture : les serveurs se déroulent vers le bas en
+                            // glissant, puis se replient. L'animation s'arrête seule (rien n'est
+                            // redessiné au repos) et le réglage « réduire les animations » la coupe.
+                            let k = super::motion::toward(ui.ctx(), egui::Id::unique(("dossier-du-rail", key)), open, FOLD_SECS);
+                            let shown = k > 0.0;
                             // Fond du dossier déplié, posé sous ses serveurs une fois leur place connue.
-                            let bg = open.then(|| ui.painter().add(egui::Shape::Noop));
-                            let resp = self.folder_entry(ui, name.as_deref(), shade, self.folder_fill(tint), &ids, open);
+                            let bg = shown.then(|| ui.painter().add(egui::Shape::Noop));
+                            let resp = self.folder_entry(ui, name.as_deref(), shade, self.folder_fill(tint), &ids, shown);
                             hits.push((resp.rect, Spot::Top { entry: *entry, guild: None, open }));
                             if resp.drag_started() {
                                 drag = Some(Dragged::Folder(*entry));
@@ -123,12 +135,27 @@ impl App {
                             }
                             let mut area = resp.rect;
                             menus.push(Menu::Folder { entry: *entry, guilds: ids, name: name.clone(), color: *color, resp });
-                            if !open {
+                            if !shown {
                                 continue;
                             }
+                            // Hauteur des serveurs dépliés : connue d'avance (lignes de hauteur fixe).
+                            let gap = ui.spacing().item_spacing.y;
+                            let n = guilds.iter().filter(|(g, _)| self.store.guilds.iter().any(|x| x.id == *g)).count() as f32;
+                            let full = (n * (self.folder_slot() + gap) - gap).max(0.0);
+                            // L'écart sous le dossier grandit avec le reste : pas de saut au départ ni à l'arrivée.
+                            ui.add_space(-gap * (1.0 - k));
+                            let (region, _) = ui.allocate_exact_size(egui::vec2(if list { ui.available_width() } else { self.theme.layout.rail_button }, full * k), egui::Sense::hover());
+                            // Les serveurs glissent depuis le dessous du dossier : la liste entière
+                            // est calée sur le bas de la zone visible, qui la découpe.
+                            let whole = Rect::from_min_size(egui::pos2(region.left(), region.bottom() - full), egui::vec2(region.width(), full));
+                            let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(whole).layout(*ui.layout()));
+                            inner.set_clip_rect(Rect::from_min_max(egui::pos2(ui.clip_rect().left(), region.top()), egui::pos2(ui.clip_rect().right(), region.bottom())).intersect(ui.clip_rect()));
                             for (g, at) in guilds {
-                                let Some((resp, shown)) = self.guild_entry(ui, *g, Some(key)) else { continue };
-                                area = area.union(resp.rect);
+                                let Some((resp, drawn)) = self.guild_entry(&mut inner, *g, Some(key)) else { continue };
+                                // En mouvement, rien ne se dépose ni ne s'ouvre sur une ligne à moitié sortie.
+                                if k < 1.0 {
+                                    continue;
+                                }
                                 hits.push((resp.rect, Spot::Inside { entry: *entry, at: *at, guild: *g }));
                                 if resp.drag_started() {
                                     drag = Some(Dragged::Guild(*g));
@@ -136,15 +163,17 @@ impl App {
                                 if resp.clicked() {
                                     clicked = Some(*g);
                                 }
-                                if shown {
+                                if drawn {
                                     menus.push(Menu::Guild(*g, resp));
                                 }
                             }
+                            area = area.union(region);
                             if let Some(idx) = bg {
+                                // Capsule gris neutre à fine bordure, comme dans le client.
                                 let t = &self.theme;
-                                let pad = t.spacing.rail_gap * 0.5;
                                 let fill = self.folder_fill(tint);
-                                ui.painter().set(idx, egui::epaint::RectShape::filled(area.expand(pad), t.r_rail(false), fill));
+                                let capsule = area.expand2(egui::vec2(0.0, (t.spacing.rail_gap * 0.25).round()));
+                                ui.painter().set(idx, egui::epaint::RectShape::new(capsule, self.folder_radius(), fill, self.folder_stroke(), egui::StrokeKind::Inside));
                             }
                         }
                     }
@@ -208,7 +237,7 @@ impl App {
                     }
                 }
                 match pick {
-                    Some(Pick::MarkRead(ids)) => ids.into_iter().for_each(|id| self.store.mark_guild_read(id)),
+                    Some(Pick::MarkRead(ids)) => self.store.mark_guilds_read(&ids),
                     Some(Pick::Invite(id)) => self.open_invite(id),
                     Some(Pick::Invites(id)) => self.open_invites(id),
                     Some(Pick::Leave(id)) => self.servers.leave = Some(id),
@@ -258,7 +287,7 @@ impl App {
             self.apply_server_more(id, m);
         }
         match pick {
-            Some(Pick::MarkRead(ids)) => ids.into_iter().for_each(|id| self.store.mark_guild_read(id)),
+            Some(Pick::MarkRead(ids)) => self.store.mark_guilds_read(&ids),
             Some(Pick::Invite(id)) => self.open_invite(id),
             Some(Pick::Invites(id)) => self.open_invites(id),
             Some(Pick::Leave(id)) => self.servers.leave = Some(id),
@@ -324,8 +353,10 @@ impl App {
         let name = super::words::guild_name(self.lang, &g.name);
         let selected = self.store.guild == Some(g.id);
         let pills = self.theme.layout.rail_style == RailStyle::Pills;
-        // Pastilles : la place d'abord, pour savoir si elle est près de la vue.
-        let slot = pills.then(|| ui.allocate_exact_size(Vec2::splat(self.theme.layout.rail_button), egui::Sense::click()));
+        // Pastilles : la place d'abord, pour savoir si elle est près de la vue. Dans un
+        // dossier déplié, les icônes sont un peu plus petites et se suivent de plus près.
+        let side = self.theme.layout.rail_button;
+        let slot = pills.then(|| ui.allocate_exact_size(egui::vec2(side, if folder.is_some() { self.folder_slot() } else { side }), egui::Sense::click()));
         if let Some((rect, resp)) = &slot
             && !ui.is_rect_visible(rect.expand2(egui::vec2(0.0, RAIL_MARGIN * rect.height())))
             && !resp.has_focus()
@@ -335,21 +366,51 @@ impl App {
             return Some((resp.interact(egui::Sense::drag()), false));
         }
         let (unread, ping) = self.store.guild_has_unread(g);
-        let label = initials(name);
+        // Serveur sans icône : son acronyme, comme dans le client (rail en liste : ses initiales, la pastille y est petite).
+        let label = if pills { super::util::guild_acronym(name) } else { initials(name) };
         let tile = Tile::Guild(&label, g.icon);
+        let mut icon = None;
         let resp = match (slot, folder) {
             (Some((rect, resp)), _) => {
-                let r = self.rail_button_in(ui, rect, resp, tile, selected, unread, ping).on_hover_text(name);
+                let square = Rect::from_center_size(rect.center(), Vec2::splat(rect.height().min(rect.width())));
+                icon = Some(square);
+                let r = self.rail_button_in(ui, square, resp, tile, selected, unread, ping);
                 r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, name));
                 r
             }
             (None, Some(key)) => ui.indent(("dossier", key, id), |ui| self.rail_item(ui, tile, name, selected, unread, ping)).inner,
             (None, None) => self.rail_item(ui, tile, name, selected, unread, ping),
         };
-        if pills {
-            self.mention_badge(ui, resp.rect, self.store.guild_mentions(g.id));
+        if let Some(square) = icon {
+            // Amis en vocal sur ce serveur : pastille en haut à droite, détail dans l'infobulle.
+            let live = self.servers.voice.get(g.id);
+            if let Some(live) = live {
+                self.rail_live_badge(ui, square, live);
+            }
+            self.mention_badge(ui, square, self.store.guild_mentions(g.id));
+            self.rail_tip(&resp, name, live);
         }
         Some((resp.interact(egui::Sense::drag()), true))
+    }
+
+    /// Hauteur de la place d'un serveur dans un dossier déplié.
+    fn folder_slot(&self) -> f32 {
+        let t = &self.theme;
+        match t.layout.rail_style {
+            RailStyle::Pills => (t.layout.rail_button * FOLDER_TILE).round(),
+            RailStyle::List => t.layout.rail_list_row,
+        }
+    }
+
+    /// Coins de la capsule d'un dossier (déplié, ou replié avec ses mini-icônes) : très arrondis.
+    fn folder_radius(&self) -> CornerRadius {
+        let r = self.theme.r_rail(false);
+        scaled(r, 1.15)
+    }
+
+    /// Fine bordure d'un dossier : un voile de la couleur du texte, à peine visible.
+    fn folder_stroke(&self) -> Stroke {
+        Stroke::new(1.0, self.theme.colors.text_strong.gamma_multiply(0.14))
     }
 
     /// Un dossier : replié (mini-icônes de ses serveurs) ou déplié (icône de
@@ -375,12 +436,17 @@ impl App {
                 let side = t.layout.rail_button;
                 let (rect, resp) = ui.allocate_exact_size(Vec2::splat(side), egui::Sense::click_and_drag());
                 let hot = resp.hovered() || resp.has_focus();
-                let r = t.r_rail(open || hot);
+                let r = self.folder_radius();
                 if open {
-                    ui.painter().rect_filled(rect, r, if hot { t.colors.selected } else { t.colors.pill });
-                    icons::paint(Icon::Folder, ui.painter(), rect.shrink(side * 0.25), shade);
+                    // Déplié : l'icône de dossier seule, en tête de la capsule (son fond est celui de la capsule).
+                    if hot {
+                        ui.painter().rect_filled(rect, r, t.colors.text_strong.gamma_multiply(0.06));
+                    }
+                    icons::paint(Icon::Folder, ui.painter(), rect.shrink(side * 0.27), shade);
                 } else {
-                    ui.painter().rect_filled(rect, r, if hot { super::motion::mix(fill, t.colors.selected, 0.5) } else { fill });
+                    // Replié : tuile arrondie à fine bordure, quatre mini-icônes.
+                    let fill = if hot { super::motion::mix(fill, t.colors.selected, 0.5) } else { fill };
+                    ui.painter().rect(rect, r, fill, self.folder_stroke(), egui::StrokeKind::Inside);
                     self.mini_icons(ui, rect, guilds);
                 }
                 self.rail_mark(ui, resp.id, rect, holds_open && !open, hot, unread && !open);
@@ -390,7 +456,8 @@ impl App {
                     }
                     self.mention_badge(ui, rect, mentions);
                 }
-                resp.on_hover_text(&title)
+                self.rail_tip(&resp, &title, None);
+                resp
             }
             RailStyle::List => {
                 let h = t.layout.rail_list_row;
@@ -420,11 +487,15 @@ impl App {
         resp
     }
 
-    /// Fond d'un dossier (replié, ou derrière ses serveurs dépliés) : sombre,
-    /// celui des pastilles, comme dans le client ; `tint` (la couleur du
-    /// dossier, s'il en a une) n'y entre que très atténuée.
+    /// Fond d'un dossier (replié, ou derrière ses serveurs dépliés) : gris
+    /// neutre et sombre, comme dans le client (la clarté des pastilles, sans
+    /// leur teinte) ; `tint` (la couleur du dossier, s'il en a une) n'y entre
+    /// que très atténuée.
     fn folder_fill(&self, tint: Option<Color32>) -> Color32 {
-        let pill = self.theme.colors.pill;
+        // À mi-chemin entre le fond du rail et une pastille : les tuiles sans icône s'y détachent.
+        let luma = |c: Color32| 0.299 * f32::from(c.r()) + 0.587 * f32::from(c.g()) + 0.114 * f32::from(c.b());
+        let c = &self.theme.colors;
+        let pill = Color32::from_gray(((luma(c.bg0) + luma(c.pill)) / 2.0).round() as u8);
         tint.map_or(pill, |c| super::motion::mix(pill, c, FOLDER_TINT))
     }
 
@@ -432,9 +503,9 @@ impl App {
     fn mini_icons(&self, ui: &egui::Ui, rect: Rect, guilds: &[u64]) {
         let t = &self.theme;
         let side = rect.width();
-        let gap = side * 0.1;
+        let gap = (side * 0.11).round();
         let mini = (side - 3.0 * gap) / 2.0;
-        let r = scaled(t.r_rail(false), mini / side.max(1.0));
+        let r = CornerRadius::same((mini * 0.32).round() as u8);
         let shown = guilds.iter().filter_map(|id| self.store.guilds.iter().find(|g| g.id == *id)).take(4);
         for (i, g) in shown.enumerate() {
             let (cx, cy) = ((i % 2) as f32, (i / 2) as f32);
@@ -482,7 +553,8 @@ impl App {
                 let radius = super::motion::mix_radius(t.r_rail(false), t.r_rail(true), k);
                 ui.painter().rect_filled(rect, radius, super::motion::mix(t.colors.pill, t.colors.online, k));
                 icons::paint(icon, ui.painter(), rect.shrink(side * 0.32), super::motion::mix(t.colors.online, t.colors.on_accent, k));
-                resp.on_hover_text(tip)
+                self.rail_tip(&resp, tip, None);
+                resp
             }
             RailStyle::List => {
                 let h = t.layout.rail_list_row;
@@ -541,7 +613,8 @@ impl App {
         match self.theme.layout.rail_style {
             RailStyle::Pills => {
                 // Le lecteur d'écran dit le nom du serveur, pas ses initiales (lot C5).
-                let r = self.rail_button(ui, tile, selected, unread, ping).on_hover_text(name);
+                let r = self.rail_button(ui, tile, selected, unread, ping);
+                self.rail_tip(&r, name, None);
                 r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, name));
                 r
             }
@@ -592,7 +665,10 @@ impl App {
             match tile {
                 Tile::Home(_) => icons::paint(Icon::Chat, &p, rect.shrink(side * 0.29), color),
                 Tile::Guild(label, _) => {
-                    p.text(rect.center(), egui::Align2::CENTER_CENTER, label, super::fonts::demi_font(t.typography.rail), color);
+                    // Acronyme long : le texte rétrécit pour tenir dans la tuile, comme dans le client.
+                    let n = label.chars().count().max(1) as f32;
+                    let size = (t.typography.rail * (3.2 / n).min(1.0) * (rect.width() / side).min(1.0)).max(t.typography.small * 0.8);
+                    p.text(rect.center(), egui::Align2::CENTER_CENTER, label, super::fonts::medium_font(size), color);
                 }
             }
         }
@@ -625,7 +701,12 @@ impl App {
         }
         let color = t.colors.text_strong;
         let edge = tile.center().x - t.rail_panel_width() / 2.0;
+        // Marque arrondie de tous les côtés (petit rond pour un non-lu, pilule sinon),
+        // un peu plus large que le filet du thème et décollée du bord, comme dans le client.
         let (mark, r) = t.rail_mark(edge, tile, share);
+        let w = (mark.width() * 1.5).round();
+        let mark = Rect::from_min_size(egui::pos2(mark.left() + 1.0, mark.top()), egui::vec2(w, mark.height().max(w)));
+        let r = CornerRadius::same(r.ne.max((w / 2.0).round() as u8));
         // La marge du rail est hors de la zone de défilement : le découpage y est élargi.
         let clip = ui.clip_rect();
         let clip = Rect::from_min_max(egui::pos2(clip.left().min(edge), clip.top()), clip.max);
@@ -702,5 +783,88 @@ impl App {
         ui.scope_builder(row, |ui| super::emoji::label_job(ui, egui::text::LayoutJob::simple_singleline(name.to_string(), font, text_color), true));
         super::keys::focus_ring(ui, t, &resp);
         resp
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::tests::{click, find, frame, offline_boot, settle};
+    use crate::state::model::{Guild, User};
+    use crate::state::{Cmd, Event, Store};
+    use eframe::egui;
+    use std::time::Duration;
+
+    /// Connexion factice : rien ne part, rien n'arrive.
+    struct Quiet;
+
+    impl super::super::Backend for Quiet {
+        fn set_wake(&mut self, _: crate::net::Wake) {}
+        fn connect(&mut self, _: crate::account::Token) {}
+        fn disconnect(&mut self) {}
+        fn is_connected(&self) -> bool {
+            true
+        }
+        fn poll(&mut self) -> Vec<Event> {
+            Vec::new()
+        }
+        fn send(&mut self, _: Vec<Cmd>) {}
+    }
+
+    /// Deux serveurs rangés dans le dossier « Atelier » (réglages synchronisés fictifs).
+    fn app() -> super::super::App {
+        use crate::state::usersettings::proto::{wrapper, Field, Msg, Value as P};
+        let ctx = egui::Context::default();
+        let mut store = Store::new();
+        store.apply(Event::Ready { me: User::new(1, "Moi".into()), guilds: vec![Guild::new(10, "Forge".into(), vec![]), Guild::new(11, "Phare".into(), vec![])], dms: vec![] });
+        let mut folder = Msg::default();
+        folder.set(1, P::Len([10u64, 11].iter().flat_map(|g| g.to_le_bytes()).collect()));
+        folder.set(2, P::Len(wrapper(P::Varint(7)).encode()));
+        folder.set(3, P::Len(wrapper(P::Len("Atelier".as_bytes().to_vec())).encode()));
+        let mut list = Msg::default();
+        list.fields.push(Field { num: 1, value: P::Len(folder.encode()) });
+        let mut root = Msg::default();
+        root.set(14, P::Len(list.encode()));
+        store.apply(Event::Account(crate::state::usersettings::AccountEvent::Proto { bytes: Some(root.encode()), partial: false }));
+        store.select_dms();
+        let images = crate::images::Images::disabled(ctx.clone());
+        super::super::App::with_context(ctx, offline_boot(Box::new(Quiet), store, images))
+    }
+
+    fn resting(out: &egui::FullOutput) -> bool {
+        out.viewport_output.values().all(|v| v.repaint_delay == Duration::MAX)
+    }
+
+    /// Un dossier se déroule et se replie en glissant : des images sont demandées
+    /// pendant le mouvement seulement, plus aucune une fois ouvert ou refermé.
+    #[test]
+    fn folder_unrolls_then_rests() {
+        let mut app = app();
+        let out = settle(&mut app);
+        assert!(resting(&out), "redessin au repos, dossier replié");
+        assert!(find(&out, "Atelier").is_some(), "dossier affiché : {:?}", app.servers.cache.items);
+        assert!(find(&out, "Phare").is_none(), "dossier replié : ses serveurs ne sont pas là");
+
+        // Ouverture : le clic lance le mouvement, qui demande des images puis s'arrête seul.
+        click(&mut app, "Atelier");
+        let mut moving = 0;
+        let mut out = frame(&mut app, Vec::new());
+        for _ in 0..600 {
+            if resting(&out) {
+                break;
+            }
+            moving += 1;
+            out = frame(&mut app, Vec::new());
+        }
+        assert!(moving > 0, "l'ouverture est animée");
+        let out = settle(&mut app);
+        assert!(resting(&out), "redessin au repos, dossier déplié");
+        let (folder, last) = (find(&out, "Atelier").expect("dossier"), find(&out, "Phare").expect("serveur déplié"));
+        assert!(find(&out, "Forge").is_some_and(|first| first.top() > folder.bottom() - 1.0 && last.top() > first.bottom() - 1.0), "serveurs sous le dossier, dans l'ordre");
+
+        // Fermeture : même mouvement à l'envers, puis plus rien.
+        click(&mut app, "Atelier");
+        let out = settle(&mut app);
+        assert!(resting(&out), "redessin au repos, dossier refermé");
+        assert!(find(&out, "Phare").is_none(), "serveurs repliés");
     }
 }

@@ -107,6 +107,21 @@ pub enum Fit {
     Fill(u32, u32),
 }
 
+/// Taille d'une image `iw` × `ih` ramenée entière dans `w` × `h`, proportion
+/// gardée. À très peu près du cadre (le cadre vient d'un arrondi de la même
+/// proportion), c'est le cadre exact : la texture couvre alors ses pixels
+/// d'écran un pour un, sans être étirée d'un pixel par le processeur
+/// graphique (un flou léger sur toute l'image).
+pub fn contain_size(iw: u32, ih: u32, w: u32, h: u32) -> (u32, u32) {
+    let (iw, ih, w, h) = (iw.max(1), ih.max(1), w.max(1), h.max(1));
+    let scale = (f64::from(w) / f64::from(iw)).min(f64::from(h) / f64::from(ih));
+    let side = |v: u32, max: u32| ((f64::from(v) * scale).round() as u32).clamp(1, max);
+    let (tw, th) = (side(iw, w), side(ih, h));
+    // Tolérance : un pixel, plus un pour 256 (arrondis du cadre et de la copie reçue).
+    let near = |full: u32, got: u32| full - got <= 1 + full / 256;
+    if near(w, tw) && near(h, th) { (w, h) } else { (tw, th) }
+}
+
 /// Image ramenée à sa taille utile, prête pour le processeur graphique ;
 /// `None` si le redimensionnement a paniqué.
 pub fn fit(img: &DynamicImage, fit: Fit) -> Option<ColorImage> {
@@ -128,7 +143,8 @@ fn fit_unguarded(img: &DynamicImage, fit: Fit) -> ColorImage {
             if img.width() <= w && img.height() <= h {
                 img.clone()
             } else {
-                img.resize(w, h, FilterType::Lanczos3)
+                let (tw, th) = contain_size(img.width(), img.height(), w, h);
+                img.resize_exact(tw, th, FilterType::Lanczos3)
             }
         }
         Fit::Fill(w, h) => {
@@ -183,6 +199,20 @@ mod tests {
         assert_eq!(fit(&img, Fit::Cover(0)).map(|i| i.size), Some([1, 1]));
         assert_eq!(fit(&img, Fit::Contain(20, 20)).map(|i| i.size), Some([20, 15]));
         assert_eq!(fit(&img, Fit::Contain(400, 400)).map(|i| i.size), Some([40, 30]), "jamais agrandie");
+    }
+
+    /// Partie D : la vignette reçue (palier au-dessus) est ramenée au cadre
+    /// exact, même quand la proportion tombe à un arrondi près.
+    #[test]
+    fn contain_fills_the_frame_within_a_pixel() {
+        assert_eq!(contain_size(704, 440, 688, 430), (688, 430));
+        assert_eq!(contain_size(704, 441, 688, 430), (688, 430), "arrondi : le cadre");
+        assert_eq!(contain_size(704, 439, 688, 430), (688, 430));
+        assert_eq!(contain_size(40, 30, 20, 20), (20, 15), "autre proportion : gardée");
+        assert_eq!(contain_size(1000, 10, 100, 100), (100, 1));
+        assert_eq!(contain_size(0, 0, 0, 0), (1, 1));
+        let img = DynamicImage::ImageRgba8(sample(704, 441));
+        assert_eq!(fit(&img, Fit::Contain(688, 430)).map(|i| i.size), Some([688, 430]));
     }
 
     /// Bannière : remplit exactement le cadre, recadrée au centre, agrandie s'il le faut.

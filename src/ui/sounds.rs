@@ -1,32 +1,55 @@
 //! Sons et notifications par événement (F11) : section « Sons » de la page
-//! Notifications (un interrupteur et un essai par son, comme Discord), et
+//! Notifications (un interrupteur et une écoute par son, comme Discord), et
 //! déclenchement de ceux qui ne viennent ni d'un message ni du vocal :
 //! demande d'ami reçue, événement qui commence, appel sortant qui sonne.
 //!
-//! Les sons eux-mêmes sont ceux de Windows (`desk::system`) : rien n'est
-//! embarqué, téléchargé, ni repris de Discord. Rien ne tourne au repos :
-//! tout part d'un événement reçu, sauf la sonnerie d'un appel sortant, qui
-//! se répète tant que l'appel sonne (un réveil toutes les quatre secondes,
-//! pendant une minute au plus).
+//! Les sons eux-mêmes sont ceux de Ferrocord (`audio::sons` : fabriqués par
+//! un petit synthétiseur, ou remplacés par un fichier du dossier des sons de
+//! l'utilisateur) : rien n'est embarqué, téléchargé, ni repris de Discord.
+//! Rien ne tourne au repos : tout part d'un événement reçu, sauf la sonnerie
+//! d'un appel sortant, qui se répète tant que l'appel sonne (un réveil toutes
+//! les trois secondes, pendant une minute au plus).
 
 use super::settings::{note, section};
 use super::App;
+use crate::audio::sons::perso::Releve;
 use crate::i18n::table::ff::{f as ff, t as ft};
 use crate::i18n::Text;
 use crate::state::notify::{Alert, Kind};
 use crate::theme::Tokens;
 use eframe::egui::{self, RichText};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering::Relaxed};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// Écart entre deux sonneries d'un appel sortant, et durée au plus.
-const OUT_RING_EVERY: Duration = Duration::from_secs(4);
+/// Écart entre deux sonneries d'un appel sortant (la durée du son : il boucle
+/// sur lui-même), et durée au plus.
+const OUT_RING_EVERY: Duration = Duration::from_secs(3);
 const OUT_RING_MAX: Duration = Duration::from_secs(60);
+/// Écart entre deux lectures du dossier des sons, page des réglages ouverte.
+const SCAN_EVERY: Duration = Duration::from_secs(2);
 
-/// Suivi de l'appel sortant (appartient à `DeskUi`).
+/// Fichiers personnels vus dans le dossier des sons (partagé avec le fil qui le lit).
+#[derive(Default)]
+struct Custom {
+    /// Sons remplacés par un fichier valide, fichiers refusés (bits de [`Kind::bit`]).
+    good: AtomicU32,
+    bad: AtomicU32,
+    /// Une lecture du dossier est en cours.
+    busy: AtomicBool,
+    files: Mutex<Releve>,
+}
+
+/// Suivi des sonneries et du dossier des sons (appartient à `DeskUi`).
 #[derive(Default)]
 pub(super) struct Watch {
     /// Appel sortant qui sonne : (salon, début, dernière sonnerie).
     out_ring: Option<(u64, Instant, Instant)>,
+    /// Un appel entrant sonnait au dernier passage.
+    in_ring: bool,
+    custom: Arc<Custom>,
+    /// Dernière lecture du dossier des sons demandée.
+    scanned: Option<Instant>,
 }
 
 /// Nom d'un son dans la page des réglages.
@@ -36,6 +59,8 @@ pub(super) fn sound_name(k: Kind) -> Text {
         Kind::Mention => ft::SND_MENTION,
         Kind::VoiceJoin => ft::SND_JOIN,
         Kind::VoiceLeave => ft::SND_LEAVE,
+        Kind::VoiceConnect => ft::SND_CONNECT,
+        Kind::VoiceDisconnect => ft::SND_DISCONNECT,
         Kind::VoiceMute => ft::SND_MUTE,
         Kind::VoiceUnmute => ft::SND_UNMUTE,
         Kind::VoiceDeafen => ft::SND_DEAFEN,
@@ -105,7 +130,12 @@ impl App {
         let ringing = self.store.calls_ringing_out();
         let now = Instant::now();
         match (ringing, self.desk.watch.out_ring) {
-            (None, _) => self.desk.watch.out_ring = None,
+            (None, None) => {}
+            // On a décroché, ou l'appel est fini : la sonnerie se tait aussitôt.
+            (None, Some(_)) => {
+                self.desk.watch.out_ring = None;
+                self.desk_silence(Kind::CallOut);
+            }
             (Some(c), Some((old, start, last))) if c == old => {
                 if now.duration_since(start) < OUT_RING_MAX {
                     if now.duration_since(last) >= OUT_RING_EVERY {
@@ -122,6 +152,13 @@ impl App {
                 self.ctx.request_repaint_after(OUT_RING_EVERY);
             }
         }
+        // Appel entrant décroché, refusé ou manqué : même chose (la sonnerie
+        // elle-même est lancée par `calls_tick`).
+        let in_ring = !self.ringing_calls().is_empty();
+        if self.desk.watch.in_ring && !in_ring {
+            self.desk_silence(Kind::Ring);
+        }
+        self.desk.watch.in_ring = in_ring;
     }
 
     /// Rappels de messages enregistrés (lot FF2) : notification locale de
@@ -149,11 +186,46 @@ impl App {
         }
     }
 
-    /// Section « Sons » de la page Notifications : un interrupteur par son.
+    /// Relit le dossier des sons personnels, dans un fil à part, au plus
+    /// toutes les deux secondes et seulement tant que la section est affichée.
+    /// Sans vrai bureau (aperçu, tests) : rien n'est lu.
+    fn sounds_scan(&mut self) {
+        if !self.desk_custom_sounds() {
+            return;
+        }
+        let now = Instant::now();
+        let due = self.desk.watch.scanned.is_none_or(|t| now.duration_since(t) >= SCAN_EVERY);
+        self.ctx.request_repaint_after(SCAN_EVERY);
+        if !due || self.desk.watch.custom.busy.swap(true, Relaxed) {
+            return;
+        }
+        self.desk.watch.scanned = Some(now);
+        let (custom, ctx) = (self.desk.watch.custom.clone(), self.ctx.clone());
+        let spawned = std::thread::Builder::new().name("ferrocord-sons".into()).spawn(move || {
+            let found = crate::audio::sons::perso::dossier().map(|d| custom.files.lock().map(|mut r| r.actualiser(&d)).unwrap_or_default()).unwrap_or_default();
+            let changed = (custom.good.swap(found.0, Relaxed) != found.0) | (custom.bad.swap(found.1, Relaxed) != found.1);
+            custom.busy.store(false, Relaxed);
+            if changed {
+                ctx.request_repaint();
+            }
+        });
+        if spawned.is_err() {
+            self.desk.watch.custom.busy.store(false, Relaxed);
+        }
+    }
+
+    /// Section « Sons » de la page Notifications : un interrupteur et une
+    /// écoute par son, la mention « personnalisé » quand un fichier du dossier
+    /// des sons le remplace, et le bouton qui ouvre ce dossier.
     pub(super) fn sounds_settings(&mut self, ui: &mut egui::Ui, t: &Tokens) {
         let lang = self.lang;
         section(ui, t, ft::SOUNDS_SECTION.get(lang));
         note(ui, t, ft::SOUNDS_TIP.get(lang));
+        if crate::ui::widgets::compact(ui, RichText::new(ft::SOUNDS_FOLDER.get(lang))).clicked() {
+            open_sounds_folder();
+        }
+        self.sounds_scan();
+        let (good, bad) = (self.desk.watch.custom.good.load(Relaxed), self.desk.watch.custom.bad.load(Relaxed));
         let mut p = self.desk.prefs;
         let mut test = None;
         for k in Kind::ALL {
@@ -169,6 +241,11 @@ impl App {
                 if try_it.clicked() {
                     test = Some(k);
                 }
+                if good & k.bit() != 0 {
+                    ui.label(RichText::new(ft::SOUND_CUSTOM.get(lang)).small().color(t.colors.accent));
+                } else if bad & k.bit() != 0 {
+                    crate::ui::widgets::tip(ui.label(RichText::new(ft::SOUND_BAD_FILE.get(lang)).small().color(t.colors.danger)), t, ft::SOUND_BAD_FILE_TIP.get(lang));
+                }
             });
         }
         if p != self.desk.prefs {
@@ -180,4 +257,16 @@ impl App {
             self.desk_test_sound(k, p.volume);
         }
     }
+}
+
+/// Ouvre le dossier des sons personnels dans l'Explorateur, après l'avoir
+/// créé avec sa notice s'il manquait (hors du fil d'interface).
+fn open_sounds_folder() {
+    let _ = std::thread::Builder::new().name("ferrocord-sons".into()).spawn(|| {
+        let Some(dir) = crate::audio::sons::perso::dossier() else { return };
+        match crate::audio::sons::perso::preparer(&dir) {
+            Ok(()) => crate::install::browser::open(&format!("file:///{}", dir.display().to_string().replace('\\', "/"))),
+            Err(e) => eprintln!("[sons] dossier des sons impossible à créer : {e}"),
+        }
+    });
 }
