@@ -472,6 +472,8 @@ mod tests {
         let q = format!("\"{}\"", target.display());
         assert_eq!(h.get(UNINSTALL_KEY, "DisplayName").as_deref(), Some("Ferrocord"));
         assert_eq!(h.get(UNINSTALL_KEY, "DisplayVersion").as_deref(), Some("1.2.3"));
+        // « Applications installées » montre l'icône de l'exécutable installé (son seul groupe, index 0).
+        assert_eq!(h.get(UNINSTALL_KEY, "DisplayIcon"), Some(format!("{},0", target.display())));
         assert_eq!(h.get(UNINSTALL_KEY, "UninstallString"), Some(format!("{q} --desinstaller")));
         assert_eq!(h.get(UNINSTALL_KEY, "QuietUninstallString"), Some(format!("{q} --desinstaller --silencieux")));
         assert_eq!(h.get(UNINSTALL_KEY, "InstallLocation"), Some(p.places.programs.display().to_string()));

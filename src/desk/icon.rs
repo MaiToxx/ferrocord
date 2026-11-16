@@ -22,8 +22,14 @@ pub fn rgba(side: u32, accent: [u8; 3], badge: Option<[u8; 3]>) -> Vec<u8> {
             // Bord adouci sur un pixel.
             let cover = |dist: f32, radius: f32| (radius - dist + 0.5).clamp(0.0, 1.0);
             let mut px_rgba = [accent[0], accent[1], accent[2], (cover(d, r) * 255.0) as u8];
-            if d > ring.0 && d < ring.1 {
-                px_rgba[..3].copy_from_slice(&[255, 255, 255]);
+            // Anneau : part de blanc adoucie sur un pixel à ses deux bords, comme le
+            // bord du disque (sans cela il est en escalier aux grandes tailles
+            // et irrégulier aux petites) ; mêmes rayons.
+            let white = cover(d, ring.1) - cover(d, ring.0);
+            if white > 0.0 {
+                for c in &mut px_rgba[..3] {
+                    *c = (f32::from(*c) + (255.0 - f32::from(*c)) * white).round() as u8;
+                }
             }
             if let Some(b) = badge {
                 let db = ((px - bc).powi(2) + (py - bc).powi(2)).sqrt();
@@ -59,5 +65,31 @@ mod tests {
         let badged = rgba(TRAY_SIDE, accent, Some([230, 20, 20]));
         assert_eq!(at(&badged, TRAY_SIDE, 24, 24), [230, 20, 20, 255], "pastille dans le coin");
         assert_eq!(at(&badged, TRAY_SIDE, 16, 16), [200, 80, 40, 255]);
+    }
+
+    /// Propre à toutes les tailles de l'icône de l'application (lot « icône ») :
+    /// bord du disque et bords de l'anneau adoucis, anneau lisible.
+    #[test]
+    fn edges_are_smoothed_and_the_ring_reads_at_every_size() {
+        let accent = [0x58, 0x65, 0xf2];
+        for side in [16, 20, 24, 32, 48, 256] {
+            let px = rgba(side, accent, None);
+            let mid = side / 2;
+            // Rangée du milieu, du bord gauche au centre.
+            let row: Vec<[u8; 4]> = (0..=mid).map(|x| at(&px, side, x, mid)).collect();
+            assert!(row[0][3] > 0 && row[0][3] < 255, "{side} : bord du disque adouci ({})", row[0][3]);
+            assert!(row[1..].iter().all(|p| p[3] == 255), "{side} : intérieur opaque");
+            assert_eq!(*row.last().unwrap(), [0x58, 0x65, 0xf2, 255], "{side} : centre de la couleur d'accent");
+            // L'anneau : au moins un pixel presque blanc en son milieu, de l'accent pur de part et d'autre.
+            let ring = row.iter().map(|p| p[0].min(p[1])).max().unwrap_or(0);
+            assert!(ring >= 200, "{side} : anneau lisible (au plus clair : {ring})");
+            assert_eq!(row[1][..3], accent, "{side} : accent entre le bord et l'anneau");
+            // Aucun pixel n'est d'une autre teinte qu'un mélange d'accent et de blanc.
+            assert!(px.as_chunks::<4>().0.iter().all(|p| p[0] >= accent[0] && p[1] >= accent[1] && p[2] >= accent[2]), "{side} : teintes");
+        }
+        // En 256, les bords de l'anneau passent par des tons intermédiaires (pas d'escalier).
+        let px = rgba(256, accent, None);
+        let tones = px.as_chunks::<4>().0.iter().filter(|p| p[3] == 255 && p[0] > accent[0] && p[0] < 255).count();
+        assert!(tones > 500, "anneau adouci en 256 ({tones} pixels intermédiaires)");
     }
 }

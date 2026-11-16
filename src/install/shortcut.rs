@@ -107,6 +107,10 @@ mod tests {
         // Le nom de la cible y figure en UTF-16.
         let name: Vec<u8> = "ferrocord.exe".encode_utf16().flat_map(u16::to_le_bytes).collect();
         assert!(bytes.windows(name.len()).any(|w| w == name));
+        // L'icône est celle de la cible : drapeau « emplacement d'icône » (bit 6 des drapeaux, à
+        // l'octet 0x14) et index 0 (à l'octet 0x38), le groupe d'icônes de l'exécutable.
+        assert_ne!(bytes[0x14] & 0x40, 0, "emplacement d'icône absent");
+        assert_eq!(&bytes[0x38..0x3C], &[0, 0, 0, 0], "index de l'icône");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

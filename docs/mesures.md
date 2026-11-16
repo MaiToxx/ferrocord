@@ -563,6 +563,13 @@ premier poste une fois les images retirées.
    taille imprévue est réduite au vol, comme avant. **L'icône est la même** :
    un test refait chaque réduction avec la chaîne d'eframe et compare les
    pixels.
+   *Depuis le lot « icône »* : l'icône est le logo de Ferrocord, plus le
+   « e » d'eframe. Elle est rangée une seule fois, dans les ressources de
+   l'exécutable (`assets/icone/ferrocord.ico`, produit par le code et lié
+   par `build.rs`), et la fenêtre la prend là (`LoadImageW`) ; une taille
+   absente du fichier est dessinée au vol (quelques microsecondes). Plus
+   rien n'est décodé ni réduit au lancement, et les réductions PNG ont
+   quitté le dépôt.
 
 **Avant / après** (banc `--bench-cpu 10`, six passes alternées avant / après,
 première passe de chaque exécutable écartée, charge de 2 à 8 %) :

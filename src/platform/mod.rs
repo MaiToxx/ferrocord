@@ -47,6 +47,9 @@ pub mod idle;
 // Signal de changement d'un dossier, icône de la fenêtre (lot « cpu »).
 pub mod dirwatch;
 pub mod app_icon;
+// Ressources de l'exécutable (lot « icône ») : le code est celui de `build.rs`, relu ici par ses tests.
+#[cfg(test)]
+mod winres;
 
 use crate::desk::Desktop;
 use crate::images::Source;
