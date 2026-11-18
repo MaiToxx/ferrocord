@@ -639,6 +639,12 @@ mod tests {
         assert_eq!(s.take_commands(), vec![fetch(None), fetch(Some(9))]);
         s.apply(Event::Relations(RelationsEvent::RelationRemove { id: 5 }));
         assert_eq!(s.take_commands(), vec![fetch(None), fetch(Some(9))]);
+        // Blocage accepté par Discord : appliqué à la réponse ; le RELATIONSHIP_ADD
+        // qui le répète ne redemande pas le profil une seconde fois.
+        s.apply(Event::Relations(RelationsEvent::Done { id: 5, what: crate::state::relations::Done::Blocked }));
+        assert_eq!(s.take_commands(), vec![fetch(None), fetch(Some(9))]);
+        s.apply(Event::Relations(RelationsEvent::RelationAdd(rel(RelKind::Blocked))));
+        assert_eq!(s.take_commands(), Vec::new());
         // Personne dont le profil n'a jamais été ouvert : rien ne part.
         s.apply(Event::Relations(RelationsEvent::RelationAdd(Relation { id: 7, ..rel(RelKind::Incoming) })));
         assert_eq!(s.take_commands(), Vec::new());

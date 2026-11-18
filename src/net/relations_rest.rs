@@ -13,7 +13,7 @@ use super::super::raw::RawChannel;
 use super::super::relations as parse;
 use super::{api, ApiError, Ctx};
 use crate::state::model::DISCORD_EPOCH;
-use crate::state::relations::{RelationsAction, RelationsCmd, RelationsEvent};
+use crate::state::relations::{Done, RelationsAction, RelationsCmd, RelationsEvent};
 use crate::state::Event;
 use reqwest::Method;
 use serde_json::{json, Value};
@@ -126,6 +126,10 @@ pub(super) async fn run(ctx: Arc<Ctx>, cmd: RelationsCmd) {
             // passerelle, qui le répétera sans effet. Sans cela, un blocage levé dont
             // l'événement ne venait pas laissait les messages masqués.
             RelationsCmd::Remove { user_id } => ctx.out.send(Event::Relations(RelationsEvent::RelationRemove { id: user_id })),
+            RelationsCmd::Block { user_id } => done(&ctx, user_id, Done::Blocked),
+            RelationsCmd::Accept { user_id } => done(&ctx, user_id, Done::Accepted),
+            RelationsCmd::Ignore { user_id } => done(&ctx, user_id, Done::Ignored),
+            RelationsCmd::Nickname { user_id, nickname } => ctx.out.send(Event::Relations(RelationsEvent::RelationUpdate { id: user_id, kind: None, nickname: Some(nickname), ignored: None })),
             RelationsCmd::Unignore { user_id } => ctx.out.send(Event::Relations(RelationsEvent::RelationUpdate { id: user_id, kind: None, nickname: None, ignored: Some(false) })),
             // Le reste revient par la passerelle (RELATIONSHIP_*, CHANNEL_*, MESSAGE_ACK).
             _ => {}
@@ -135,6 +139,10 @@ pub(super) async fn run(ctx: Arc<Ctx>, cmd: RelationsCmd) {
         Err(ApiError::Cancelled | ApiError::Blocked(_) | ApiError::Unknown(_) | ApiError::Other(_) | ApiError::NotFound(_) | ApiError::Forbidden) if action == RelationsAction::Ack => {}
         Err(e) => ctx.out.send(e.into_event(|problem| Event::Relations(RelationsEvent::Failed { action, problem }))),
     }
+}
+
+fn done(ctx: &Ctx, id: u64, what: Done) {
+    ctx.out.send(Event::Relations(RelationsEvent::Done { id, what }));
 }
 
 /// MP créé ou retrouvé (réponse de Create DM) : publié comme par la
