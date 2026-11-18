@@ -102,6 +102,8 @@ pub mod scheduled;
 pub mod translate;
 // Mots-clés surveillés (plugin, lot E1).
 pub mod keywords;
+// Catégories de contacts de la page Amis (locales).
+pub mod friend_groups;
 // Onglets, vue scindée, fenêtres détachées, zoom par salon (lot E2).
 pub mod windows;
 // Index de la recherche locale (plugin, lot E1).

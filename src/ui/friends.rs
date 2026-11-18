@@ -62,6 +62,18 @@ pub(super) struct FriendsPage {
     pub(super) active: super::friends_active::Cache,
     /// Création d'un groupe : amis choisis.
     pub(super) picking: Option<Vec<u64>>,
+    /// Catégorie de contacts choisie (filtre de la liste) ; `None` : toutes.
+    category: Option<String>,
+    /// Champ de nom ouvert : création, ou renommage de la catégorie choisie.
+    category_edit: Option<CategoryEdit>,
+}
+
+struct CategoryEdit {
+    text: String,
+    rename: bool,
+    /// Nom refusé au dernier essai.
+    refused: bool,
+    fresh: bool,
 }
 
 /// Ce qu'un clic sur une ligne demande (appliqué après le dessin).
@@ -601,8 +613,14 @@ impl App {
             search_field(ui, &t, &mut self.friends.query, st::SEARCH_HINT.get(lang));
             ui.add_space(f32::from(PAGE_Y));
 
-            let ids = self.friends.ids(&self.store);
+            let mut ids = self.friends.ids(&self.store);
             let picking = self.friends.picking.is_some();
+            // Catégories de contacts : filtre des onglets d'amis (pas des demandes ni des bloqués).
+            let filtered = !picking && matches!(self.friends.tab, FriendTab::Online | FriendTab::All) && self.categories_bar(ui, &t);
+            let shown: Option<Vec<u64>> = filtered
+                .then(|| self.friends.category.as_deref().and_then(|c| self.local.prefs.friend_groups.members(c)).map(|m| ids.iter().copied().filter(|id| m.contains(id)).collect()))
+                .flatten();
+            let all = shown.map(|s| std::mem::replace(&mut ids, s));
             let tab_label = match self.friends.tab {
                 _ if picking => st::TAB_ALL,
                 FriendTab::Online => st::TAB_ONLINE,
@@ -615,6 +633,8 @@ impl App {
             if ids.is_empty() {
                 let empty = if !self.friends.query.trim().is_empty() {
                     st::NO_MATCH
+                } else if all.is_some() {
+                    st::CAT_EMPTY
                 } else {
                     match (picking, self.friends.tab) {
                         (true, _) | (false, FriendTab::All) => st::NONE_ALL,
@@ -634,11 +654,107 @@ impl App {
                     }
                 }
             });
-            self.friends.give_back(ids);
+            self.friends.give_back(all.unwrap_or(ids));
             if let Some(a) = action {
                 self.friend_action(a);
             }
         });
+    }
+
+    pub(super) fn friend_groups_edit(&mut self, change: impl FnOnce(&mut crate::state::friend_groups::FriendGroups)) {
+        let mut p = self.local.prefs.clone();
+        change(&mut p.friend_groups);
+        self.set_local_prefs(p);
+    }
+
+    /// Rangée des catégories de contacts : « Toutes », une pastille par catégorie,
+    /// « + » ; puis, selon le cas, le champ de nom ou les actions de la catégorie
+    /// choisie. Vrai si une catégorie existante est choisie (la liste est filtrée).
+    fn categories_bar(&mut self, ui: &mut egui::Ui, t: &Tokens) -> bool {
+        let lang = self.lang;
+        let names: Vec<String> = self.local.prefs.friend_groups.groups.iter().map(|g| g.name.clone()).collect();
+        // Catégorie choisie qui n'existe plus (supprimée, fichier modifié) : « Toutes ».
+        if self.friends.category.as_ref().is_some_and(|c| self.local.prefs.friend_groups.members(c).is_none()) {
+            self.friends.category = None;
+        }
+        let page = &mut self.friends;
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(t.spacing.item_x, t.spacing.item_y);
+            if !names.is_empty() && super::plugins::chip(ui, t, st::CAT_EVERYONE.get(lang), page.category.is_none()) {
+                page.category = None;
+                page.category_edit = None;
+            }
+            for name in &names {
+                let on = page.category.as_deref() == Some(name.as_str());
+                if super::plugins::chip(ui, t, name, on) {
+                    page.category = (!on).then(|| name.clone());
+                    page.category_edit = None;
+                }
+            }
+            let label = if names.is_empty() { format!("+ {}", st::CAT_NEW.get(lang)) } else { "+".to_string() };
+            if names.len() < crate::state::friend_groups::MAX_GROUPS && super::plugins::chip(ui, t, &label, page.category_edit.as_ref().is_some_and(|e| !e.rename)) {
+                page.category_edit = match page.category_edit.take() {
+                    Some(e) if !e.rename => None,
+                    _ => Some(CategoryEdit { text: String::new(), rename: false, refused: false, fresh: true }),
+                };
+            }
+        });
+        // Champ de nom (création ou renommage), validé par Entrée ou le bouton.
+        let mut submit = None;
+        let mut delete = false;
+        if let Some(edit) = page.category_edit.as_mut() {
+            let mut close = false;
+            ui.horizontal(|ui| {
+                let field = ui.add(egui::TextEdit::singleline(&mut edit.text).hint_text(st::CAT_NAME_HINT.get(lang)).char_limit(crate::state::friend_groups::MAX_NAME).desired_width(220.0));
+                if std::mem::take(&mut edit.fresh) {
+                    field.request_focus();
+                }
+                let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                let word = if edit.rename { st::CAT_RENAME } else { st::CAT_CREATE };
+                if super::plugins::chip(ui, t, word.get(lang), false) || enter {
+                    submit = Some((edit.text.clone(), edit.rename));
+                }
+                if super::plugins::chip(ui, t, st::CAT_CANCEL.get(lang), false) || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    close = true;
+                }
+            });
+            if edit.refused {
+                ui.label(RichText::new(st::CAT_TAKEN.get(lang)).size(t.typography.small).color(t.colors.danger));
+            }
+            if close {
+                page.category_edit = None;
+            }
+        } else if page.category.is_some() {
+            ui.horizontal(|ui| {
+                if super::plugins::chip(ui, t, st::CAT_RENAME.get(lang), false) {
+                    page.category_edit = Some(CategoryEdit { text: page.category.clone().unwrap_or_default(), rename: true, refused: false, fresh: true });
+                }
+                if super::plugins::chip(ui, t, st::CAT_DELETE.get(lang), false) {
+                    delete = true;
+                }
+            });
+        }
+        if let Some((text, rename)) = submit {
+            let old = self.friends.category.clone();
+            let mut ok = false;
+            self.friend_groups_edit(|g| {
+                ok = match (&old, rename) {
+                    (Some(old), true) => g.rename(old, &text),
+                    _ => g.create(&text),
+                };
+            });
+            if ok {
+                self.friends.category = Some(crate::state::friend_groups::clean(&text));
+                self.friends.category_edit = None;
+            } else if let Some(e) = self.friends.category_edit.as_mut() {
+                e.refused = true;
+            }
+        }
+        if delete && let Some(name) = self.friends.category.take() {
+            self.friend_groups_edit(|g| g.delete(&name));
+        }
+        ui.add_space(t.spacing.item_y);
+        self.friends.category.is_some()
     }
 
     /// Colonne « En ligne » : cartes des amis en vocal ou en activité (`friends_active.rs`).
