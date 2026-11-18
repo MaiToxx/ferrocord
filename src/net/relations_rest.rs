@@ -77,7 +77,10 @@ fn request(cmd: &RelationsCmd, now_ms: i64) -> Request {
             }
             r("POST /users/@me/relationships", 0, Method::POST, "/users/@me/relationships".into(), Some(body))
         }
-        RelationsCmd::Accept { user_id } => r("PUT /users/@me/relationships/{}", 0, Method::PUT, format!("/users/@me/relationships/{user_id}"), Some(json!({}))),
+        // `confirm_stranger_request` (docs.discord.food, « Create Relationship ») : sans lui, Discord
+        // refuse la demande d'une personne sans ami ni serveur en commun (« Tu dois confirmer la
+        // demande d'ami »). Le clic sur « Accepter » est ce consentement.
+        RelationsCmd::Accept { user_id } => r("PUT /users/@me/relationships/{}", 0, Method::PUT, format!("/users/@me/relationships/{user_id}"), Some(json!({ "confirm_stranger_request": true }))),
         RelationsCmd::Block { user_id } => r("PUT /users/@me/relationships/{}", 0, Method::PUT, format!("/users/@me/relationships/{user_id}"), Some(json!({ "type": 2 }))),
         RelationsCmd::Remove { user_id } => r("DELETE /users/@me/relationships/{}", 0, Method::DELETE, format!("/users/@me/relationships/{user_id}"), None),
         RelationsCmd::Unignore { user_id } => r("DELETE /users/@me/relationships/{}/ignore", 0, Method::DELETE, format!("/users/@me/relationships/{user_id}/ignore"), None),
@@ -131,7 +134,15 @@ pub(super) async fn run(ctx: Arc<Ctx>, cmd: RelationsCmd) {
             RelationsCmd::Ignore { user_id } => done(&ctx, user_id, Done::Ignored),
             RelationsCmd::Nickname { user_id, nickname } => ctx.out.send(Event::Relations(RelationsEvent::RelationUpdate { id: user_id, kind: None, nickname: Some(nickname), ignored: None })),
             RelationsCmd::Unignore { user_id } => ctx.out.send(Event::Relations(RelationsEvent::RelationUpdate { id: user_id, kind: None, nickname: None, ignored: Some(false) })),
-            // Le reste revient par la passerelle (RELATIONSHIP_*, CHANNEL_*, MESSAGE_ACK).
+            // MP et groupes : même principe, la réponse suffit. MP fermé, groupe quitté
+            // ou demande refusée : la conversation sort de la liste.
+            RelationsCmd::Close { channel_id } | RelationsCmd::RejectRequest { channel_id } => ctx.out.send(Event::ChannelDelete { guild_id: None, id: channel_id }),
+            // Groupe renommé, icône ou propriétaire changés : la réponse est le groupe.
+            // Ajout à un MP à deux : la réponse est le groupe créé (sinon elle est vide,
+            // et le nouveau membre vient par CHANNEL_RECIPIENT_ADD).
+            RelationsCmd::Rename { .. } | RelationsCmd::SetIcon { .. } | RelationsCmd::Transfer { .. } | RelationsCmd::AddRecipient { .. } => updated(&ctx, &body),
+            RelationsCmd::RemoveRecipient { channel_id, user_id } => ctx.out.send(Event::Relations(RelationsEvent::RecipientRemove { channel_id, user_id })),
+            // Le reste revient par la passerelle (MESSAGE_ACK).
             _ => {}
         },
         Err(ApiError::Captcha) => ctx.out.send(Event::Relations(RelationsEvent::Captcha { action })),
@@ -143,6 +154,33 @@ pub(super) async fn run(ctx: Arc<Ctx>, cmd: RelationsCmd) {
 
 fn done(ctx: &Ctx, id: u64, what: Done) {
     ctx.out.send(Event::Relations(RelationsEvent::Done { id, what }));
+}
+
+/// MP ou groupe rendu par une écriture : publié comme le ferait CHANNEL_UPDATE.
+/// Réponse vide ou qui n'est pas un MP : rien.
+fn updated(ctx: &Ctx, body: &str) {
+    for e in updated_events(body) {
+        ctx.out.send(e);
+    }
+}
+
+fn updated_events(body: &str) -> Vec<Event> {
+    let Ok(c) = serde_json::from_str::<RawChannel>(body) else { return Vec::new() };
+    if c.guild_id.is_some() {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let group = c.group_recipients(&std::collections::HashMap::new());
+    if let Some((dm, known)) = c.into_dm_update() {
+        out.push(Event::DmUpsert { dm, known });
+    }
+    if let Some((channel_id, users)) = group {
+        out.push(Event::GroupRecipients { channel_id, users });
+    }
+    if let Some(e) = parse::private_channel(body) {
+        out.push(Event::Relations(e));
+    }
+    out
 }
 
 /// MP créé ou retrouvé (réponse de Create DM) : publié comme par la
@@ -183,7 +221,7 @@ mod tests {
         assert_eq!(note(&"é".repeat(200)), Some(json!({ "username": "alice", "note": "é".repeat(120) })));
         let block = request(&RelationsCmd::Block { user_id: 7 }, now);
         assert_eq!((block.method, block.path.as_str(), block.body), (Method::PUT, "/users/@me/relationships/7", Some(json!({ "type": 2 }))));
-        assert_eq!(request(&RelationsCmd::Accept { user_id: 7 }, now).body, Some(json!({})));
+        assert_eq!(request(&RelationsCmd::Accept { user_id: 7 }, now).body, Some(json!({ "confirm_stranger_request": true })));
         let rm = request(&RelationsCmd::Remove { user_id: 7 }, now);
         assert_eq!((rm.method, rm.path.as_str(), rm.body), (Method::DELETE, "/users/@me/relationships/7", None));
         assert_eq!(request(&RelationsCmd::Unignore { user_id: 7 }, now).path, "/users/@me/relationships/7/ignore");
@@ -210,6 +248,17 @@ mod tests {
         assert_eq!((acc.method, acc.path.as_str(), acc.route.major, acc.body), (Method::PUT, "/channels/9/recipients/@me", 9, Some(json!({ "consent_status": 2 }))));
         let rej = request(&RelationsCmd::RejectRequest { channel_id: 9 }, now);
         assert_eq!((rej.method, rej.path.as_str(), rej.body), (Method::DELETE, "/channels/9/recipients/@me", None));
+    }
+
+    #[test]
+    fn a_group_returned_by_a_write_is_applied_like_a_gateway_update() {
+        let body = r#"{ "id": "9", "type": 3, "name": "Les amis", "icon": null, "owner_id": "1", "recipients": [{ "id": "7", "username": "eve", "global_name": "Eve" }] }"#;
+        let ev = updated_events(body);
+        assert!(ev.iter().any(|e| matches!(e, Event::DmUpsert { dm, .. } if dm.id == 9 && dm.name == "Les amis")), "{ev:?}");
+        assert!(ev.iter().any(|e| matches!(e, Event::Relations(RelationsEvent::Dm { info, .. }) if info.id == 9)), "{ev:?}");
+        // Réponse vide (204), illisible, ou salon de serveur : rien.
+        assert!(updated_events("").is_empty() && updated_events("{}").is_empty());
+        assert!(updated_events(r#"{ "id": "9", "type": 0, "guild_id": "4", "name": "général" }"#).is_empty());
     }
 
     #[test]
