@@ -148,7 +148,9 @@ pub enum RelationsEvent {
     /// RELATIONSHIP_ADD : relation complète (création ou changement de type).
     RelationAdd(Relation),
     /// RELATIONSHIP_UPDATE : surnom ou « ignoré » ; `None` : inchangé.
-    RelationUpdate { id: u64, nickname: Option<Option<String>>, ignored: Option<bool> },
+    /// `kind` : le type porté par le paquet, s'il en porte un (un déblocage peut
+    /// arriver ainsi, la relation restant pour un surnom ou un « ignoré »).
+    RelationUpdate { id: u64, kind: Option<RelKind>, nickname: Option<Option<String>>, ignored: Option<bool> },
     RelationRemove { id: u64 },
     /// MP créé ou modifié (CHANNEL_CREATE / CHANNEL_UPDATE, réponse REST),
     /// avec les personnes qu'il nomme.
@@ -442,8 +444,11 @@ impl Relations {
         self.bump();
     }
 
-    pub(super) fn update(&mut self, id: u64, nickname: Option<Option<String>>, ignored: Option<bool>) {
+    pub(super) fn update(&mut self, id: u64, kind: Option<RelKind>, nickname: Option<Option<String>>, ignored: Option<bool>) {
         if let Some(r) = self.relations.get_mut(&id) {
+            if let Some(k) = kind {
+                r.kind = k;
+            }
             if let Some(n) = nickname {
                 r.nickname = n;
             }
@@ -547,14 +552,17 @@ mod tests {
         assert!(s.rev() != r0);
         assert_eq!(s.list(FriendTab::All, "", |_| false), vec![2, 3, 1]);
         assert_eq!(s.display_name(3), "Bob", "la personne connue est gardée");
-        s.update(3, Some(Some("Bobby".into())), Some(true));
+        s.update(3, None, Some(Some("Bobby".into())), Some(true));
         assert_eq!(s.display_name(3), "Bobby");
         assert_eq!(s.list(FriendTab::Blocked, "", |_| false), vec![3, 5], "ignoré : listé avec les bloqués");
+        // Type porté par la mise à jour : un blocage levé ne reste pas « bloqué ».
+        s.update(5, Some(RelKind::Other), None, None);
+        assert_eq!(s.relation(5).map(|r| r.kind), Some(RelKind::Other));
         s.remove(3);
         assert!(s.relation(3).is_none());
         // Mise à jour d'une relation inconnue : rien.
         let r1 = s.rev();
-        s.update(77, None, Some(true));
+        s.update(77, None, None, Some(true));
         assert_eq!(s.rev(), r1);
     }
 

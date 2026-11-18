@@ -49,7 +49,14 @@ impl Store {
                 // Demande partie ou acceptée ailleurs : plus rien à suggérer.
                 self.take_suggestion(id);
             }
-            RelationsEvent::RelationUpdate { id, nickname, ignored } => self.relations.update(id, nickname, ignored),
+            RelationsEvent::RelationUpdate { id, kind, nickname, ignored } => {
+                let before = self.relations.relation(id).map(|r| r.kind);
+                self.relations.update(id, kind, nickname, ignored);
+                if self.relations.relation(id).map(|r| r.kind) != before {
+                    self.keep_friend_presences();
+                    self.relation_changed(id);
+                }
+            }
             RelationsEvent::RelationRemove { id } => {
                 self.relations.remove(id);
                 self.keep_friend_presences();

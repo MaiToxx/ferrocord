@@ -318,7 +318,7 @@ fn decode(kind: &str, d: &str) -> Option<RelationsEvent> {
         "RELATIONSHIP_ADD" => Some(RelationsEvent::RelationAdd(serde_json::from_str::<RawRelation>(d).ok()?.relation()?)),
         "RELATIONSHIP_UPDATE" => {
             let r: RawRelation = serde_json::from_str(d).ok()?;
-            Some(RelationsEvent::RelationUpdate { id: r.id()?, nickname: r.nickname, ignored: r.user_ignored })
+            Some(RelationsEvent::RelationUpdate { id: r.id()?, kind: r.kind.map(RelKind::from_code), nickname: r.nickname, ignored: r.user_ignored })
         }
         "RELATIONSHIP_REMOVE" => Some(RelationsEvent::RelationRemove { id: serde_json::from_str::<RawRelation>(d).ok()?.id()? }),
         "MESSAGE_ACK" => {
@@ -419,7 +419,7 @@ mod tests {
     fn relationship_events() {
         let RelationsEvent::RelationAdd(r) = ev("RELATIONSHIP_ADD", "relationship_add") else { panic!() };
         assert_eq!((r.id, r.kind, r.user.map(|u| u.name)), (CAROL, RelKind::Friend, Some("Carol".into())));
-        let RelationsEvent::RelationUpdate { id, nickname, ignored } = ev("RELATIONSHIP_UPDATE", "relationship_update") else { panic!() };
+        let RelationsEvent::RelationUpdate { id, nickname, ignored, .. } = ev("RELATIONSHIP_UPDATE", "relationship_update") else { panic!() };
         assert_eq!((id, nickname, ignored), (ALICE, Some(Some("Ali".into())), Some(true)));
         let RelationsEvent::RelationRemove { id } = ev("RELATIONSHIP_REMOVE", "relationship_remove") else { panic!() };
         assert_eq!(id, DAN);
@@ -428,6 +428,9 @@ mod tests {
         assert_eq!(nickname, None);
         let Some(RelationsEvent::RelationUpdate { nickname, .. }) = decode("RELATIONSHIP_UPDATE", r#"{ "id": "1", "type": 1, "nickname": null }"#) else { panic!() };
         assert_eq!(nickname, Some(None));
+        // Type porté : suivi (blocage levé sans RELATIONSHIP_REMOVE) ; absent : inchangé.
+        assert!(matches!(decode("RELATIONSHIP_UPDATE", r#"{ "id": "1", "type": 0 }"#), Some(RelationsEvent::RelationUpdate { kind: Some(RelKind::Other), .. })));
+        assert!(matches!(decode("RELATIONSHIP_UPDATE", r#"{ "id": "1", "nickname": "A" }"#), Some(RelationsEvent::RelationUpdate { kind: None, .. })));
         assert!(decode("RELATIONSHIP_ADD", r#"{ "id": "1" }"#).is_none(), "sans type : ignoré");
     }
 
