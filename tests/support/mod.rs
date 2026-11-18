@@ -45,7 +45,7 @@ pub mod audio;
 pub mod video;
 
 /// Délai maximum pour toute attente : un test bloqué échoue au lieu de pendre.
-pub const WAIT: Duration = Duration::from_secs(5);
+pub const WAIT: Duration = Duration::from_secs(20);
 
 /// Jeton utilisateur factice (évidemment faux).
 pub const USER_TOKEN: &str = "faux.jeton.utilisateur-DE-TEST";

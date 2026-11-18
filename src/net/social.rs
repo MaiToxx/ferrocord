@@ -351,6 +351,29 @@ struct RawEmojisUpdate {
     emojis: Vec<super::raw::Item<RawGuildEmoji>>,
 }
 
+/// Plafond d'un paquet MESSAGE_REACTION_ADD_MANY : au-delà, le reste est ignoré.
+const MAX_MANY: usize = 512;
+
+/// MESSAGE_REACTION_ADD_MANY (`reactions` : liste de `{ users, emoji }`) : sur un
+/// message très actif, Discord regroupe les réactions au lieu d'en envoyer une par
+/// une. Sans cela, elles n'apparaissaient qu'au rechargement du salon.
+fn reactions_many(d: &str) -> Vec<SocialEvent> {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(d) else { return Vec::new() };
+    let id = |x: &serde_json::Value| x.as_str().and_then(|s| s.parse::<u64>().ok()).or_else(|| x.as_u64());
+    let (Some(channel_id), Some(message_id)) = (id(&v["channel_id"]), id(&v["message_id"])) else { return Vec::new() };
+    let mut out = Vec::new();
+    for r in v["reactions"].as_array().into_iter().flatten() {
+        let Some(emoji) = serde_json::from_value::<RawEmoji>(r["emoji"].clone()).ok().and_then(|e| e.emoji()) else { continue };
+        for user_id in r["users"].as_array().into_iter().flatten().filter_map(id) {
+            if out.len() == MAX_MANY {
+                return out;
+            }
+            out.push(SocialEvent::Reaction { channel_id, message_id, user_id, emoji: emoji.clone(), burst: false, add: true });
+        }
+    }
+    out
+}
+
 /// Événements de passerelle de ce lot. MESSAGE_UPDATE est aussi lu par
 /// `gateway::dispatch` (texte) : seul `pinned` est lu ici.
 pub(super) fn dispatch(kind: &str, d: &str, out: &Out) {
@@ -382,6 +405,11 @@ pub(super) fn dispatch(kind: &str, d: &str, out: &Out) {
     };
     if let Some(ev) = ev {
         out.send(Event::Social(ev));
+    }
+    if kind == "MESSAGE_REACTION_ADD_MANY" {
+        for ev in reactions_many(d) {
+            out.send(Event::Social(ev));
+        }
     }
     if kind == "MESSAGE_REACTION_ADD"
         && let Some(ev) = reacted_to(d)
@@ -741,6 +769,12 @@ mod tests {
         assert!(events("MESSAGE_UPDATE", r#"{ "id": "1", "channel_id": "2", "content": "x" }"#).is_empty());
         let ev = events("MESSAGE_UPDATE", r#"{ "id": "1", "channel_id": "2", "pinned": true }"#);
         assert!(matches!(&ev[..], [Event::Social(SocialEvent::Pinned { pinned: true, .. })]));
+        // Réactions regroupées : une par personne et par emoji.
+        let many = r#"{ "channel_id": "2", "message_id": "1", "guild_id": "7", "reactions": [{ "users": ["5", "6"], "emoji": { "id": null, "name": "👍" } }, { "users": ["5"], "emoji": { "id": "77", "name": "chat" } }, { "users": ["8"] }] }"#;
+        let ev = events("MESSAGE_REACTION_ADD_MANY", many);
+        assert_eq!(ev.len(), 3, "{ev:?}");
+        assert!(matches!(&ev[1], Event::Social(SocialEvent::Reaction { channel_id: 2, message_id: 1, user_id: 6, add: true, burst: false, emoji }) if *emoji == Emoji::Unicode("👍".into())));
+        assert!(events("MESSAGE_REACTION_ADD_MANY", r#"{ "channel_id": "2", "reactions": [] }"#).is_empty());
         // Illisibles : rien.
         for (k, d) in [("MESSAGE_REACTION_ADD", r#"{ "channel_id": "2", "message_id": "1" }"#), ("MESSAGE_REACTION_ADD", "pas du json"), ("GUILD_EMOJIS_UPDATE", "{}")] {
             assert!(events(k, d).is_empty(), "{k} {d}");

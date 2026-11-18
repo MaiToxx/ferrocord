@@ -19,6 +19,8 @@ pub enum Event {
     /// MP créé ou retrouvé à la demande de l'utilisateur (« Envoyer un message ») : à ouvrir.
     DmOpened { channel_id: u64 },
     Ready { me: User, guilds: Vec<Guild>, dms: Vec<Dm> },
+    /// USER_UPDATE : mon compte a changé (nom, avatar), ici ou sur un autre appareil.
+    MeUpdate(User),
     GuildCreate(Guild),
     /// GUILD_UPDATE : propriétaire et icône. `owner_id` : `None` si absent du
     /// paquet (rien ne change), `Some(None)` si illisible (propriétaire inconnu).

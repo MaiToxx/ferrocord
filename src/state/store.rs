@@ -602,6 +602,11 @@ impl Store {
                 self.keep_friend_presences();
             }
             Event::DmOpened { channel_id } => self.dm_opened(channel_id),
+            Event::MeUpdate(u) => {
+                if self.me.as_ref().is_some_and(|me| me.id == u.id) {
+                    self.me = Some(u);
+                }
+            }
             Event::Ready { me, guilds, dms } => {
                 self.activity.on_ready();
                 self.me = Some(me);
