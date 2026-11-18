@@ -157,7 +157,10 @@ pub struct MfEncoder {
     width: u32,
     height: u32,
     fps: u32,
+    /// Débit appliqué à la transformée : `asked` plafonné par [`capped`].
     bps: u32,
+    /// Débit demandé par l'appelant, repris tel quel à chaque nouvelle taille.
+    asked: u32,
     /// Entrées que la transformée a réclamées (METransformNeedInput) et pas encore reçues.
     credits: u32,
     ready: Vec<EncodedFrame>,
@@ -171,6 +174,17 @@ pub struct MfEncoder {
 // objet COM s'utilise depuis n'importe quel fil ; `&mut self` empêche tout
 // accès concurrent de notre côté.
 unsafe impl Send for MfEncoder {}
+
+/// Débit plafonné à un demi-bit par pixel et par image. Au-delà, un encodeur
+/// matériel quantifie si finement (mesuré sur un PC à RTX 4090 et UHD 770 :
+/// 1,5 Mb/s en 192×144, 4 Mb/s en 320×240) qu'il écrit des coefficients à
+/// `level_prefix` > 15, interdits en profil Baseline : OpenH264 rejette alors
+/// chaque image (`ERR_INFO_CAVLC_INVALID_LEVEL`). Le plafond ne retire rien
+/// de visible : 1080p30 garde droit à 31 Mb/s.
+fn capped(bps: u32, w: u32, h: u32, fps: u32) -> u32 {
+    let cap = u64::from(w) * u64::from(h) * u64::from(fps) / 2;
+    bps.min(u32::try_from(cap).unwrap_or(u32::MAX)).max(1)
+}
 
 /// Transformées H.264 matérielles disponibles, de la plus recommandée à la moins.
 fn hardware_encoders() -> Vec<IMFActivate> {
@@ -206,11 +220,15 @@ impl MfEncoder {
         if !ready() {
             return Err(CodecError::Internal("Media Foundation indisponible sur ce fil".into()));
         }
-        let (w, h, fps, bps) = (w & !1, h & !1, fps.clamp(1, 240), bps.max(1));
+        let (w, h, fps, asked) = (w & !1, h & !1, fps.clamp(1, 240), bps.max(1));
+        let bps = capped(asked, w, h, fps);
         let mut last = CodecError::Internal("aucun encodeur H.264 matériel".into());
         for a in hardware_encoders() {
             match Self::open(a, w, h, fps, bps) {
-                Ok(e) => return Ok(e),
+                Ok(mut e) => {
+                    e.asked = asked;
+                    return Ok(e);
+                }
                 Err(e) => last = e,
             }
         }
@@ -277,6 +295,7 @@ impl MfEncoder {
             height: h,
             fps,
             bps,
+            asked: bps,
             credits: 0,
             ready: Vec::new(),
             bytes: Vec::new(),
@@ -340,7 +359,7 @@ impl Encoder for MfEncoder {
         check_size(f.width, f.height)?;
         if (f.width & !1, f.height & !1) != (self.width, self.height) {
             // Nouvelle taille : nouvelle transformée (la première image est une image clé).
-            *self = Self::new(f.width, f.height, self.fps, self.bps)?;
+            *self = Self::new(f.width, f.height, self.fps, self.asked)?;
         }
         let (w, h) = (f.width as usize, f.height as usize);
         let (y, u, v): (&[u8], &[u8], &[u8]) = match &f.data {
@@ -398,7 +417,8 @@ impl Encoder for MfEncoder {
     }
 
     fn set_bitrate(&mut self, bps: u32) {
-        let bps = bps.max(1);
+        self.asked = bps.max(1);
+        let bps = capped(self.asked, self.width, self.height, self.fps);
         let a = self.api.as_ref();
         // Plafond d'abord quand le débit baisse (moyenne ≤ plafond à tout instant).
         let mut keys = [CODECAPI_AVEncCommonMaxBitRate, CODECAPI_AVEncCommonMeanBitRate];
