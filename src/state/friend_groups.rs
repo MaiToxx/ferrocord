@@ -84,6 +84,11 @@ impl FriendGroups {
         self.position(name).map(|i| self.groups[i].members.as_slice())
     }
 
+    /// Rang de la première catégorie qui contient cette personne.
+    pub fn first_of(&self, user: u64) -> Option<usize> {
+        self.groups.iter().position(|g| g.members.contains(&user))
+    }
+
     /// Section `[categories_amis]` de `local.toml`.
     pub fn to_toml(&self) -> String {
         let q = super::audio_prefs::quoted;
@@ -141,6 +146,7 @@ mod tests {
         g.set("Inconnue", 5, true);
         assert_eq!(g.members("Famille"), Some(&[5, 6][..]));
         assert!(g.contains("Travail", 5) && !g.contains("Travail", 6));
+        assert_eq!((g.first_of(5), g.first_of(6), g.first_of(9)), (Some(0), Some(0), None));
         g.set("Famille", 5, false);
         assert_eq!(g.members("Famille"), Some(&[6][..]));
         assert!(!g.rename("Famille", "travail"), "nom déjà pris");

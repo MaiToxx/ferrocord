@@ -50,6 +50,9 @@ pub mod t {
         CAT_RENAME = "Renommer", "Rename";
         CAT_DELETE = "Supprimer la catégorie", "Delete category";
         CAT_CANCEL = "Annuler", "Cancel";
+        CAT_OTHERS = "Sans catégorie", "Uncategorized";
+        CAT_FOLD = "replier", "collapse";
+        CAT_UNFOLD = "déplier", "expand";
         CAT_NONE_YET = "Aucune catégorie. Créez-en une depuis la page Amis.", "No category yet. Create one from the Friends page.";
         CAT_EMPTY = "Personne dans cette catégorie. Clic droit sur un ami, puis «\u{a0}Catégories\u{a0}».", "Nobody in this category. Right-click a friend, then “Categories”.";
         CAT_TAKEN = "Ce nom est vide ou déjà pris.", "This name is empty or already taken.";

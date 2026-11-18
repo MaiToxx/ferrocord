@@ -112,6 +112,7 @@ Le code et les libellés de ce qui suit existent et sont couverts par les tests 
 - Liste des membres, statuts en ligne, statut personnalisé, indicateur « en train d'écrire »
 - Sélecteur de GIF et favoris, recherche de messages, boîte de réception
 - Paramètres du serveur et des salons, modération, plugins (`docs/plugins.md`)
+- Catégories de contacts : des groupes que l'on crée pour ranger ses amis, sur la page Amis et dans la colonne des messages privés. Elles n'existent pas chez Discord et restent sur l'ordinateur (`local.toml`)
 
 ## Pas encore géré
 
