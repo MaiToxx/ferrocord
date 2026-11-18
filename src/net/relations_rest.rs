@@ -121,6 +121,12 @@ pub(super) async fn run(ctx: Arc<Ctx>, cmd: RelationsCmd) {
                     ctx.out.send(Event::Relations(e));
                 }
             }
+            // Retrait accepté par Discord (ami retiré, demande annulée, blocage levé) :
+            // appliqué tout de suite, sans dépendre du RELATIONSHIP_REMOVE de la
+            // passerelle, qui le répétera sans effet. Sans cela, un blocage levé dont
+            // l'événement ne venait pas laissait les messages masqués.
+            RelationsCmd::Remove { user_id } => ctx.out.send(Event::Relations(RelationsEvent::RelationRemove { id: user_id })),
+            RelationsCmd::Unignore { user_id } => ctx.out.send(Event::Relations(RelationsEvent::RelationUpdate { id: user_id, kind: None, nickname: None, ignored: Some(false) })),
             // Le reste revient par la passerelle (RELATIONSHIP_*, CHANNEL_*, MESSAGE_ACK).
             _ => {}
         },
