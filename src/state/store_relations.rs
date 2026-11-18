@@ -43,9 +43,13 @@ impl Store {
             }
             RelationsEvent::RelationAdd(r) => {
                 let id = r.id;
+                // Même type qu'avant (écriture déjà appliquée à la réponse) : le profil n'est pas redemandé.
+                let same = self.relations.relation(id).is_some_and(|old| old.kind == r.kind);
                 self.relations.add(r);
                 self.keep_friend_presences();
-                self.relation_changed(id);
+                if !same {
+                    self.relation_changed(id);
+                }
                 // Demande partie ou acceptée ailleurs : plus rien à suggérer.
                 self.take_suggestion(id);
             }
@@ -58,9 +62,21 @@ impl Store {
                 }
             }
             RelationsEvent::RelationRemove { id } => {
+                let known = self.relations.relation(id).is_some();
                 self.relations.remove(id);
                 self.keep_friend_presences();
-                self.relation_changed(id);
+                if known {
+                    self.relation_changed(id);
+                }
+            }
+            RelationsEvent::Done { id, what } => {
+                let before = self.relations.relation(id).map(|r| r.kind);
+                self.relations.done(id, what);
+                if self.relations.relation(id).map(|r| r.kind) != before {
+                    self.keep_friend_presences();
+                    self.relation_changed(id);
+                    self.take_suggestion(id);
+                }
             }
             RelationsEvent::Dm { info, people, known_recipients } => {
                 self.reads.track(info.id);

@@ -37,6 +37,15 @@ pub enum RelKind {
     Other,
 }
 
+/// Écriture sur une relation que Discord vient d'accepter.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Done {
+    Blocked,
+    /// Demande reçue acceptée.
+    Accepted,
+    Ignored,
+}
+
 impl RelKind {
     pub fn from_code(code: u64) -> RelKind {
         match code {
@@ -152,6 +161,9 @@ pub enum RelationsEvent {
     /// arriver ainsi, la relation restant pour un surnom ou un « ignoré »).
     RelationUpdate { id: u64, kind: Option<RelKind>, nickname: Option<Option<String>>, ignored: Option<bool> },
     RelationRemove { id: u64 },
+    /// Écriture acceptée par Discord (réponse de la requête) : appliquée sans
+    /// attendre le RELATIONSHIP_* de la passerelle, qui la répétera sans effet.
+    Done { id: u64, what: Done },
     /// MP créé ou modifié (CHANNEL_CREATE / CHANNEL_UPDATE, réponse REST),
     /// avec les personnes qu'il nomme.
     Dm { info: DmInfo, people: Vec<Person>, known_recipients: bool },
@@ -459,6 +471,26 @@ impl Relations {
         }
     }
 
+    /// Écriture acceptée par Discord. Une relation connue garde son surnom et sa
+    /// personne ; une acceptation ne vaut que pour une demande reçue (la même
+    /// requête, sans demande, en envoie une).
+    pub(super) fn done(&mut self, id: u64, what: Done) {
+        let new = |kind, ignored| Relation { id, kind, nickname: None, ignored, user: None };
+        match (what, self.relations.get_mut(&id)) {
+            (Done::Blocked, Some(r)) => r.kind = RelKind::Blocked,
+            (Done::Blocked, None) => {
+                self.relations.insert(id, new(RelKind::Blocked, false));
+            }
+            (Done::Accepted, Some(r)) if r.kind == RelKind::Incoming => r.kind = RelKind::Friend,
+            (Done::Accepted, _) => return,
+            (Done::Ignored, Some(r)) => r.ignored = true,
+            (Done::Ignored, None) => {
+                self.relations.insert(id, new(RelKind::Other, true));
+            }
+        }
+        self.bump();
+    }
+
     pub(super) fn remove(&mut self, id: u64) {
         if self.relations.remove(&id).is_some() {
             self.bump();
@@ -555,6 +587,17 @@ mod tests {
         s.update(3, None, Some(Some("Bobby".into())), Some(true));
         assert_eq!(s.display_name(3), "Bobby");
         assert_eq!(s.list(FriendTab::Blocked, "", |_| false), vec![3, 5], "ignoré : listé avec les bloqués");
+        // Écritures acceptées : inconnu bloqué ou ignoré, demande reçue acceptée.
+        let mut d = sample();
+        d.done(90, Done::Blocked);
+        d.done(91, Done::Ignored);
+        assert_eq!(d.relation(90).map(|r| (r.kind, r.ignored)), Some((RelKind::Blocked, false)));
+        assert_eq!(d.relation(91).map(|r| (r.kind, r.ignored)), Some((RelKind::Other, true)));
+        d.done(92, Done::Accepted);
+        assert!(d.relation(92).is_none(), "sans demande reçue : rien");
+        d.add(Relation { id: 92, kind: RelKind::Incoming, nickname: None, ignored: false, user: None });
+        d.done(92, Done::Accepted);
+        assert_eq!(d.relation(92).map(|r| r.kind), Some(RelKind::Friend));
         // Type porté par la mise à jour : un blocage levé ne reste pas « bloqué ».
         s.update(5, Some(RelKind::Other), None, None);
         assert_eq!(s.relation(5).map(|r| r.kind), Some(RelKind::Other));
