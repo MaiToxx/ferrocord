@@ -159,6 +159,27 @@ impl App {
                 self.invite_user_to(g, user_id, name);
             }
         }
+        // Catégories de contacts (locales) : une case par catégorie, pour un ami.
+        if kind == Some(RelKind::Friend) {
+            let groups = self.local.prefs.friend_groups.clone();
+            let mut change = None;
+            menu::submenu(ui, &t, st::CATEGORIES.get(lang), |ui| {
+                if groups.groups.is_empty() {
+                    ui.label(egui::RichText::new(st::CAT_NONE_YET.get(lang)).color(t.colors.muted));
+                }
+                long_list(ui, |ui| {
+                    for g in &groups.groups {
+                        let mut on = g.members.contains(&user_id);
+                        if menu::check(ui, &t, &g.name, &mut on) {
+                            change = Some((g.name.clone(), on));
+                        }
+                    }
+                });
+            });
+            if let Some((name, on)) = change {
+                self.friend_groups_edit(|g| g.set(&name, user_id, on));
+            }
+        }
         match kind {
             Some(RelKind::Friend) => {
                 if menu::item(ui, &t, pt::MENU_REMOVE.get(lang), Some(Icon::Close), true).clicked() {

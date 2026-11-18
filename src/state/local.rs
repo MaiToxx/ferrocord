@@ -120,13 +120,15 @@ pub struct LocalPrefs {
     pub look: Box<super::look_prefs::LookPrefs>,
     /// Mots-clés surveillés (section `[mots_cles]`, plugin du lot E1).
     pub keywords: Box<super::keywords::KeywordPrefs>,
+    /// Catégories de contacts de la page Amis (section `[categories_amis]`).
+    pub friend_groups: Box<super::friend_groups::FriendGroups>,
     /// Onglets, vue scindée, fenêtres détachées, zoom par salon (section `[fenetres]`, lot E2).
     pub windows: Box<super::windows::WindowPrefs>,
 }
 
 impl Default for LocalPrefs {
     fn default() -> Self {
-        LocalPrefs { motion: Motion::System, intensity: Intensity::Full, saturation: 100, scroll_speed: 100, underline_links: false, role_colors: true, instant_tooltips: false, streamer: Streamer::default(), debug_log: false, voice: Default::default(), audio: Default::default(), video: Default::default(), update_manifest: String::new(), games: Vec::new(), recent_games: Vec::new(), mobile: Default::default(), plugins: Default::default(), identity: Default::default(), look: Default::default(), keywords: Default::default(), windows: Default::default() }
+        LocalPrefs { motion: Motion::System, intensity: Intensity::Full, saturation: 100, scroll_speed: 100, underline_links: false, role_colors: true, instant_tooltips: false, streamer: Streamer::default(), debug_log: false, voice: Default::default(), audio: Default::default(), video: Default::default(), update_manifest: String::new(), games: Vec::new(), recent_games: Vec::new(), mobile: Default::default(), plugins: Default::default(), identity: Default::default(), look: Default::default(), keywords: Default::default(), friend_groups: Default::default(), windows: Default::default() }
     }
 }
 
@@ -224,6 +226,8 @@ impl LocalPrefs {
             + &self.look.to_toml()
             + "\n"
             + &self.keywords.to_toml()
+            + "\n"
+            + &self.friend_groups.to_toml()
             + "\n"
             + &self.windows.to_toml()
     }
@@ -386,6 +390,11 @@ impl LocalPrefs {
                 super::keywords::SECTION => {
                     if let Some(t) = v.as_table() {
                         p.keywords = Box::new(super::keywords::KeywordPrefs::from_table(t));
+                    }
+                }
+                super::friend_groups::SECTION => {
+                    if let Some(t) = v.as_table() {
+                        p.friend_groups = Box::new(super::friend_groups::FriendGroups::from_table(t));
                     }
                 }
                 super::windows::SECTION => {

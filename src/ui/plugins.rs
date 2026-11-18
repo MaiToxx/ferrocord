@@ -72,7 +72,7 @@ fn categories(all: &[Plugin]) -> impl Iterator<Item = Category> + '_ {
 }
 
 /// Pastille de filtre ; `true` si elle est cliquée.
-fn chip(ui: &mut egui::Ui, t: &Tokens, text: &str, selected: bool) -> bool {
+pub(super) fn chip(ui: &mut egui::Ui, t: &Tokens, text: &str, selected: bool) -> bool {
     let ink = if selected { t.colors.on_accent } else { t.colors.button_text };
     let galley = ui.painter().layout_no_wrap(text.to_owned(), fonts::medium_font(t.typography.button), ink);
     let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x + 2.0 * t.spacing.control_x.min(14.0), CHIP), Sense::click());

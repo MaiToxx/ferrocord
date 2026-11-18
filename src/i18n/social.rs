@@ -42,6 +42,17 @@ pub mod t {
         NONE_BLOCKED = "Personne n'est bloqué ni ignoré.", "Nobody is blocked or ignored.";
         NO_MATCH = "Aucun résultat.", "No results.";
         NEW_GROUP = "Nouveau groupe", "New Group";
+        CATEGORIES = "Catégories", "Categories";
+        CAT_EVERYONE = "Toutes", "All";
+        CAT_NEW = "Nouvelle catégorie", "New category";
+        CAT_NAME_HINT = "Nom de la catégorie", "Category name";
+        CAT_CREATE = "Créer", "Create";
+        CAT_RENAME = "Renommer", "Rename";
+        CAT_DELETE = "Supprimer la catégorie", "Delete category";
+        CAT_CANCEL = "Annuler", "Cancel";
+        CAT_NONE_YET = "Aucune catégorie. Créez-en une depuis la page Amis.", "No category yet. Create one from the Friends page.";
+        CAT_EMPTY = "Personne dans cette catégorie. Clic droit sur un ami, puis «\u{a0}Catégories\u{a0}».", "Nobody in this category. Right-click a friend, then “Categories”.";
+        CAT_TAKEN = "Ce nom est vide ou déjà pris.", "This name is empty or already taken.";
         NEW_GROUP_DETAIL = "Choisissez jusqu'à 9 amis.", "Pick up to 9 friends.";
         CREATE_GROUP = "Créer le groupe", "Create Group";
         GROUP_SETTINGS = "Membres du groupe", "Group Members";
