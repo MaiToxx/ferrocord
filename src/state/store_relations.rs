@@ -351,7 +351,7 @@ mod tests {
         let chans = [A, B].map(|id| Channel { id, name: id.to_string(), kind: ChannelKind::Text, position: 0, parent: None, overwrites: Some(Vec::new()), slowmode: 0 });
         s.apply(Event::Ready { me: User::new(ME, "moi".into()), guilds: vec![Guild::new(G, "g".into(), chans.to_vec())], dms: vec![Dm::new(DM, "ami".into(), 50)] });
         s.apply(Event::Relations(RelationsEvent::Ready {
-            relations: vec![Relation { id: FRIEND, kind: RelKind::Friend, nickname: None, ignored: false, user: None }],
+            relations: vec![Relation { id: FRIEND, kind: RelKind::Friend, nickname: None, ignored: false, stranger: false, user: None }],
             people: vec![],
             dms: vec![DmInfo { id: DM, group: false, owner: None, recipients: vec![FRIEND], ..Default::default() }],
             reads,

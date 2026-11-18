@@ -364,7 +364,7 @@ mod tests {
         s.apply(Event::Ready { me: User::new(1, "Moi".into()), guilds: vec![], dms: vec![] });
         let relations = friends
             .iter()
-            .map(|(id, name)| Relation { id: *id, kind: RelKind::Friend, nickname: None, ignored: false, user: Some(Person { id: *id, name: (*name).into(), username: name.to_lowercase(), avatar: Avatar::default_for(*id) }) })
+            .map(|(id, name)| Relation { id: *id, kind: RelKind::Friend, nickname: None, ignored: false, stranger: false, user: Some(Person { id: *id, name: (*name).into(), username: name.to_lowercase(), avatar: Avatar::default_for(*id) }) })
             .collect();
         s.apply(Event::Relations(RelationsEvent::Ready { relations, people: vec![], dms: vec![], reads: Some(vec![]), heads: vec![] }));
         s

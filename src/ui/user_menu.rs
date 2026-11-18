@@ -159,8 +159,9 @@ impl App {
                 self.invite_user_to(g, user_id, name);
             }
         }
-        // Catégories de contacts (locales) : une case par catégorie, pour un ami.
-        if kind == Some(RelKind::Friend) {
+        // Catégories de contacts (locales) : une case par catégorie. Pour n'importe qui
+        // sauf une personne bloquée : un MP se range aussi sans être ami.
+        if kind != Some(RelKind::Blocked) && self.store.me.as_ref().is_none_or(|me| me.id != user_id) {
             let groups = self.local.prefs.friend_groups.clone();
             let mut change = None;
             menu::submenu(ui, &t, st::CATEGORIES.get(lang), |ui| {

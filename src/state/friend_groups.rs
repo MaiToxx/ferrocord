@@ -7,6 +7,8 @@ pub const SECTION: &str = "categories_amis";
 const K_LIST: &str = "categories";
 const K_NAME: &str = "nom";
 const K_MEMBERS: &str = "membres";
+const K_FOLDED: &str = "repliee";
+const K_OTHERS_FOLDED: &str = "sans_categorie_repliee";
 
 /// Catégories gardées au plus.
 pub const MAX_GROUPS: usize = 30;
@@ -19,12 +21,16 @@ pub const MAX_MEMBERS: usize = 1000;
 pub struct FriendGroup {
     pub name: String,
     pub members: Vec<u64>,
+    /// Repliée dans la colonne des messages privés.
+    pub folded: bool,
 }
 
 /// Catégories, dans l'ordre de création.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FriendGroups {
     pub groups: Vec<FriendGroup>,
+    /// « Sans catégorie » repliée dans la colonne des messages privés.
+    pub others_folded: bool,
 }
 
 /// Nom tel qu'il est gardé : sans blancs autour ni caractères de contrôle, borné.
@@ -44,7 +50,7 @@ impl FriendGroups {
         if name.is_empty() || self.groups.len() >= MAX_GROUPS || self.position(&name).is_some() {
             return false;
         }
-        self.groups.push(FriendGroup { name, members: Vec::new() });
+        self.groups.push(FriendGroup { name, members: Vec::new(), folded: false });
         true
     }
 
@@ -84,6 +90,26 @@ impl FriendGroups {
         self.position(name).map(|i| self.groups[i].members.as_slice())
     }
 
+    /// Section de la colonne des MP repliée ? `None` : « Sans catégorie ».
+    pub fn is_folded(&self, rank: Option<usize>) -> bool {
+        match rank {
+            Some(i) => self.groups.get(i).is_some_and(|g| g.folded),
+            None => self.others_folded,
+        }
+    }
+
+    /// Replie ou déplie une section ; `None` : « Sans catégorie ».
+    pub fn toggle_fold(&mut self, name: Option<&str>) {
+        match name {
+            Some(n) => {
+                if let Some(i) = self.position(n) {
+                    self.groups[i].folded = !self.groups[i].folded;
+                }
+            }
+            None => self.others_folded = !self.others_folded,
+        }
+    }
+
     /// Rang de la première catégorie qui contient cette personne.
     pub fn first_of(&self, user: u64) -> Option<usize> {
         self.groups.iter().position(|g| g.members.contains(&user))
@@ -97,10 +123,11 @@ impl FriendGroups {
             .iter()
             .map(|g| {
                 let members: Vec<String> = g.members.iter().map(u64::to_string).collect();
-                format!("{{ {K_NAME} = {}, {K_MEMBERS} = [{}] }}", q(&g.name), members.join(", "))
+                let folded = if g.folded { format!(", {K_FOLDED} = true") } else { String::new() };
+                format!("{{ {K_NAME} = {}, {K_MEMBERS} = [{}]{folded} }}", q(&g.name), members.join(", "))
             })
             .collect();
-        format!("[{SECTION}]\n# Catégories de contacts (page Amis), gardées sur cet ordinateur seulement.\n{K_LIST} = [{}]\n", list.join(", "))
+        format!("[{SECTION}]\n# Catégories de contacts (page Amis), gardées sur cet ordinateur seulement.\n{K_LIST} = [{}]\n{K_OTHERS_FOLDED} = {}\n", list.join(", "), self.others_folded)
     }
 
     /// Lit la section ; entrée illisible : ignorée.
@@ -108,6 +135,9 @@ impl FriendGroups {
         let id = |v: &toml::de::DeValue<'_>| v.as_integer().and_then(|i| u64::from_str_radix(i.as_str(), i.radix()).ok()).filter(|id| *id != 0);
         let mut p = FriendGroups::default();
         for (k, v) in t.iter() {
+            if k.get_ref().as_ref() == K_OTHERS_FOLDED {
+                p.others_folded = v.get_ref().as_bool().unwrap_or(false);
+            }
             if k.get_ref().as_ref() != K_LIST {
                 continue;
             }
@@ -118,6 +148,9 @@ impl FriendGroups {
                 let name = field(K_NAME).and_then(|v| v.as_str()).map(clean).unwrap_or_default();
                 if !p.create(&name) {
                     continue;
+                }
+                if field(K_FOLDED).and_then(|v| v.as_bool()).unwrap_or(false) {
+                    p.toggle_fold(Some(&name));
                 }
                 for user in field(K_MEMBERS).and_then(|v| v.as_array()).into_iter().flat_map(|a| a.iter()).filter_map(|v| id(v.get_ref())) {
                     p.set(&name, user, true);
@@ -171,6 +204,9 @@ mod tests {
         g.create("Vide");
         g.set("Jeux \"du soir\"", 123_456_789_012_345_678, true);
         g.set("Jeux \"du soir\"", 7, true);
+        g.toggle_fold(Some("vide"));
+        g.toggle_fold(None);
+        assert!(!g.is_folded(Some(0)) && g.is_folded(Some(1)) && g.is_folded(None));
         let text = g.to_toml();
         let doc = toml::de::DeTable::parse(&text).expect("section lisible");
         let section = doc.get_ref().iter().find(|(k, _)| k.get_ref().as_ref() == SECTION).and_then(|(_, v)| v.get_ref().as_table()).expect("section présente");

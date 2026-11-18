@@ -51,18 +51,11 @@ pub(super) struct RowOpts {
 }
 
 /// Chevron d'une catégorie : vers le bas, ou vers la droite si elle est repliée.
-/// Catégories de contacts repliées dans la colonne des MP (le temps de la session).
-fn dm_folded_id() -> egui::Id {
-    egui::Id::unique("ferrocord.mp.categories-repliees")
-}
-
 /// En-tête d'une catégorie de contacts dans la colonne des MP : son nom et un
-/// chevron ; un clic la replie ou la déplie. Rend vrai si elle est repliée.
-fn dm_category_head(ui: &mut egui::Ui, t: &Tokens, lang: crate::i18n::Lang, name: &str) -> bool {
+/// chevron. Rend vrai au clic (replier ou déplier, gardé dans `local.toml`).
+fn dm_category_head(ui: &mut egui::Ui, t: &Tokens, lang: crate::i18n::Lang, name: &str, collapsed: bool) -> bool {
     use crate::i18n::table::social::t as st;
     let key = name.to_lowercase();
-    let mut folded = ui.ctx().data(|d| d.get_temp::<std::collections::HashSet<String>>(dm_folded_id())).unwrap_or_default();
-    let collapsed = folded.contains(&key);
     ui.add_space(t.spacing.category_gap);
     let head = ui.horizontal(|ui| {
         ui.add_space(t.spacing.item_x);
@@ -79,14 +72,7 @@ fn dm_category_head(ui: &mut egui::Ui, t: &Tokens, lang: crate::i18n::Lang, name
     let word = if collapsed { st::CAT_UNFOLD } else { st::CAT_FOLD }.get(lang);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("{name}, {word}")));
     super::keys::focus_ring(ui, t, &resp);
-    if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
-        if !folded.remove(&key) {
-            folded.insert(key);
-        }
-        ui.ctx().data_mut(|d| d.insert_temp(dm_folded_id(), folded));
-        return !collapsed;
-    }
-    collapsed
+    resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked()
 }
 
 fn paint_chevron(p: &egui::Painter, rect: egui::Rect, color: egui::Color32, collapsed: bool) {
@@ -342,6 +328,8 @@ impl App {
                 let mut nitro = false;
                 let mut events = None;
                 let mut dm_menu = None;
+                // Catégorie de contacts repliée ou dépliée d'un clic (`None` dedans : « Sans catégorie »).
+                let mut fold_toggle: Option<Option<String>> = None;
                 let mut mark_read = None;
                 let mut summaries = None;
                 let mut toggled = None;
@@ -392,8 +380,12 @@ impl App {
                         for (r, d) in shown {
                             if sorted && section != Some(r) {
                                 section = Some(r);
-                                let name = r.and_then(|i| groups.groups.get(i)).map_or(crate::i18n::table::social::t::CAT_OTHERS.get(lang), |g| g.name.as_str());
-                                folded = dm_category_head(ui, &t, lang, name);
+                                let group = r.and_then(|i| groups.groups.get(i));
+                                let name = group.map_or(crate::i18n::table::social::t::CAT_OTHERS.get(lang), |g| g.name.as_str());
+                                folded = groups.is_folded(r);
+                                if dm_category_head(ui, &t, lang, name, folded) {
+                                    fold_toggle = Some(group.map(|g| g.name.clone()));
+                                }
                             }
                             // Catégorie repliée : la conversation ouverte reste visible.
                             if folded && s.channel != Some(d.id) {
@@ -617,6 +609,9 @@ impl App {
                 }
                 if let Some((g, p)) = guild_top {
                     self.apply_guild_top(g, p);
+                }
+                if let Some(name) = fold_toggle {
+                    self.friend_groups_edit(|g| g.toggle_fold(name.as_deref()));
                 }
                 if let Some(m) = dm_menu {
                     self.apply_dm_menu(m);

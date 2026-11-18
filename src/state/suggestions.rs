@@ -149,7 +149,7 @@ mod tests {
         s.apply(Event::Suggestions(SuggestionEvent::Create(suggestion(7))));
         s.apply(Event::Suggestions(SuggestionEvent::Delete { user_id: 5 }));
         assert_eq!(s.suggestions.list, Remote::Ready(vec![suggestion(6), suggestion(7)]));
-        let sent = crate::state::relations::Relation { id: 6, kind: crate::state::relations::RelKind::Outgoing, nickname: None, ignored: false, user: None };
+        let sent = crate::state::relations::Relation { id: 6, kind: crate::state::relations::RelKind::Outgoing, nickname: None, ignored: false, stranger: false, user: None };
         s.apply(Event::Relations(crate::state::relations::RelationsEvent::RelationAdd(sent)));
         assert_eq!(s.suggestions.list, Remote::Ready(vec![suggestion(7)]));
         // Un échec n'est pas retenté tout seul.

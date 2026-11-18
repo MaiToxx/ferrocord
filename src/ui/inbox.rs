@@ -993,7 +993,7 @@ mod tests {
     fn for_you_lists_incoming_requests_and_near_events() {
         use crate::state::relations::{Person, RelKind, Relation, RelationsEvent};
         let mut a = app();
-        let rel = |id: u64, kind, name: &str| Relation { id, kind, nickname: None, ignored: false, user: Some(Person { id, name: name.into(), username: name.to_lowercase(), avatar: Avatar::default_for(id) }) };
+        let rel = |id: u64, kind, name: &str| Relation { id, kind, nickname: None, ignored: false, stranger: false, user: Some(Person { id, name: name.into(), username: name.to_lowercase(), avatar: Avatar::default_for(id) }) };
         a.store.apply(Event::Relations(RelationsEvent::Ready {
             relations: vec![rel(5, RelKind::Incoming, "Carol"), rel(6, RelKind::Outgoing, "Dan"), rel(2, RelKind::Friend, "Alice")],
             people: vec![],

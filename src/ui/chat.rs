@@ -2295,7 +2295,7 @@ mod tests {
         let flags = |h: &Harness| h.app.list.views[&CHAN].flags.iter().map(|f| f.hide).collect::<Vec<_>>();
         assert!(flags(&h).iter().all(|f| *f == Hide::No));
         let tall = h.app.list.views[&CHAN].geo.total();
-        h.app.store.apply(Event::Relations(RelationsEvent::RelationAdd(Relation { id: 11, kind: RelKind::Blocked, nickname: None, ignored: false, user: None })));
+        h.app.store.apply(Event::Relations(RelationsEvent::RelationAdd(Relation { id: 11, kind: RelKind::Blocked, nickname: None, ignored: false, stranger: false, user: None })));
         h.frame(0.0);
         h.frame(0.0);
         h.check(CHAN);
@@ -2318,7 +2318,7 @@ mod tests {
         assert_eq!(flags(&h)[4], Hide::Inside { open: true });
         assert!(h.app.list.views[&CHAN].geo.total() > tall, "messages et ligne « Masquer »");
         // Personne ignorée : même repli, autre libellé.
-        h.app.store.apply(Event::Relations(RelationsEvent::RelationAdd(Relation { id: 12, kind: RelKind::Other, nickname: None, ignored: true, user: None })));
+        h.app.store.apply(Event::Relations(RelationsEvent::RelationAdd(Relation { id: 12, kind: RelKind::Other, nickname: None, ignored: true, stranger: false, user: None })));
         h.frame(0.0);
         assert_eq!(flags(&h)[6], Hide::Head { n: 3, ignored: true, open: false });
         // Blocage levé : tout revient.

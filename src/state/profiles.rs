@@ -626,7 +626,7 @@ mod tests {
             s.people.lock().profiles_mut().set(5, g, ProfileState::Ready(Box::default()));
         }
         s.take_commands();
-        let rel = |kind| Relation { id: 5, kind, nickname: None, ignored: false, user: None };
+        let rel = |kind| Relation { id: 5, kind, nickname: None, ignored: false, stranger: false, user: None };
         // Demande acceptée.
         s.apply(Event::Relations(RelationsEvent::RelationAdd(rel(RelKind::Friend))));
         assert_eq!(s.take_commands(), vec![fetch(None), fetch(Some(9))], "les deux profils gardés, pas celui d'un autre");

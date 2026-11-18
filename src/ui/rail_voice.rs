@@ -189,7 +189,7 @@ mod tests {
         use crate::state::model::User;
         let mut s = Store::new();
         s.apply(Event::Ready { me: User::new(1, "Moi".into()), guilds: vec![], dms: vec![] });
-        let friend = |id: u64, name: &str| Relation { id, kind: RelKind::Friend, nickname: None, ignored: false, user: Some(Person { id, name: name.into(), username: name.to_lowercase(), avatar: Avatar::default_for(id) }) };
+        let friend = |id: u64, name: &str| Relation { id, kind: RelKind::Friend, nickname: None, ignored: false, stranger: false, user: Some(Person { id, name: name.into(), username: name.to_lowercase(), avatar: Avatar::default_for(id) }) };
         s.apply(Event::Relations(RelationsEvent::Ready { relations: vec![friend(3, "Bob"), friend(2, "Alice"), friend(4, "Chloé")], people: vec![], dms: vec![], reads: Some(vec![]), heads: vec![] }));
         let chan = |guild: u64, id: u64| VoiceChannel { id, guild_id: guild, name: "Vocal".into(), stage: false, position: 0, parent: None, overwrites: None, user_limit: 0 };
         let st = |user: u64, guild: Option<u64>, channel: u64, stream: bool| VoiceState { user_id: user, guild_id: guild, channel_id: channel, self_stream: stream, ..Default::default() };
