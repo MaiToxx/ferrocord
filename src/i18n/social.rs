@@ -23,6 +23,7 @@ pub mod t {
         STATUS_OFFLINE = "Hors ligne", "Offline";
         SHARING = "En partage d'écran", "Sharing their screen";
         INCOMING = "Demande d'ami reçue", "Incoming Friend Request";
+        INCOMING_STRANGER = "Demande d'ami reçue, aucun ami ni serveur en commun", "Incoming Friend Request, no mutual friends or servers";
         OUTGOING = "Demande d'ami envoyée", "Outgoing Friend Request";
         BLOCKED = "Bloqué", "Blocked";
         IGNORED = "Ignoré", "Ignored";

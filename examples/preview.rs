@@ -2285,7 +2285,7 @@ fn filled_store(view: View, scene: Option<Scene>) -> (Store, HashMap<u64, Vec<Me
     }
     if scene == Some(Scene::Bloques) {
         use ferrocord::state::relations::{RelKind, Relation, RelationsEvent};
-        s.apply(Event::Relations(RelationsEvent::RelationAdd(Relation { id: 1_000_000_000_000_000_003, kind: RelKind::Blocked, nickname: None, ignored: false, user: None })));
+        s.apply(Event::Relations(RelationsEvent::RelationAdd(Relation { id: 1_000_000_000_000_000_003, kind: RelKind::Blocked, nickname: None, ignored: false, stranger: false, user: None })));
     }
     if scene == Some(Scene::LimiteAge) {
         s.apply(Event::Threads(ferrocord::state::threads::ThreadEvent::AgeGates { guild_id: ALPHA, channels: vec![GENERAL] }));
@@ -2803,7 +2803,7 @@ fn vocal_rail_store(s: &mut Store) {
     use serde_json::json;
     for (id, name, username) in [(1_000_000_000_000_000_002u64, "Alice", "alice_fictive"), (1_000_000_000_000_000_005, "Dana", "dana_fictive"), (1_000_000_000_000_000_006, "Ève", "eve_fictive")] {
         let user = Person { id, name: name.into(), username: username.into(), avatar: Avatar::default_for(id) };
-        s.apply(Event::Relations(RelationsEvent::RelationAdd(Relation { id, kind: RelKind::Friend, nickname: None, ignored: false, user: Some(user) })));
+        s.apply(Event::Relations(RelationsEvent::RelationAdd(Relation { id, kind: RelKind::Friend, nickname: None, ignored: false, stranger: false, user: Some(user) })));
     }
     let state = |user: u64, channel: u64, stream: bool| json!({ "user_id": user.to_string(), "channel_id": channel.to_string(), "session_id": format!("s-{user}"), "deaf": false, "mute": false, "self_deaf": false, "self_mute": false, "self_video": false, "self_stream": stream, "suppress": false, "request_to_speak_timestamp": null });
     let voice = |id: u64, name: &str| json!({ "id": id.to_string(), "type": 2, "name": name, "position": 1, "parent_id": null, "permission_overwrites": [], "bitrate": 64000, "user_limit": 0, "rtc_region": null, "flags": 0 });

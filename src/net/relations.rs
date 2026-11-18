@@ -78,6 +78,9 @@ struct RawRelation {
     user_id: Option<u64>,
     #[serde(default, deserialize_with = "lenient")]
     user_ignored: Option<bool>,
+    /// Demande d'une personne sans ami ni petit serveur en commun (docs.discord.food, « Relationship Object »).
+    #[serde(default, deserialize_with = "lenient")]
+    stranger_request: Option<bool>,
 }
 
 impl RawRelation {
@@ -91,6 +94,7 @@ impl RawRelation {
             kind: RelKind::from_code(self.kind?),
             nickname: self.nickname.clone().flatten(),
             ignored: self.user_ignored.unwrap_or(false),
+            stranger: self.stranger_request.unwrap_or(false),
             user: self.user.as_ref().and_then(RawPerson::person),
         })
     }
@@ -432,6 +436,11 @@ mod tests {
         assert!(matches!(decode("RELATIONSHIP_UPDATE", r#"{ "id": "1", "type": 0 }"#), Some(RelationsEvent::RelationUpdate { kind: Some(RelKind::Other), .. })));
         assert!(matches!(decode("RELATIONSHIP_UPDATE", r#"{ "id": "1", "nickname": "A" }"#), Some(RelationsEvent::RelationUpdate { kind: None, .. })));
         assert!(decode("RELATIONSHIP_ADD", r#"{ "id": "1" }"#).is_none(), "sans type : ignoré");
+        // Demande d'un inconnu : signalée ; champ absent : non.
+        let Some(RelationsEvent::RelationAdd(r)) = decode("RELATIONSHIP_ADD", r#"{ "id": "1", "type": 3, "stranger_request": true }"#) else { panic!() };
+        assert!(r.stranger && r.kind == RelKind::Incoming);
+        let Some(RelationsEvent::RelationAdd(r)) = decode("RELATIONSHIP_ADD", r#"{ "id": "1", "type": 3 }"#) else { panic!() };
+        assert!(!r.stranger);
     }
 
     /// Demande de message (lot U) : drapeaux lus, absents sur un MP ordinaire.

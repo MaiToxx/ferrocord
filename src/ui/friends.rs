@@ -1115,7 +1115,7 @@ impl App {
         let pres = if friend { presence(&self.store, id) } else { Presence::default() };
         let (lead, second) = match rel.kind {
             RelKind::Friend => self.friend_second(id, pres.status),
-            RelKind::Incoming => (Lead::None, st::INCOMING.get(lang).to_string()),
+            RelKind::Incoming => (Lead::None, if rel.stranger { st::INCOMING_STRANGER } else { st::INCOMING }.get(lang).to_string()),
             RelKind::Outgoing => (Lead::None, st::OUTGOING.get(lang).to_string()),
             RelKind::Blocked => (Lead::None, st::BLOCKED.get(lang).to_string()),
             RelKind::Other => (Lead::None, st::IGNORED.get(lang).to_string()),
@@ -1287,7 +1287,7 @@ mod tests {
 
     fn rel(id: u64, kind: RelKind, name: &str) -> Relation {
         let user = Person { id, name: name.into(), username: name.to_lowercase(), avatar: crate::state::model::Avatar::default_for(id) };
-        Relation { id, kind, nickname: None, ignored: false, user: Some(user) }
+        Relation { id, kind, nickname: None, ignored: false, stranger: false, user: Some(user) }
     }
 
     fn sent(log: &Arc<Mutex<Vec<Cmd>>>) -> Vec<Cmd> {

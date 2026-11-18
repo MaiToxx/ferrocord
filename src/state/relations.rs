@@ -75,6 +75,8 @@ pub struct Relation {
     pub kind: RelKind,
     pub nickname: Option<String>,
     pub ignored: bool,
+    /// Demande reçue d'une personne sans ami ni petit serveur en commun (`stranger_request`).
+    pub stranger: bool,
     /// Absent d'un paquet partiel : la personne déjà connue est gardée.
     pub user: Option<Person>,
 }
@@ -475,13 +477,16 @@ impl Relations {
     /// personne ; une acceptation ne vaut que pour une demande reçue (la même
     /// requête, sans demande, en envoie une).
     pub(super) fn done(&mut self, id: u64, what: Done) {
-        let new = |kind, ignored| Relation { id, kind, nickname: None, ignored, user: None };
+        let new = |kind, ignored| Relation { id, kind, nickname: None, ignored, stranger: false, user: None };
         match (what, self.relations.get_mut(&id)) {
             (Done::Blocked, Some(r)) => r.kind = RelKind::Blocked,
             (Done::Blocked, None) => {
                 self.relations.insert(id, new(RelKind::Blocked, false));
             }
-            (Done::Accepted, Some(r)) if r.kind == RelKind::Incoming => r.kind = RelKind::Friend,
+            (Done::Accepted, Some(r)) if r.kind == RelKind::Incoming => {
+                r.kind = RelKind::Friend;
+                r.stranger = false;
+            }
             (Done::Accepted, _) => return,
             (Done::Ignored, Some(r)) => r.ignored = true,
             (Done::Ignored, None) => {
@@ -546,7 +551,7 @@ mod tests {
     }
 
     fn rel(id: u64, kind: RelKind, name: &str) -> Relation {
-        Relation { id, kind, nickname: None, ignored: false, user: Some(person(id, name)) }
+        Relation { id, kind, nickname: None, ignored: false, stranger: false, user: Some(person(id, name)) }
     }
 
     fn sample() -> Relations {
@@ -595,7 +600,7 @@ mod tests {
         assert_eq!(d.relation(91).map(|r| (r.kind, r.ignored)), Some((RelKind::Other, true)));
         d.done(92, Done::Accepted);
         assert!(d.relation(92).is_none(), "sans demande reçue : rien");
-        d.add(Relation { id: 92, kind: RelKind::Incoming, nickname: None, ignored: false, user: None });
+        d.add(Relation { id: 92, kind: RelKind::Incoming, nickname: None, ignored: false, stranger: false, user: None });
         d.done(92, Done::Accepted);
         assert_eq!(d.relation(92).map(|r| r.kind), Some(RelKind::Friend));
         // Type porté par la mise à jour : un blocage levé ne reste pas « bloqué ».
