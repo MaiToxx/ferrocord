@@ -42,20 +42,42 @@ fn text(s: Option<&str>, max: usize) -> String {
     s.map(str::trim).unwrap_or_default().chars().filter(|c| !c.is_control()).take(max).collect()
 }
 
+fn one(s: &RawSuggestion) -> Option<Suggestion> {
+    let u = s.suggested_user.as_ref()?;
+    let username = text(Some(u.username()), 64);
+    let name = text(u.global_name().or(Some(u.username())), 64);
+    let reason = s.reasons.iter().flatten().filter_map(|r| r.0.as_ref()).find_map(|r| {
+        let platform = text(r.platform.as_deref().or(r.platform_type.as_deref()), 32);
+        let name = text(r.name.as_deref(), 64);
+        (!platform.is_empty() && !name.is_empty()).then_some((platform, name))
+    });
+    (!name.is_empty()).then(|| Suggestion { user_id: u.id, name, username, avatar: u.avatar(), reason, mutual_friends: s.mutual_friends_count })
+}
+
+/// FRIEND_SUGGESTION_CREATE (un objet de suggestion) et FRIEND_SUGGESTION_DELETE
+/// (`suggested_user_id`) : la liste, demandée une fois par session, suit.
+fn decode_event(kind: &str, d: &str) -> Option<SuggestionEvent> {
+    match kind {
+        "FRIEND_SUGGESTION_CREATE" => one(&serde_json::from_str::<RawSuggestion>(d).ok()?).map(SuggestionEvent::Create),
+        "FRIEND_SUGGESTION_DELETE" => {
+            let v: serde_json::Value = serde_json::from_str(d).ok()?;
+            let id = &v["suggested_user_id"];
+            let user_id = id.as_str().and_then(|s| s.parse().ok()).or_else(|| id.as_u64())?;
+            Some(SuggestionEvent::Delete { user_id })
+        }
+        _ => None,
+    }
+}
+
+pub(super) fn dispatch(kind: &str, d: &str, out: &super::Out) {
+    if let Some(e) = decode_event(kind, d) {
+        out.send(Event::Suggestions(e));
+    }
+}
+
 /// Réponse de « List Friend Suggestions ». `None` : pas une liste.
 pub fn decode_suggestions(body: &str) -> Option<Vec<Suggestion>> {
     let list: Vec<Item<RawSuggestion>> = serde_json::from_str(body).ok()?;
-    let one = |s: &RawSuggestion| {
-        let u = s.suggested_user.as_ref()?;
-        let username = text(Some(u.username()), 64);
-        let name = text(u.global_name().or(Some(u.username())), 64);
-        let reason = s.reasons.iter().flatten().filter_map(|r| r.0.as_ref()).find_map(|r| {
-            let platform = text(r.platform.as_deref().or(r.platform_type.as_deref()), 32);
-            let name = text(r.name.as_deref(), 64);
-            (!platform.is_empty() && !name.is_empty()).then_some((platform, name))
-        });
-        (!name.is_empty()).then(|| Suggestion { user_id: u.id, name, username, avatar: u.avatar(), reason, mutual_friends: s.mutual_friends_count })
-    };
     let mut out: Vec<Suggestion> = Vec::new();
     for s in list.iter().filter_map(|s| s.0.as_ref().and_then(one)) {
         if out.len() < MAX_SUGGESTIONS && !out.iter().any(|x| x.user_id == s.user_id) {
@@ -105,5 +127,14 @@ mod tests {
         assert_eq!(list[0].reason, Some(("steam".to_owned(), "CamilleSynthétique".to_owned())));
         assert_eq!((list[0].mutual_friends, list[1].reason.clone(), list[1].mutual_friends), (Some(2), Some(("xbox".to_owned(), "Denis#0000".to_owned())), None));
         assert_eq!(decode_suggestions("{}"), None);
+    }
+
+    #[test]
+    fn gateway_events_add_and_remove_one_suggestion() {
+        let created = decode_event("FRIEND_SUGGESTION_CREATE", r#"{"suggested_user":{"id":"703","username":"eva_fictive","global_name":"Eva Fictive"},"reasons":[{"platform_type":"steam","name":"EvaSynthétique"}]}"#);
+        let Some(SuggestionEvent::Create(s)) = created else { panic!("suggestion attendue") };
+        assert_eq!((s.user_id, s.name.as_str(), s.reason), (703, "Eva Fictive", Some(("steam".to_owned(), "EvaSynthétique".to_owned()))));
+        assert!(matches!(decode_event("FRIEND_SUGGESTION_DELETE", r#"{"suggested_user_id":"703"}"#), Some(SuggestionEvent::Delete { user_id: 703 })));
+        assert!(decode_event("FRIEND_SUGGESTION_CREATE", "{}").is_none() && decode_event("FRIEND_SUGGESTION_DELETE", "{}").is_none());
     }
 }

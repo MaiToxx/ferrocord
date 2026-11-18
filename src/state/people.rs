@@ -334,6 +334,11 @@ impl<K: Copy + Eq + Hash, V> Lru<K, V> {
         self.map.len()
     }
 
+    /// Toutes les entrées, sans les compter comme écrites.
+    pub(super) fn iter_mut(&mut self) -> impl Iterator<Item = (&K, &mut V)> {
+        self.map.iter_mut().map(|(k, (v, _))| (k, v))
+    }
+
     pub(super) fn clear(&mut self) {
         self.map.clear();
     }
@@ -612,6 +617,17 @@ impl Store {
     pub fn want_profile(&mut self, user_id: u64, guild_id: Option<u64>) {
         let now = self.now();
         if self.people.lock().profiles_mut().begin(user_id, guild_id, now) {
+            self.push_command(Cmd::Profile(ProfileCmd::Fetch { user_id, guild_id }));
+        }
+    }
+
+    /// La relation avec `user_id` vient de changer (RELATIONSHIP_ADD ou
+    /// RELATIONSHIP_REMOVE) : ses profils déjà demandés sont redemandés tout
+    /// de suite, pour qu'une carte ou un panneau de MP ouverts se mettent à jour.
+    pub(super) fn relation_changed(&mut self, user_id: u64) {
+        let now = self.now();
+        let guilds = self.people.lock().profiles_mut().relation_changed(user_id, now);
+        for guild_id in guilds {
             self.push_command(Cmd::Profile(ProfileCmd::Fetch { user_id, guild_id }));
         }
     }

@@ -298,6 +298,26 @@ impl ProfileTables {
         }
     }
 
+    /// La relation avec cet utilisateur a changé (demande acceptée, ami retiré,
+    /// blocage, déblocage) : ce que Discord rend de son profil change avec elle
+    /// (amis en commun, profil d'une personne bloquée), alors que la carte ne le
+    /// demande qu'à son ouverture et le panneau d'un MP une fois par
+    /// conversation. Rend les serveurs (`None` : sans serveur) des profils
+    /// gardés de cet utilisateur, à redemander tout de suite ; l'ancien profil
+    /// reste affiché en attendant. Jamais en masse : un seul utilisateur, et
+    /// seulement là où sa carte a déjà été ouverte.
+    pub fn relation_changed(&mut self, user_id: u64, now: i64) -> Vec<Option<u64>> {
+        let mut guilds = Vec::new();
+        for (key, e) in self.profiles.iter_mut() {
+            if key.0 == user_id {
+                e.asked_at = now;
+                guilds.push(key.1);
+            }
+        }
+        guilds.sort_unstable();
+        guilds
+    }
+
     /// Réponse du réseau. Un échec après un profil déjà reçu (rafraîchissement)
     /// garde l'ancien.
     pub fn set(&mut self, user_id: u64, guild_id: Option<u64>, state: ProfileState) {
@@ -589,6 +609,58 @@ mod tests {
         p.note_loaded(6, None);
         assert!(p.note(6).is_some_and(|n| n.unavailable));
         assert!(!p.begin_note_write(6, "x"));
+    }
+
+    /// Demande d'ami acceptée, blocage, déblocage : le profil gardé est
+    /// redemandé sans attendre le délai ni la réouverture de la carte.
+    #[test]
+    fn relation_change_asks_the_kept_profiles_again() {
+        use crate::state::relations::{RelKind, Relation, RelationsEvent};
+        let fetch = |guild_id| Cmd::Profile(ProfileCmd::Fetch { user_id: 5, guild_id });
+        let mut s = Store::new();
+        s.apply(Event::Ready { me: User::new(1, "Moi".into()), guilds: Vec::new(), dms: Vec::new() });
+        s.want_profile(5, Some(9));
+        s.want_profile(5, None);
+        s.want_profile(6, None);
+        for g in [Some(9), None] {
+            s.people.lock().profiles_mut().set(5, g, ProfileState::Ready(Box::default()));
+        }
+        s.take_commands();
+        let rel = |kind| Relation { id: 5, kind, nickname: None, ignored: false, user: None };
+        // Demande acceptée.
+        s.apply(Event::Relations(RelationsEvent::RelationAdd(rel(RelKind::Friend))));
+        assert_eq!(s.take_commands(), vec![fetch(None), fetch(Some(9))], "les deux profils gardés, pas celui d'un autre");
+        // L'ancien profil reste affiché pendant la demande ; la carte rouverte n'en ajoute pas une.
+        assert!(s.people.lock().profiles().profile(5, None).and_then(ProfileState::profile).is_some());
+        s.want_profile(5, None);
+        assert_eq!(s.take_commands(), Vec::new());
+        // Blocage (RELATIONSHIP_ADD de type bloqué), puis déblocage (RELATIONSHIP_REMOVE).
+        s.apply(Event::Relations(RelationsEvent::RelationAdd(rel(RelKind::Blocked))));
+        assert_eq!(s.take_commands(), vec![fetch(None), fetch(Some(9))]);
+        s.apply(Event::Relations(RelationsEvent::RelationRemove { id: 5 }));
+        assert_eq!(s.take_commands(), vec![fetch(None), fetch(Some(9))]);
+        // Personne dont le profil n'a jamais été ouvert : rien ne part.
+        s.apply(Event::Relations(RelationsEvent::RelationAdd(Relation { id: 7, ..rel(RelKind::Incoming) })));
+        assert_eq!(s.take_commands(), Vec::new());
+    }
+
+    /// USER_UPDATE : mon nom et mon avatar suivent ; les comptes liés ne sont
+    /// relus que si la page les avait déjà demandés.
+    #[test]
+    fn my_account_follows_changes_made_elsewhere() {
+        use crate::state::usersettings::{AccountCmd, AccountEvent, Remote};
+        let mut s = Store::new();
+        s.apply(Event::Ready { me: User::new(1, "Moi".into()), guilds: Vec::new(), dms: Vec::new() });
+        s.apply(Event::MeUpdate(User::new(2, "Autre".into())));
+        assert_eq!(s.me.as_ref().map(|m| m.name.as_str()), Some("Moi"));
+        s.apply(Event::MeUpdate(User::new(1, "Moi Nouveau".into())));
+        assert_eq!(s.me.as_ref().map(|m| m.name.as_str()), Some("Moi Nouveau"));
+        s.apply(Event::Account(AccountEvent::ConnectionsChanged));
+        assert_eq!(s.account.connections, Remote::Idle, "jamais ouverte : rien ne part");
+        s.apply(Event::Account(AccountEvent::Connections(Ok(Vec::new()))));
+        s.apply(Event::Account(AccountEvent::ConnectionsChanged));
+        assert_eq!(s.account.connections, Remote::Loading);
+        assert!(s.take_commands().contains(&Cmd::Account(AccountCmd::LoadConnections)));
     }
 
     #[test]

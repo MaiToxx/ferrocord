@@ -38,6 +38,10 @@ pub enum SuggestionCmd {
 #[derive(Debug)]
 pub enum SuggestionEvent {
     List(Result<Vec<Suggestion>, Problem>),
+    /// FRIEND_SUGGESTION_CREATE.
+    Create(Suggestion),
+    /// FRIEND_SUGGESTION_DELETE.
+    Delete { user_id: u64 },
 }
 
 #[derive(Default)]
@@ -61,7 +65,7 @@ impl Store {
         }
     }
 
-    fn take_suggestion(&mut self, user_id: u64) -> bool {
+    pub(super) fn take_suggestion(&mut self, user_id: u64) -> bool {
         let Remote::Ready(list) = &mut self.suggestions.list else { return false };
         let before = list.len();
         list.retain(|s| s.user_id != user_id);
@@ -87,7 +91,25 @@ impl Store {
     }
 
     pub(super) fn apply_suggestions(&mut self, e: SuggestionEvent) {
-        let SuggestionEvent::List(result) = e;
+        let result = match e {
+            SuggestionEvent::List(result) => result,
+            // Avant la première lecture, la liste demandée à l'ouverture apportera tout.
+            SuggestionEvent::Create(s) => {
+                let known = self.relations.relation(s.user_id).is_some();
+                if let Remote::Ready(list) = &mut self.suggestions.list
+                    && !known
+                    && list.len() < MAX_SUGGESTIONS
+                    && !list.iter().any(|x| x.user_id == s.user_id)
+                {
+                    list.push(s);
+                }
+                return;
+            }
+            SuggestionEvent::Delete { user_id } => {
+                self.take_suggestion(user_id);
+                return;
+            }
+        };
         self.suggestions.list = match result {
             Ok(mut list) => {
                 // Déjà amis, bloqués ou en attente : rien à suggérer.
@@ -121,6 +143,15 @@ mod tests {
         assert!(s.suggestion_dismiss(4) && !s.suggestion_dismiss(9));
         assert_eq!(s.take_commands(), vec![Cmd::Relations(RelationsCmd::Accept { user_id: 3 }), Cmd::Suggestions(SuggestionCmd::Dismiss { user_id: 4 })]);
         assert_eq!(s.suggestions.list, Remote::Ready(vec![suggestion(5)]));
+        // La passerelle ajoute et retire ; une relation créée ailleurs retire aussi.
+        s.apply(Event::Suggestions(SuggestionEvent::Create(suggestion(6))));
+        s.apply(Event::Suggestions(SuggestionEvent::Create(suggestion(6))));
+        s.apply(Event::Suggestions(SuggestionEvent::Create(suggestion(7))));
+        s.apply(Event::Suggestions(SuggestionEvent::Delete { user_id: 5 }));
+        assert_eq!(s.suggestions.list, Remote::Ready(vec![suggestion(6), suggestion(7)]));
+        let sent = crate::state::relations::Relation { id: 6, kind: crate::state::relations::RelKind::Outgoing, nickname: None, ignored: false, user: None };
+        s.apply(Event::Relations(crate::state::relations::RelationsEvent::RelationAdd(sent)));
+        assert_eq!(s.suggestions.list, Remote::Ready(vec![suggestion(7)]));
         // Un échec n'est pas retenté tout seul.
         let mut s = Store::new();
         s.suggestions_open();

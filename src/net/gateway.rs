@@ -1168,6 +1168,20 @@ pub(super) fn dispatch(kind: &str, d: &str, hosts: ResumeHosts, resume: &mut Opt
             super::people::supplemental(d, out);
             super::relations::dispatch(kind, d, out);
         }
+        // Mon compte modifié, ici ou sur un autre appareil : nom et avatar suivent
+        // (sans cela, ils restaient ceux du READY jusqu'à la reconnexion).
+        "USER_UPDATE" => {
+            if let Ok(u) = serde_json::from_str::<super::raw::RawUser>(d)
+                && me.is_none_or(|me| me == u.id)
+                && let Some(info) = super::people::user_info(&u)
+            {
+                out.people.lock().upsert_user(info);
+                out.send(Event::MeUpdate(User { id: u.id, name: u.display(), avatar: u.avatar() }));
+            }
+        }
+        "USER_NOTE_UPDATE" => super::profile::note_update(d, out),
+        "USER_CONNECTIONS_UPDATE" => out.send(Event::Account(crate::state::usersettings::AccountEvent::ConnectionsChanged)),
+        "FRIEND_SUGGESTION_CREATE" | "FRIEND_SUGGESTION_DELETE" => super::suggestions::dispatch(kind, d, out),
         "RELATIONSHIP_ADD" | "RELATIONSHIP_UPDATE" | "RELATIONSHIP_REMOVE" | "MESSAGE_ACK" | "CHANNEL_RECIPIENT_ADD"
         | "CHANNEL_RECIPIENT_REMOVE" => super::relations::dispatch(kind, d, out),
         // Réglages du compte ; le reste est ignoré sans décodage.
@@ -1402,6 +1416,30 @@ mod tests {
         assert_eq!(d, vec![(101, "bob, Eve", 900), (100, "bob", 500), (102, "", 102)]);
 
         assert!(matches!(&events[1], Event::Status(Status::Connected)));
+    }
+
+    /// Événements du compte venus d'un autre appareil : mon nom et mon avatar,
+    /// une note, les comptes liés. Aucun n'était lu avant.
+    #[test]
+    fn account_events_from_another_device_are_followed() {
+        let (out, rx, _) = out();
+        let mut me = Some(1);
+        let mut send = |kind: &str, d: &str| dispatch(kind, d, ResumeHosts::Discord, &mut None, &mut me, &out);
+        send("USER_UPDATE", r#"{ "id": "1", "username": "moi_fictif", "global_name": "Moi Nouveau", "avatar": null }"#);
+        // Un autre que moi, ou un paquet sans nom : rien.
+        send("USER_UPDATE", r#"{ "id": "2", "username": "autre_fictif" }"#);
+        send("USER_UPDATE", r#"{ "id": "1" }"#);
+        send("USER_CONNECTIONS_UPDATE", "{}");
+        send("USER_NOTE_UPDATE", r#"{ "id": "5", "note": "vue ailleurs" }"#);
+        send("USER_NOTE_UPDATE", r#"{ "note": "sans personne" }"#);
+        let events: Vec<Event> = rx.try_iter().collect();
+        assert!(
+            matches!(events.as_slice(), [Event::MeUpdate(u), Event::Account(crate::state::usersettings::AccountEvent::ConnectionsChanged)] if u.id == 1 && u.name == "Moi Nouveau"),
+            "{events:?}"
+        );
+        let people = out.people.lock();
+        assert_eq!(people.user(1).and_then(|u| u.global_name.clone()).as_deref(), Some("Moi Nouveau"));
+        assert_eq!(people.profiles().note(5).and_then(|n| n.shown()), Some("vue ailleurs"));
     }
 
     #[test]

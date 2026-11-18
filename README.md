@@ -10,7 +10,7 @@ Client Discord **natif** écrit en Rust : il se connecte à ton vrai compte Disc
 cargo run --release
 ```
 
-L'exécutable se trouve dans `target/release/ferrocord.exe` (un seul fichier d'environ 8 Mo, rien à installer).
+L'exécutable se trouve dans `target/release/ferrocord.exe` (un seul fichier d'environ 46 Mo, rien à installer).
 
 Au premier lancement, colle ton jeton Discord. Si tu coches « Se souvenir de moi », il est rangé dans le **Gestionnaire d'identifiants de Windows** (une entrée `ferrocord:compte:<identifiant>` par compte), une fois accepté par Discord ; jamais dans un fichier. Plusieurs comptes peuvent être enregistrés : clique sur ton nom, en bas à gauche, pour changer de compte, en ajouter un ou te déconnecter (le compte est alors retiré de la liste et son jeton effacé du coffre). Au lancement, l'application rouvre le dernier compte sur le dernier salon ouvert, à la même taille et la même place de fenêtre (`%APPDATA%\ferrocord\settings.toml`, qui ne contient aucun jeton).
 
@@ -94,21 +94,36 @@ Sur Android : jeton chiffré par une clé du Keystore d'Android (fichier dans le
 - Non-lus (gras) et mentions (pastille rouge), y compris sur les icônes de serveur
 - Mentions, salons, emojis personnalisés et horodatages affichés lisiblement
 - Liens cliquables, pseudos de serveur
-- Images jointes en vignette (seules ou en grille, place réservée avant le chargement), spoilers masqués jusqu'au clic, pastille « GIF », cartes pour les vidéos, sons et autres fichiers (ouverts dans le navigateur) ; visionneuse plein écran (zoom, déplacement, original, lien, texte alternatif) ; embeds complets et aperçus de liens. Réglage « Charger les images : automatiquement / au clic »
+- Images jointes (GIF, WebP et APNG animés compris) en vignette (seules ou en grille, place réservée avant le chargement), spoilers masqués jusqu'au clic, pastille « GIF », vidéos et sons lus dans le fil, cartes pour les autres fichiers (ouverts dans le navigateur) ; visionneuse plein écran (zoom, déplacement, original, lien, texte alternatif) ; embeds complets et aperçus de liens. Réglage « Charger les images : automatiquement / au clic »
 - Copier le texte ou l'ID d'un message (clic droit)
-- Vrai gras et vraie italique (Segoe UI de Windows, lue au démarrage ; police intégrée sinon). Emojis en couleur partout (messages, réactions, saisie, statut, noms de salons), en grand dans un message qui n'a qu'eux ; emojis personnalisés des serveurs (animés : première image) ; sélecteur d'emojis (recherche, récents, emojis des serveurs, catégories, teinte de peau) depuis la saisie et « Ajouter une réaction » ; autocollants affichés (Lottie : leur nom) et envoyés depuis le sélecteur
+- Vrai gras et vraie italique (Segoe UI de Windows, lue au démarrage ; police intégrée sinon). Emojis en couleur partout (messages, réactions, saisie, statut, noms de salons), en grand dans un message qui n'a qu'eux ; emojis personnalisés des serveurs, animés compris ; sélecteur d'emojis (recherche, récents, emojis des serveurs, catégories, teinte de peau) depuis la saisie et « Ajouter une réaction » ; autocollants affichés (Lottie : leur nom) et envoyés depuis le sélecteur
 - Reconnexion automatique avec reprise de session (pas de messages perdus)
 - Gestion des limites de débit de Discord (429)
 - Permissions : salons inaccessibles masqués, saisie fermée (avec la raison) sans droit d'écrire ou pendant une exclusion temporaire, historique non demandé sans droit de le lire
 - Avatars (auteurs des messages, conversations privées, toi) et icônes des serveurs et des groupes, téléchargés depuis le CDN de Discord sans jamais y envoyer ton jeton, gardés dans un cache disque borné (`%LOCALAPPDATA%\ferrocord\images`, 256 Mo au plus)
 
+## Ajouté depuis
+
+Le code et les libellés de ce qui suit existent et sont couverts par les tests hors ligne. « Fait » veut dire « branché » : ces fonctions n'ont pas été vérifiées une à une sur un vrai compte, et la liste de ce qui reste à essayer est au chapitre 5 de `docs/ecarts-restants.md`.
+
+- Vocal, appels, vidéo et partage d'écran (H.264 et VP8)
+- Réactions, réponses, modification de ses messages, envoi de fichiers, sondages
+- Fils et forums (liste, galerie, étiquettes, création de publication)
+- Liste des membres, statuts en ligne, statut personnalisé, indicateur « en train d'écrire »
+- Sélecteur de GIF et favoris, recherche de messages, boîte de réception
+- Paramètres du serveur et des salons, modération, plugins (`docs/plugins.md`)
+
 ## Pas encore géré
 
-- Vocal, vidéo, partage d'écran
-- GIF animés (première image seulement), lecture intégrée des vidéos et des sons, emojis et autocollants animés (première image) ; avatars de serveur (par membre) et avatars animés (la première image est affichée)
-- Réactions, réponses, fils, forums, envoi de fichiers, édition de ses messages
+L'inventaire complet et à jour est dans `docs/ecarts-restants.md`. L'essentiel :
+
+- Autocollants Lottie (leur nom est affiché à la place), animation des super réactions, polices et effets des noms
+- Partage d'écran : VP9 et AV1, changement de fenêtre sans arrêter le partage
+- Raccourcis globaux réglables (hors appui-pour-parler), correcteur orthographique, barre de mise en forme sur la sélection
+- Plusieurs pages d'administration d'un serveur (vérification des membres, guide du serveur, « voir en tant que rôle »)
+- Linux et macOS
+- Écarté volontairement : achats (Nitro, boosts, boutique), tout ce qui passe par un captcha (connexion par mot de passe, création de compte), quêtes, activités intégrées, overlay en jeu
 - Permissions sur les serveurs dont Discord n'envoie pas ton membre ou les rôles au démarrage : tout y reste affiché, et Discord répond « accès refusé » au besoin
-- Liste des membres, statuts en ligne, indicateur « en train d'écrire »
 - Proxys : les variables `HTTP_PROXY`, `HTTPS_PROXY` et `ALL_PROXY` sont volontairement ignorées, pour qu'elles ne puissent pas détourner les requêtes qui portent ton jeton. Aucune prise en charge des proxys pour l'instant.
 
 ## Pourquoi c'est plus léger que l'app officielle
@@ -116,7 +131,7 @@ Sur Android : jeton chiffré par une clé du Keystore d'Android (fichier dans le
 | | App officielle | Ferrocord |
 |---|---|---|
 | Moteur | Electron (Chromium + Node.js), plusieurs processus | Un seul processus natif |
-| Taille | ~400 Mo installés | ~8 Mo |
+| Taille | ~660 Mo installés | ~46 Mo, un seul fichier |
 | CPU au repos | animations, JS en continu | 0 % : redessin uniquement quand il se passe quelque chose |
 
 Ce qui est optimisé dans le code :
@@ -127,7 +142,7 @@ Ce qui est optimisé dans le code :
 - Le cache est borné : 500 messages par salon et 20 salons en mémoire, les plus anciens sont libérés.
 - Les images sont téléchargées et décodées hors du fil d'interface, à la taille d'affichage, seulement quand elles sont visibles ; les textures sont plafonnées (48 Mo) et libérées quand elles ne sont plus affichées.
 - Les décodages simultanés sont limités, une image plus grande que le double de la taille demandée est refusée avant d'être décodée, et au plus 32 textures sont créées par image affichée.
-- Le rendu se fait en OpenGL, plus léger que wgpu (mesuré : ~170 Mo contre ~400 Mo).
+- Le rendu se fait en OpenGL, plus léger que wgpu (mesuré : ~170 Mo contre ~400 Mo) ; sous Windows, il passe par ANGLE (Direct3D 11), qui évite le pilote OpenGL (`docs/mesures-d3d.md`).
 
 La majorité de la mémoire restante vient du pilote graphique chargé par Windows, pas du code du client.
 

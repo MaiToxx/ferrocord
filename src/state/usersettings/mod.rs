@@ -167,6 +167,8 @@ pub enum AccountEvent {
     Sessions(Result<Vec<AuthSession>, Problem>),
     SessionLoggedOut { hash: String, result: Result<(), Problem> },
     Connections(Result<Vec<LinkedAccount>, Problem>),
+    /// USER_CONNECTIONS_UPDATE : un compte a été lié ou retiré, ici ou ailleurs.
+    ConnectionsChanged,
     Apps(Result<Vec<AuthorizedApp>, Problem>),
     AppRevoked { id: u64, result: Result<(), Problem> },
     /// Consentements, avatar et bannière (`extra`).
@@ -680,6 +682,12 @@ impl AccountState {
                 }
             }
             AccountEvent::Connections(r) => self.connections = r.map_or_else(Remote::Failed, Remote::Ready),
+            // Relue seulement si la page l'a déjà demandée dans cette session.
+            AccountEvent::ConnectionsChanged => {
+                if matches!(self.connections, Remote::Ready(_) | Remote::Failed(_)) {
+                    self.load_connections();
+                }
+            }
             AccountEvent::Apps(r) => self.apps = r.map_or_else(Remote::Failed, Remote::Ready),
             AccountEvent::AppRevoked { id, result } => {
                 let pos = self.revoking.iter().position(|a| a.id == id)?;

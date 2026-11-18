@@ -444,6 +444,16 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("ferrocord-perf-fils-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let file = dir.join("perf.csv");
+        // Coût de deux listes des fils dans CE processus, en temps processeur du fil appelant
+        // (`totals` en refait une pour se lire). Seul, il est de quelques millisecondes ; au
+        // milieu de toute la suite, le processus de test a des centaines de fils éphémères et
+        // une liste coûte 80 à 200 ms : le relevé n'y est pour rien.
+        let two_lists = || {
+            let before = totals().0;
+            os::Reader::default().rescan();
+            totals().0 - before
+        };
+        let lists_before = two_lists();
         let Ok(rec) = Recorder::start(file.clone(), Instant::now()) else { panic!("journal non créé") };
         let sampler = Sampler::start(rec.share());
         assert!(sampler.is_some());
@@ -453,6 +463,7 @@ mod tests {
         drop(sampler);
         assert!(stopping.elapsed() < Duration::from_millis(200), "l'arrêt réveille le fil du relevé");
         drop(rec);
+        let lists = lists_before.max(two_lists());
         let text = std::fs::read_to_string(&file).unwrap_or_default();
         let _ = std::fs::remove_dir_all(&dir);
         let own: Vec<f64> = text.lines().filter_map(|l| l.split_once(",fil.ferrocord_perf_fils,")).filter_map(|(_, ms)| ms.parse().ok()).collect();
@@ -460,7 +471,10 @@ mod tests {
         // Le premier relevé compte le passé de chaque fil : au moins une ligne.
         assert!(text.lines().any(|l| l.contains(",fil.")), "{text}");
         // Au plus deux listes en 3 s (au départ, puis après RESCAN_MIN) : moins de 5 % d'un cœur, contre plus de 10 % avant.
-        assert!(spent <= run.as_secs_f64() * 1000.0 * 0.05, "le relevé a consommé {spent} ms en {run:?} : {own:?}");
+        // Dans un processus encombré, la borne suit le coût mesuré : quatre listes au plus, là où
+        // une liste par relevé (douze en 3 s) en coûterait douze.
+        let budget = (run.as_secs_f64() * 1000.0 * 0.05).max(lists * 2.0);
+        assert!(spent <= budget, "le relevé a consommé {spent} ms en {run:?} (borne {budget} ms, deux listes : {lists} ms) : {own:?}");
     }
 
     /// Lot « perf » : relire les fils connus coûte très peu (le relevé ne doit

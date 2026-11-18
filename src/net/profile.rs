@@ -259,6 +259,17 @@ pub(super) fn note_of(body: &str) -> Option<String> {
     Some(n.note.map(|s| clip_to(&s, MAX_NOTE)).unwrap_or_default())
 }
 
+/// USER_NOTE_UPDATE (`id` : la personne, `note` : le texte, vide si effacée) :
+/// note écrite ici ou sur un autre appareil. Sans cela, une note lue une fois
+/// restait celle de la première lecture jusqu'à la fin de la session.
+pub(super) fn note_update(d: &str, out: &super::Out) {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(d) else { return };
+    let Some(user_id) = v["id"].as_str().and_then(|s| s.parse::<u64>().ok()).or_else(|| v["id"].as_u64()) else { return };
+    let text = clip_to(v["note"].as_str().unwrap_or_default(), MAX_NOTE);
+    out.people.lock().profiles_mut().note_loaded(user_id, Some(text));
+    out.poke();
+}
+
 /// Adresse de Get User Profile : serveurs et amis en commun demandés, et le
 /// profil du serveur affiché.
 fn profile_url(root: &str, user_id: u64, guild_id: Option<u64>) -> String {

@@ -42,13 +42,18 @@ impl Store {
                 }
             }
             RelationsEvent::RelationAdd(r) => {
+                let id = r.id;
                 self.relations.add(r);
                 self.keep_friend_presences();
+                self.relation_changed(id);
+                // Demande partie ou acceptée ailleurs : plus rien à suggérer.
+                self.take_suggestion(id);
             }
             RelationsEvent::RelationUpdate { id, nickname, ignored } => self.relations.update(id, nickname, ignored),
             RelationsEvent::RelationRemove { id } => {
                 self.relations.remove(id);
                 self.keep_friend_presences();
+                self.relation_changed(id);
             }
             RelationsEvent::Dm { info, people, known_recipients } => {
                 self.reads.track(info.id);

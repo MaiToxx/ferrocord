@@ -1335,6 +1335,12 @@ soit 25,8 Mio ; « Mo » vaut ici 2²⁰ octets partout). `target\release\ferroc
 n'existait pas dans le dépôt principal au moment de la mesure ; sa dernière
 version de release y est `ferrocord.old.exe`, 24,75 Mo.
 
+**Mise à jour du 18 novembre 2026** : l'exécutable publié en 0.1.2
+(`Ferrocord-0.1.2-x64.exe`) pèse 48 616 448 octets, soit 46,4 Mo : 30,5 Mo de
+code, 14,0 Mo de données (dont ANGLE et les polices embarqués, environ
+7 Mo). Le rapport avec Discord tombe donc à ≈ 14 × pour le programme. Ce qui
+a fait grossir le code depuis la mesure ci-dessus n'a pas été recherché.
+
 Détail de Discord 1.0.9268 : `app-1.0.9268` 506,9 Mo (dont `Discord.exe`
 224,7 Mo et `modules` 153,3 Mo), `packages` 152,2 Mo (paquet de mise à
 jour). Les dossiers ont été seulement parcourus, rien n'a été ouvert ni modifié.
