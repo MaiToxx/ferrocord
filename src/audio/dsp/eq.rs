@@ -118,12 +118,12 @@ impl Eq3 {
     /// Règle les trois bandes (dB) ; une bande qui change repart sans mémoire.
     pub fn set(&mut self, gains: [i8; 3]) {
         let gains = gains.map(|g| g.clamp(-GAIN_MAX, GAIN_MAX));
-        for i in 0..3 {
-            if gains[i] == self.gains[i] {
+        for (i, &gain) in gains.iter().enumerate() {
+            if gain == self.gains[i] {
                 continue;
             }
-            let db = f32::from(gains[i]);
-            self.bands[i] = match (i, gains[i]) {
+            let db = f32::from(gain);
+            self.bands[i] = match (i, gain) {
                 (_, 0) => Biquad::UNIT,
                 (0, _) => Biquad::shelf(LOW_HZ, db, false),
                 (1, _) => Biquad::peaking(MID_HZ, db),
