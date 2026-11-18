@@ -51,6 +51,44 @@ pub(super) struct RowOpts {
 }
 
 /// Chevron d'une catégorie : vers le bas, ou vers la droite si elle est repliée.
+/// Catégories de contacts repliées dans la colonne des MP (le temps de la session).
+fn dm_folded_id() -> egui::Id {
+    egui::Id::unique("ferrocord.mp.categories-repliees")
+}
+
+/// En-tête d'une catégorie de contacts dans la colonne des MP : son nom et un
+/// chevron ; un clic la replie ou la déplie. Rend vrai si elle est repliée.
+fn dm_category_head(ui: &mut egui::Ui, t: &Tokens, lang: crate::i18n::Lang, name: &str) -> bool {
+    use crate::i18n::table::social::t as st;
+    let key = name.to_lowercase();
+    let mut folded = ui.ctx().data(|d| d.get_temp::<std::collections::HashSet<String>>(dm_folded_id())).unwrap_or_default();
+    let collapsed = folded.contains(&key);
+    ui.add_space(t.spacing.category_gap);
+    let head = ui.horizontal(|ui| {
+        ui.add_space(t.spacing.item_x);
+        ui.spacing_mut().item_spacing.x = t.spacing.item_y;
+        let chevron = Tokens::icon_side(t.typography.small) * 0.75;
+        let text = RichText::new(name).size(t.typography.body - 2.0).family(crate::ui::fonts::medium()).color(t.colors.muted);
+        let room = (ui.available_width() - chevron - 2.0 * t.spacing.item_x).max(chevron);
+        ui.allocate_ui_with_layout(egui::vec2(room, ui.text_style_height(&TextStyle::Body)), Layout::left_to_right(Align::Center), |ui| ui.add(egui::Label::new(text).truncate().selectable(false)));
+        let (r, _) = ui.allocate_exact_size(egui::Vec2::splat(chevron), Sense::hover());
+        paint_chevron(ui.painter(), r, t.colors.muted, collapsed);
+    });
+    let row = egui::Rect::from_min_max(head.response.rect.min, egui::pos2(ui.max_rect().right(), head.response.rect.max.y));
+    let resp = ui.interact(row, ui.scope_id().with(("categorie-mp", &key)), Sense::click());
+    let word = if collapsed { st::CAT_UNFOLD } else { st::CAT_FOLD }.get(lang);
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("{name}, {word}")));
+    super::keys::focus_ring(ui, t, &resp);
+    if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+        if !folded.remove(&key) {
+            folded.insert(key);
+        }
+        ui.ctx().data_mut(|d| d.insert_temp(dm_folded_id(), folded));
+        return !collapsed;
+    }
+    collapsed
+}
+
 fn paint_chevron(p: &egui::Painter, rect: egui::Rect, color: egui::Color32, collapsed: bool) {
     icons::paint(if collapsed { Icon::ChevronRight } else { Icon::ChevronDown }, p, rect, color);
 }
@@ -333,8 +371,34 @@ impl App {
                         if s.dms.is_empty() {
                             ui.label(RichText::new(t::NO_CONVERSATIONS.get(lang)).color(t.colors.muted));
                         }
+                        // Catégories de contacts (locales) : les MP à deux d'une personne rangée
+                        // passent sous l'en-tête de sa première catégorie, dans l'ordre des
+                        // catégories ; les autres (et les groupes) suivent, sous « Sans catégorie ».
+                        let groups = &self.local.prefs.friend_groups;
+                        let rank = |d: &crate::state::model::Dm| -> Option<usize> {
+                            let info = s.relations.dm_info(d.id).filter(|i| !i.group)?;
+                            let [peer] = info.recipients[..] else { return None };
+                            groups.first_of(peer)
+                        };
                         // Les demandes de message ont leur page (lot U).
-                        for d in s.dms.iter().filter(|d| !s.relations.is_request(d.id)) {
+                        let mut shown: Vec<(Option<usize>, &crate::state::model::Dm)> = s.dms.iter().filter(|d| !s.relations.is_request(d.id)).map(|d| (if groups.groups.is_empty() { None } else { rank(d) }, d)).collect();
+                        let sorted = shown.iter().any(|(r, _)| r.is_some());
+                        if sorted {
+                            // Tri stable : l'ordre des MP est gardé dans chaque catégorie.
+                            shown.sort_by_key(|(r, _)| r.unwrap_or(usize::MAX));
+                        }
+                        let mut section: Option<Option<usize>> = None;
+                        let mut folded = false;
+                        for (r, d) in shown {
+                            if sorted && section != Some(r) {
+                                section = Some(r);
+                                let name = r.and_then(|i| groups.groups.get(i)).map_or(crate::i18n::table::social::t::CAT_OTHERS.get(lang), |g| g.name.as_str());
+                                folded = dm_category_head(ui, &t, lang, name);
+                            }
+                            // Catégorie repliée : la conversation ouverte reste visible.
+                            if folded && s.channel != Some(d.id) {
+                                continue;
+                            }
                             let icon = if t.avatars_shown() { RowIcon::Avatar(d.avatar) } else { RowIcon::At };
                             let row = self.channel_row(ui, icon, super::words::dm_name(lang, &d.name), d.id, false);
                             menus.push((NotifTarget::Channel { guild: None, channel: d.id }, row.clone(), ReadItem::Dm(d.id), None));

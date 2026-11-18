@@ -1341,6 +1341,22 @@ code, 14,0 Mo de données (dont ANGLE et les polices embarqués, environ
 7 Mo). Le rapport avec Discord tombe donc à ≈ 14 × pour le programme. Ce qui
 a fait grossir le code depuis la mesure ci-dessus n'a pas été recherché.
 
+**Optimiser pour la taille (`opt-level = "s"`), mesuré le 18 novembre 2026 et
+non retenu.** L'exécutable passe de 48,4 à 38,8 Mo (20 % de moins), mais le
+banc `preview --bench`, passé deux fois par variante sur la même machine
+(i9-14900K), donne une image plus lente d'environ 14 % :
+
+| Image, médiane | `opt-level = 3` | `opt-level = "s"` |
+|---|---:|---:|
+| Au repos | 0,43 ms | 0,50 ms |
+| Défilement | 0,48 ms | 0,56 ms |
+| Arrivée de 50 messages par seconde | 0,47 ms | 0,54 ms |
+| Changement de salon | 1,65 ms | 1,77 ms |
+| Mémoire privée en fin de banc | 205 Mo | 198 Mo |
+
+Le banc ne mesure ni le vocal ni la vidéo. Le profil de release garde
+`opt-level = 3`.
+
 Détail de Discord 1.0.9268 : `app-1.0.9268` 506,9 Mo (dont `Discord.exe`
 224,7 Mo et `modules` 153,3 Mo), `packages` 152,2 Mo (paquet de mise à
 jour). Les dossiers ont été seulement parcourus, rien n'a été ouvert ni modifié.

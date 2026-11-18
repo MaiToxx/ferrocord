@@ -1858,6 +1858,8 @@ enum Scene {
     MenuServeur,
     /// Lot U (vue `amis`) : menu complet d'un utilisateur ouvert sur un ami.
     MenuUtilisateur,
+    /// Catégories de contacts : deux catégories garnies (page Amis et colonne des MP).
+    CategoriesAmis,
     /// Lot U (vue `amis`) : page « Demandes de message », dossier de spam.
     Demandes,
     /// Lot ND (vue `amis`) : onglet « En attente » avec les suggestions d'amis.
@@ -3910,6 +3912,7 @@ fn args() -> Result<Args, String> {
                     Some("entete-cloche") => Scene::EnteteCloche,
                     Some("menu-serveur") => Scene::MenuServeur,
                     Some("menu-utilisateur") => Scene::MenuUtilisateur,
+                    Some("categories-amis") => Scene::CategoriesAmis,
                     Some("demandes") => Scene::Demandes,
                     Some("quetes") => Scene::Quetes,
                     Some("boutique") => Scene::Boutique,
@@ -4864,6 +4867,17 @@ fn main() -> eframe::Result {
                 }
                 Some(Scene::MenuServeur) => {
                     app.show_head_popup("serveur");
+                }
+                Some(Scene::CategoriesAmis) => {
+                    let mut p = app.local_prefs();
+                    p.friend_groups.create("Jeux du soir");
+                    p.friend_groups.create("Travail");
+                    p.friend_groups.set("Jeux du soir", AMIS_FRIENDS[0].0, true);
+                    p.friend_groups.set("Jeux du soir", AMIS_FRIENDS[2].0, true);
+                    p.friend_groups.set("Travail", AMIS_FRIENDS[1].0, true);
+                    // Alice a un MP ouvert : il passe sous l'en-tête de sa catégorie.
+                    p.friend_groups.set("Jeux du soir", 1_000_000_000_000_000_002, true);
+                    app.set_local_prefs(p);
                 }
                 Some(Scene::MenuUtilisateur) => {
                     app.show_user_menu(1_000_000_000_000_000_002, "Alice", egui::pos2(620.0, 150.0));
