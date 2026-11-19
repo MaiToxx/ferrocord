@@ -311,6 +311,16 @@ impl App {
         }
         let shown = self.shown(card.user_id, card.guild_id);
         self.want_profile_effect(&shown);
+        // Journal de débogage : la forme des badges reçus, une fois par profil.
+        if self.local.prefs.debug_log
+            && let Some(shape) = shown.profile.as_ref().map(|p| p.badge_shape.clone()).filter(|s| !s.is_empty())
+        {
+            let once = egui::Id::unique(("ferrocord.journal.badges", card.user_id));
+            if !self.ctx.data(|d| d.get_temp::<bool>(once).unwrap_or(false)) {
+                self.ctx.data_mut(|d| d.insert_temp(once, true));
+                self.local_log(&format!("badges du profil : {shape}"));
+            }
+        }
         let t = self.theme.clone();
         let gap = t.spacing.item_x;
         let mut pos = egui::pos2(card.anchor.right() + gap, card.anchor.top());

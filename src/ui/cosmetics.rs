@@ -639,7 +639,16 @@ pub(super) struct Themed {
     bottom: Color32,
     /// Hauteur sur laquelle le dégradé passe d'une couleur à l'autre.
     span: f32,
+    /// Couleurs choisies, sans voile : le liseré de la carte.
+    raw: [Color32; 2],
 }
+
+/// Voile posé par le client sur le dégradé d'un profil à thème : noir à 60 %
+/// (thème sombre), blanc à 60 % (thème clair). Seul le liseré garde les
+/// couleurs choisies. Constaté sur le client (capture du 19 novembre 2026).
+const THEME_VEIL: f32 = 0.6;
+/// Épaisseur du liseré aux couleurs du thème.
+const THEME_EDGE: f32 = 2.0;
 
 impl Themed {
     /// `colors` : principale (haut) et secondaire (bas). Le texte est clair
@@ -653,7 +662,8 @@ impl Themed {
         let worst = |fg: Color32, a: Color32, b: Color32| contrast_ratio(fg, a).min(contrast_ratio(fg, b));
         let (light, dark) = (Color32::WHITE, Color32::from_rgb(6, 6, 7));
         let (text, away) = if worst(light, top, bottom) >= worst(dark, top, bottom) { (light, Color32::BLACK) } else { (dark, Color32::WHITE) };
-        let (a, b) = (top, bottom);
+        let raw = [top, bottom];
+        let (a, b) = (mix(top, away, THEME_VEIL), mix(bottom, away, THEME_VEIL));
         for i in 0..=20 {
             let k = i as f32 / 20.0;
             (top, bottom) = (mix(a, away, k), mix(b, away, k));
@@ -688,7 +698,7 @@ impl Themed {
         tokens.markdown.code_bg = c.bg3;
         // Mention dans la bio : lisible sur le dégradé du profil, pas seulement sur le fond du thème.
         tokens.markdown.mention_text = on_both(tokens.markdown.mention_text);
-        Themed { tokens, top, bottom, span: THEME_SPAN }
+        Themed { tokens, top, bottom, span: THEME_SPAN, raw }
     }
 
     /// Le dégradé couvre une fenêtre haute de `height` (celle de la carte) :
@@ -699,9 +709,10 @@ impl Themed {
         }
     }
 
-    /// Filet de contour de la carte, teinté par la couleur du haut.
-    pub(super) fn edge(&self, t: &Tokens) -> egui::Stroke {
-        egui::Stroke::new(t.shapes.border.max(1.0), mix(self.top, self.tokens.colors.text_strong, 0.32))
+    /// Filet de contour de la carte : aucun, le liseré aux couleurs du
+    /// thème fait partie du fond ([`Themed::background`]).
+    pub(super) fn edge(&self, _t: &Tokens) -> egui::Stroke {
+        egui::Stroke::NONE
     }
 
     /// Couleur du fond à la hauteur `y` d'une fenêtre dont le haut est `top`.
@@ -711,15 +722,26 @@ impl Themed {
 
     /// Fond de la fenêtre `rect`, à mettre à la place réservée avant le contenu.
     pub(super) fn background(&self, rect: Rect, r: CornerRadius) -> egui::Shape {
+        // Liseré : le dégradé des couleurs choisies sur toute la fenêtre,
+        // recouvert par le fond voilé, en retrait de `THEME_EDGE`.
+        let top = rect.top();
+        let k = |y: f32| ((y - top) / self.span).clamp(0.0, 1.0);
+        let inner = rect.shrink(THEME_EDGE);
+        let inner_r = r - THEME_EDGE as u8;
+        egui::Shape::Vec(vec![gradient_rect(rect, r, |p| mix(self.raw[0], self.raw[1], k(p.y))), self.veiled(inner, inner_r, top)])
+    }
+
+    /// Fond voilé de `rect`, le dégradé partant de `top`.
+    fn veiled(&self, rect: Rect, r: CornerRadius, top: f32) -> egui::Shape {
         // Le dégradé s'arrête à `span` : au-delà, la couleur du bas.
-        let span = rect.top() + self.span;
+        let span = top + self.span;
         if rect.bottom() <= span {
-            return gradient_rect(rect, r, |p| self.at(rect.top(), p.y));
+            return gradient_rect(rect, r, |p| self.at(top, p.y));
         }
         let upper = Rect::from_min_max(rect.min, egui::pos2(rect.right(), span));
         let lower = Rect::from_min_max(egui::pos2(rect.left(), span), rect.max);
         egui::Shape::Vec(vec![
-            gradient_rect(upper, CornerRadius { sw: 0, se: 0, ..r }, |p| self.at(rect.top(), p.y)),
+            gradient_rect(upper, CornerRadius { sw: 0, se: 0, ..r }, |p| self.at(top, p.y)),
             gradient_rect(lower, CornerRadius { nw: 0, ne: 0, ..r }, |_| self.bottom),
         ])
     }
@@ -793,9 +815,14 @@ mod tests {
                 }
             }
         }
-        // Couleurs déjà sombres : gardées telles quelles.
+        // Texte clair : le fond est le dégradé choisi sous un voile noir à
+        // 60 %, comme dans le client ; le liseré garde les couleurs choisies.
         let th = Themed::new(&t, [0x1a_1a2e, 0x16_213e]);
-        assert_eq!((th.top, th.bottom), (rgb(0x1a_1a2e), rgb(0x16_213e)));
+        assert_eq!((th.top, th.bottom), (mix(rgb(0x1a_1a2e), Color32::BLACK, THEME_VEIL), mix(rgb(0x16_213e), Color32::BLACK, THEME_VEIL)));
+        assert_eq!(th.raw, [rgb(0x1a_1a2e), rgb(0x16_213e)]);
+        // Couleurs claires : voile blanc, texte sombre.
+        let th = Themed::new(&t, [0xff_e0f0, 0xf0_f0ff]);
+        assert!(contrast_ratio(th.tokens.colors.text_strong, Color32::WHITE) > 10.0 && contrast_ratio(th.top, Color32::WHITE) < contrast_ratio(rgb(0xff_e0f0), Color32::WHITE));
         assert_eq!(th.at(100.0, 100.0), th.top);
         assert_eq!(th.at(100.0, 100.0 + 2.0 * THEME_SPAN), th.bottom);
     }
