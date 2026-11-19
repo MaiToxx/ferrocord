@@ -1037,6 +1037,11 @@ impl App {
         if retry.1 && !self.store.load_newer(cid) {
             self.store.return_to_present(cid);
         }
+        // Début d'une conversation à deux affiché : son profil est demandé (une
+        // fois par durée de validité), pour le nombre de serveurs en commun.
+        if let Some(peer) = start.peer.as_ref().filter(|p| start.seen.get() && p.mutual.is_none()) {
+            self.store.want_profile(peer.id, None);
+        }
         // Boutons du début d'une conversation à deux (F24).
         if let (Some(act), Some(peer)) = (start.act.take(), &start.peer) {
             let user_id = peer.id;
@@ -1193,6 +1198,8 @@ struct Start {
     peer: Option<Peer>,
     /// Bouton du début cliqué à cette image (le dessin n'a pas accès à l'application).
     act: std::cell::Cell<Option<StartAct>>,
+    /// Le début d'une conversation à deux a été dessiné à cette image.
+    seen: std::cell::Cell<bool>,
 }
 
 /// Le correspondant d'une conversation à deux, vu du début de la conversation.
@@ -1233,9 +1240,9 @@ impl Start {
                         mutual: people.profiles().best(id, None).and_then(|s| s.profile()).and_then(|p| p.mutual_guilds.as_ref().map(Vec::len)),
                     }
                 });
-                Start { name: d.name.clone(), dm: Some(d.avatar), peer, act }
+                Start { name: d.name.clone(), dm: Some(d.avatar), peer, act, seen: Default::default() }
             }
-            None => Start { name: store.channel_name(cid).unwrap_or_default().to_string(), dm: None, peer: None, act },
+            None => Start { name: store.channel_name(cid).unwrap_or_default().to_string(), dm: None, peer: None, act, seen: Default::default() },
         }
     }
 }
@@ -1305,6 +1312,9 @@ fn start_ui(ui: &mut egui::Ui, t: &Tokens, lang: Lang, images: Option<&crate::im
             ui.add_space(t.spacing.item_y);
             if let Some(a) = start_buttons(ui, t, lang, peer, images.is_some()) {
                 start.act.set(Some(a));
+            }
+            if images.is_some() {
+                start.seen.set(true);
             }
         }
         ui.add_space(t.spacing.message_gap);

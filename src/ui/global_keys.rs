@@ -9,8 +9,12 @@ use crate::platform::hotkeys::{self, Binding, Hotkeys};
 use crate::state::keys::Action;
 use crate::voice::ptt_keys;
 
-/// Actions qui peuvent être globales, dans l'ordre de leurs numéros.
-const ACTIONS: [Action; 2] = [Action::ToggleMute, Action::ToggleDeafen];
+/// Actions qui peuvent être globales, dans l'ordre de leurs numéros. Les
+/// [`ALWAYS`] premières le sont en permanence ; les suivantes (appel entrant)
+/// seulement pendant qu'un appel sonne, pour ne pas retirer leur combinaison
+/// (Ctrl+Entrée par défaut) aux autres applications le reste du temps.
+const ACTIONS: [Action; 4] = [Action::ToggleMute, Action::ToggleDeafen, Action::AnswerCall, Action::DeclineCall];
+const ALWAYS: usize = 2;
 
 #[derive(Default)]
 pub(super) struct GlobalKeys {
@@ -34,9 +38,11 @@ impl App {
         if !self.local.prefs.audio.global_keys {
             return Vec::new();
         }
+        let ringing = !self.store.incoming_calls().is_empty();
         ACTIONS
             .iter()
             .enumerate()
+            .filter(|(i, _)| *i < ALWAYS || ringing)
             .filter_map(|(i, a)| {
                 let c = self.nav.bindings.get(*a)?;
                 let b = Binding { id: i as i32 + 1, vk: ptt_keys::vk_of(&c.key)?, ctrl: c.ctrl, alt: c.alt, shift: c.shift };
@@ -74,6 +80,7 @@ impl App {
         ACTIONS
             .iter()
             .enumerate()
+            .take(ALWAYS)
             .map(|(i, a)| {
                 let id = i as i32 + 1;
                 let state = match held {
