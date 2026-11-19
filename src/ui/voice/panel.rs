@@ -199,8 +199,9 @@ impl App {
                         if button(ui, &t, VIcon::Hangup, vt::LEAVE.get(lang), false).clicked() {
                             act = Some(Act::Leave);
                         }
+                        // Suppression de bruit : seulement avec le plugin RNNoise (0.1.13).
                         let tip = if noise { lt::NOISE_ON } else { lt::NOISE_OFF }.get(lang);
-                        if tool(ui, &t, Icon::Signal, tip, noise.then_some(t.colors.online)).clicked() {
+                        if crate::plugins::on(crate::plugins::Id::NoiseRnn) && tool(ui, &t, Icon::Signal, tip, noise.then_some(t.colors.online)).clicked() {
                             act = Some(Act::Noise);
                         }
                         if rec_shown {

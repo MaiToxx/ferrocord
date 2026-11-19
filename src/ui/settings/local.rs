@@ -326,6 +326,9 @@ impl App {
             }
         }
 
+        if let Some(v) = toggle(ui, s2::QUEST_PROGRESS.get(lang), s2::QUEST_PROGRESS_TIP.get(lang), Some(p.quest_progress), true) {
+            p.quest_progress = v;
+        }
         section(ui, t, s2::SEC_DEBUG.get(lang));
         let health = crate::net::health::current().map_or_else(|| s2::NET_HEALTH_NONE.get(lang).to_string(), |h| health_line(&h));
         value_row(ui, s2::NET_HEALTH.get(lang), s2::NET_HEALTH_TIP.get(lang), &health);

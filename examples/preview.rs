@@ -3458,6 +3458,8 @@ impl Backend for Offline {
                         }
                         QuestCmd::Claim { id } => self.push(Event::Quests(QuestEvent::Claimed { id, result: Ok(None) })),
                         QuestCmd::Code { id } => self.push(Event::Quests(QuestEvent::Code { id, result: Ok("FICTIF-0000-CODE".into()) })),
+                        // Progression : l'aperçu ne simule aucune réponse.
+                        QuestCmd::Heartbeat { .. } | QuestCmd::VideoProgress { .. } => {}
                     }
                 }
                 Cmd::Send { channel_id, content, .. } => {

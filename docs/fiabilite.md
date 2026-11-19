@@ -248,6 +248,7 @@ appelés), envoi automatique d'un message programmé.
 | Brouillons, journal des messages, mots-clés, recherche locale, onglets, zoom, thèmes | rien | — | — | variable | sans risque |
 | Traduction | rien vers Discord (service choisi par l'utilisateur) | un par clic | clic | coupé | sans risque |
 | Quêtes | liste, acceptation, récompense | sur geste ; liste relue si plus de 5 min à l'ouverture de la page | clic | — | sans risque |
+| Progression des quêtes (0.1.13) | `POST …/heartbeat` (1/min tant que le jeu tourne), `…/video-progress` (toutes les 10 s lues) | activité réelle seulement | jeu détecté, vidéo en lecture | **coupé** | à connaître : requêtes du client officiel, envoyées sans ses empreintes de programme |
 | Accusés de lecture | `POST …/ack` | 3 s après lecture, groupés | lecture à l'écran | activé | sans risque (le client officiel fait de même) |
 | Saisie | `POST …/typing` | une par 8 s | frappe | activé | sans risque |
 | Inactivité automatique | op 3 `idle`, `afk: true`, puis retour | à 10 min sans saisie, et au retour | horloge locale de dernière saisie | toujours | sans risque (le client officiel fait de même) |

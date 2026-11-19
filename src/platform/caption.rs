@@ -32,6 +32,62 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 /// `WM_NCMOUSELEAVE` (absent des liaisons activées).
 const WM_NCMOUSELEAVE: u32 = 0x02A2;
+const WM_WINDOWPOSCHANGED: u32 = 0x0047;
+const WM_ENTERSIZEMOVE: u32 = 0x0231;
+const WM_EXITSIZEMOVE: u32 = 0x0232;
+
+/// Écran de la fenêtre au dernier déplacement (0 : pas encore relevé).
+static MONITOR: AtomicIsize = AtomicIsize::new(0);
+/// Déplacement à la souris en cours, et changement d'écran vu pendant lui.
+static MOVING: AtomicBool = AtomicBool::new(false);
+static CROSSED: AtomicBool = AtomicBool::new(false);
+
+/// Bouton de la barre des tâches : avec une barre par écran (« afficher les
+/// boutons sur la barre où la fenêtre est ouverte »), le bouton restait sur
+/// l'écran de départ quand la fenêtre passait sur un autre (constaté par
+/// l'utilisateur, 0.1.12). Au changement d'écran, le bouton est retiré puis
+/// remis (`ITaskbarList`) : l'Explorateur le range alors sur la barre du
+/// nouvel écran. Pendant un déplacement à la souris, une seule fois, à la fin.
+fn follow_monitor(window: HWND, msg: u32) {
+    use windows::Win32::Graphics::Gdi::{MonitorFromWindow, MONITOR_DEFAULTTONEAREST};
+    match msg {
+        WM_ENTERSIZEMOVE => MOVING.store(true, Ordering::SeqCst),
+        WM_WINDOWPOSCHANGED => {
+            // SAFETY: `window` est la fenêtre qui reçoit ce message ; aucun pointeur n'est passé.
+            let now = unsafe { MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST) }.0 as isize;
+            let before = MONITOR.swap(now, Ordering::SeqCst);
+            if before != 0 && before != now {
+                if MOVING.load(Ordering::SeqCst) {
+                    CROSSED.store(true, Ordering::SeqCst);
+                } else {
+                    refresh_taskbar_button(window);
+                }
+            }
+        }
+        WM_EXITSIZEMOVE => {
+            MOVING.store(false, Ordering::SeqCst);
+            if CROSSED.swap(false, Ordering::SeqCst) {
+                refresh_taskbar_button(window);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Retire puis remet le bouton de `window` dans la barre des tâches.
+fn refresh_taskbar_button(window: HWND) {
+    use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_INPROC_SERVER};
+    use windows::Win32::UI::Shell::{ITaskbarList, TaskbarList};
+    // SAFETY: appelé sur le fil de la fenêtre, où winit a initialisé COM
+    // (OleInitialize) ; l'objet est local et libéré en sortie ; `window` est
+    // vivante. Un échec (pas d'Explorateur, COM absent) est sans effet.
+    unsafe {
+        let Ok(list) = CoCreateInstance::<_, ITaskbarList>(&TaskbarList, None, CLSCTX_INPROC_SERVER) else { return };
+        if list.HrInit().is_ok() && list.DeleteTab(window).is_ok() {
+            let _ = list.AddTab(window);
+        }
+    }
+}
 
 /// Rectangle en pixels de la zone cliente : gauche, haut, droite, bas.
 pub type Px = [i32; 4];
@@ -245,6 +301,7 @@ unsafe extern "system" fn proc(window: HWND, msg: u32, wparam: WPARAM, lparam: L
     // l'entier a la taille d'un pointeur de fonction, et `WNDPROC` est une
     // option de pointeur de fonction de cette signature.
     let next = |msg, wparam, lparam| unsafe { CallWindowProcW(std::mem::transmute::<isize, WNDPROC>(previous), window, msg, wparam, lparam) };
+    follow_monitor(window, msg);
     if !ACTIVE.load(Ordering::SeqCst) {
         return next(msg, wparam, lparam);
     }

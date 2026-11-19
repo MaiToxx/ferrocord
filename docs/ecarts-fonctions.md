@@ -183,7 +183,7 @@ lancé pour cet audit.
 | Fonction | État | Détail |
 |---|---|---|
 | Rejoindre, quitter, muet, sourdine, volume par personne, muet local, modération vocale, déplacer, déconnecter | fait | `ui/voice/` |
-| Détection de voix, appui-pour-parler (global), suppression de bruit, écho, gain, choix et test des périphériques | fait | `src/audio/dsp/`, `ui/settings/voice.rs` |
+| Détection de voix, appui-pour-parler (global), suppression de bruit (plugin RNNoise seulement depuis la 0.1.13), écho, gain, choix et test des périphériques | fait | `src/audio/dsp/`, `ui/settings/voice.rs` |
 | Atténuation des autres applications, priorité de parole | absent | — |
 | Chiffrement DAVE, codes de vérification | fait | — |
 | Statut du salon vocal | fait | `calls::SET_STATUS` |
@@ -391,7 +391,7 @@ modification renvoyée vers Discord.
 
 | Fonction | État |
 |---|---|
-| Quêtes (promotions sponsorisées avec récompense) | partiel (lot ND) : page des quêtes, accepter, réclamer, code, progression renvoyée par Discord, solde d'Orbes. **Jamais** de progression déclarée par Ferrocord : une quête se termine dans l'application officielle |
+| Quêtes (promotions sponsorisées avec récompense) | partiel (lot ND) : page des quêtes, accepter, réclamer, code, progression renvoyée par Discord, solde d'Orbes. Progression réelle (0.1.13, réglage coupé par défaut) : temps de jeu tant que le jeu de la quête tourne, temps de vidéo réellement lu ici. **Jamais** de progression simulée ; console et activité : application officielle |
 | Mise à jour automatique signée, installateur, licences | fait |
 | Historique hors ligne | fait (Windows) |
 | Notes de version dans l'application | absent |
@@ -476,9 +476,9 @@ d'agent), M, L, XL.
 - Achats : Nitro, boosts, boutique, cadeaux à offrir, abonnements de serveur.
 - Tout ce qui passe par un captcha : connexion par mot de passe, ajout d'une
   application à un serveur, changement de mot de passe ou d'e-mail.
-- Progression des quêtes : la déclarer supposerait d'automatiser ou d'imiter
-  le client officiel. Les quêtes sont affichées, acceptées et réclamées
-  (lot ND), jamais accomplies par Ferrocord.
+- Progression simulée des quêtes (faux jeu, vidéo non lue) : jamais. Seule
+  la progression réelle est déclarée, et seulement si l'utilisateur l'a
+  demandé (0.1.13, `docs/passerelle-utilisateur.md`).
 - Activités intégrées, lecteurs web des liens, overlay en jeu (plan,
   chapitre 5).
 - Signalements : le formulaire est renvoyé vers le navigateur.

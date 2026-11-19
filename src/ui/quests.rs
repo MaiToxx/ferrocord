@@ -56,6 +56,9 @@ pub(super) struct QuestsPage {
     pub(super) detail: Option<u64>,
     /// Cartes posées à la dernière image (quête, rectangle) : tests de la grille.
     pub(super) cards: Vec<(u64, Rect)>,
+    /// Vidéo de quête en lecture : quête, dernière position vue (µs), temps
+    /// réellement lu depuis l'ouverture du lecteur (µs).
+    pub(super) watch: Option<(u64, u64, u64)>,
 }
 
 /// Ce qu'un clic dans une carte demande.
@@ -717,6 +720,19 @@ impl App {
         let mut act = None;
         let mut footer_act = None;
         let width = crate::ui::mobile::card_width(ctx, t, 1.0);
+        // Vidéo de la quête, jouée par le lecteur de Ferrocord quand la
+        // progression est déclarée ici (réglage) : présentée comme une pièce jointe.
+        let report = self.local.prefs.quest_progress && stage == Stage::Accepted;
+        let video = q.video_task().and_then(|k| k.video.clone()).filter(|_| report).map(|url| crate::state::model::Attachment {
+            id,
+            name: "quete.mp4".into(),
+            url,
+            content_type: Some("video/mp4".into()),
+            width: 1280,
+            height: 720,
+            kind: crate::state::model::MediaKind::Video,
+            ..Default::default()
+        });
         let out = widgets::modal(
             ctx,
             t,
@@ -758,6 +774,13 @@ impl App {
                     }
                     ui.add(egui::Label::new(RichText::new(tasks_summary(lang, q)).small().color(c.text)).wrap());
                 }
+                if let Some(a) = &video {
+                    ui.add_space(t.spacing.item_y);
+                    ui.add(egui::Label::new(RichText::new(qt::PROGRESS_VIDEO.get(lang)).small().color(c.muted)).wrap());
+                    let mut hot = super::attachments::Hot::default();
+                    super::player::card(ui, t, lang, Some(&self.images), a, &mut hot);
+                    hot.interact(ui, t, id);
+                }
                 // Progression : celle que Discord renvoie, jamais calculée ici.
                 if stage == Stage::Accepted
                     && let Some((value, target)) = q.progress()
@@ -769,7 +792,16 @@ impl App {
                 }
                 if matches!(stage, Stage::Open | Stage::Accepted) {
                     ui.add_space(t.spacing.item_y);
-                    ui.add(egui::Label::new(RichText::new(qt::FINISH_OFFICIAL_TIP.get(lang)).small().color(c.muted)).wrap());
+                    // Progression déclarée ici (réglage) : seulement pour un jeu sur ordinateur dont l'application est connue.
+                    let here = stage == Stage::Accepted && self.local.prefs.quest_progress && !q.play_apps().is_empty();
+                    let tip = match here {
+                        true if self.store.quests.progress_refused(id) && self.store.quests.needs_identity => qt::PROGRESS_IDENTITY,
+                        true if self.store.quests.progress_refused(id) => qt::PROGRESS_STOPPED,
+                        true if self.store.quests.beating(id) => qt::PROGRESS_PLAYING,
+                        true => qt::PROGRESS_PLAY,
+                        false => qt::FINISH_OFFICIAL_TIP,
+                    };
+                    ui.add(egui::Label::new(RichText::new(tip.get(lang)).small().color(c.muted)).wrap());
                 }
                 if stage == Stage::Completed && !q.claim_here {
                     ui.add(egui::Label::new(RichText::new(qt::CLAIM_OFFICIAL_TIP.get(lang)).small().color(c.muted)).wrap());
@@ -798,7 +830,31 @@ impl App {
         if out.closed {
             self.quests.detail = None;
         }
+        self.quest_watch_tick(ctx, id, video.is_some());
         act.or(footer_act)
+    }
+
+    /// Temps réellement lu de la vidéo de la quête `id` : seule l'avance
+    /// continue de la lecture compte (ni pause, ni saut en avant, ni lecteur
+    /// fermé), et c'est ce cumul qui est déclaré (`Store::quest_watched`).
+    fn quest_watch_tick(&mut self, ctx: &egui::Context, id: u64, on: bool) {
+        /// Avance la plus longue comptée entre deux images : au-delà, c'est un saut.
+        const MAX_STEP_US: u64 = 2_000_000;
+        let Some((playing, pos)) = super::player::progress(ctx, id).filter(|_| on) else {
+            self.quests.watch = None;
+            return;
+        };
+        let w = match &mut self.quests.watch {
+            Some(w) if w.0 == id => w,
+            slot => slot.insert((id, pos, 0)),
+        };
+        let step = pos.saturating_sub(w.1);
+        if playing && step > 0 && step <= MAX_STEP_US {
+            w.2 += step;
+        }
+        w.1 = pos;
+        let seconds = u32::try_from(w.2 / 1_000_000).unwrap_or(u32::MAX);
+        self.store.quest_watched(id, seconds, true);
     }
 }
 

@@ -291,8 +291,9 @@ impl App {
         }
         if input {
             let profile = InputProfile::of(&v);
-            // Plugin RNNoise (lot E4) : c'est lui qui supprime le bruit quand il est activé.
-            let noise = if crate::plugins::on(crate::plugins::Id::NoiseRnn) { pt::NOISE_RNN.get(lang) } else { at::NOISE.get(lang) };
+            // Suppression de bruit : seulement avec le plugin RNNoise (lot E4 ;
+            // l'étage d'origine a été retiré, 0.1.13).
+            let rnn_on = crate::plugins::on(crate::plugins::Id::NoiseRnn);
             sub_line(ui, &t, pt::INPUT_PROFILE.get(lang), profile.label(lang), |ui| {
                 ui.set_min_width(MENU_WIDTH);
                 for p in [InputProfile::Isolation, InputProfile::Studio, InputProfile::Custom] {
@@ -301,7 +302,9 @@ impl App {
                     }
                 }
                 menu::separator(ui, &t);
-                menu::check(ui, &t, noise, &mut v.noise_suppression);
+                if rnn_on {
+                    menu::check(ui, &t, pt::NOISE_RNN.get(lang), &mut v.noise_suppression);
+                }
                 menu::check(ui, &t, at::ECHO.get(lang), &mut v.echo_cancellation);
                 menu::check(ui, &t, at::AGC.get(lang), &mut v.auto_gain);
             });

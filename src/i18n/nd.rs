@@ -56,7 +56,7 @@ pub mod t {
         CLAIM_OFFICIAL_TIP = "Cette récompense demande de choisir une console\u{a0}: le choix se fait dans l'application officielle.", "This reward requires picking a console: that is done in the official app.";
         OPEN_OFFICIAL = "Ouvrir dans Discord", "Open in Discord";
         FINISH_OFFICIAL = "À terminer dans Discord", "Complete in Discord";
-        FINISH_OFFICIAL_TIP = "Ferrocord ne déclare aucune progression à votre place\u{a0}: la quête se joue ou se regarde dans l'application officielle, et la progression affichée ici est celle que Discord renvoie.", "Ferrocord never reports progress on your behalf: the quest is played or watched in the official app, and the progress shown here is what Discord returns.";
+        FINISH_OFFICIAL_TIP = "La progression affichée est celle que Discord renvoie. Cette quête se termine dans l'application officielle, ou ici pour un jeu sur ordinateur ou une vidéo si «\u{a0}Déclarer ma progression des quêtes\u{a0}» est activé (Paramètres, Avancés).", "The progress shown is what Discord returns. This quest is finished in the official app, or here for a desktop game or a video when \"Report my quest progress\" is on (Settings, Advanced).";
         SHOW_CODE = "Afficher le code", "Show Code";
         COPY_CODE = "Copier le code", "Copy Code";
         CODE_COPIED = "Code copié.", "Code copied.";
@@ -67,6 +67,11 @@ pub mod t {
         STAGE_EXPIRED = "Échue", "Expired";
         CAPTCHA = "Discord demande une vérification (captcha) pour cette action\u{a0}: Ferrocord ne la contourne pas. Faites-la dans l'application officielle.", "Discord asks for a verification (captcha) for this action: Ferrocord does not bypass it. Do it in the official app.";
         REFUSED = "Discord a refusé cette action.", "Discord refused this action.";
+        PROGRESS_IDENTITY = "Discord n'accepte la progression d'un jeu que de son application de bureau\u{a0}: activez l'identité «\u{a0}application de bureau\u{a0}» (Paramètres, Avancés), puis reconnectez-vous.", "Discord only accepts game progress from its desktop app: turn on the \"desktop app\" identity (Settings, Advanced), then reconnect.";
+        PROGRESS_VIDEO = "Regardez la vidéo ici\u{a0}: le temps réellement lu est déclaré à Discord.", "Watch the video here: the time actually played is reported to Discord.";
+        PROGRESS_PLAY = "Lancez le jeu\u{a0}: tant que Ferrocord le détecte, votre temps de jeu est déclaré à Discord.", "Launch the game: while Ferrocord detects it, your play time is reported to Discord.";
+        PROGRESS_PLAYING = "Jeu détecté\u{a0}: votre temps de jeu est déclaré à Discord.", "Game detected: your play time is being reported to Discord.";
+        PROGRESS_STOPPED = "Discord a refusé la progression\u{a0}: plus rien n'est déclaré pour cette quête jusqu'au redémarrage.", "Discord refused the progress: nothing more is reported for this quest until restart.";
         BLOCKED = "Discord n'autorise pas de nouvelle quête pour l'instant.", "Discord does not allow accepting a new quest right now.";
         ORBS = "Orbes", "Orbs";
         ORBS_TIP = "Solde d'Orbes annoncé par Discord. Les Orbes se dépensent dans la boutique de l'application officielle.", "Orbs balance as announced by Discord. Orbs are spent in the official app's shop.";

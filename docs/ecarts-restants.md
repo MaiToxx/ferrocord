@@ -81,7 +81,7 @@ Importance, pour un utilisateur ordinaire : **A** se remarque tous les jours,
 Achats (Nitro, boosts, boutique, cadeaux à offrir, abonnements de serveur) ;
 tout ce qui passe par un captcha (connexion par mot de passe, création de
 compte, changement de mot de passe ou d'e-mail, ajout d'une application à un
-serveur) ; quêtes ; activités intégrées ; lecteurs web des liens (YouTube,
+serveur) ; progression simulée des quêtes ; activités intégrées ; lecteurs web des liens (YouTube,
 Twitch, Spotify) ; overlay en jeu ; formulaire de signalement (renvoyé au
 navigateur).
 

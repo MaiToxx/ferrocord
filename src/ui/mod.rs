@@ -1194,6 +1194,11 @@ impl App {
         self.keys_tick();
         self.global_keys_tick();
         crate::voice::set_extra_codecs(self.local.prefs.audio.extra_codecs);
+        // Quêtes « jouer » : battement tant que le jeu détecté tourne, et
+        // réveil pour le suivant (aucun réveil sans quête en cours).
+        if let Some(wait) = self.store.quests_tick(self.local.prefs.quest_progress) {
+            self.ctx.request_repaint_after(std::time::Duration::from_millis(wait.clamp(1_000, crate::state::quests::BEAT_EVERY_MS) as u64));
+        }
         // Journal de débogage : polices de nom que Ferrocord ne connaît pas.
         for id in fonts::take_unknown() {
             self.local_log(&format!("police de nom inconnue : font_id {id}"));

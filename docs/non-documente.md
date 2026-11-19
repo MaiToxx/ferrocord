@@ -67,7 +67,7 @@ d'empreinte TLS. Une fonction qui ne peut pas respecter ces règles est
 | Page des quêtes : liste, image d'ambiance, logotype, récompense, échéance, progression ; tri, filtre et masquage locaux | resources/quests, Get User Quests ; reference, CDN Endpoints (images, sans jeton) | `GET /quests/@me` | faible | **fait (lot ND, refonte « quêtes »)** |
 | Accepter | Enroll in Quest | `POST /quests/{id}/enroll` | moyen | **fait (lot ND)**, au clic |
 | Réclamer, afficher le code | Claim Quest Reward, Get Quest Reward Code | `POST /quests/{id}/claim-reward`, `GET /quests/{id}/reward-code` | moyen | **fait (lot ND)**, au clic, seulement si Discord dit la quête terminée |
-| Progression (jeu, vidéo, console, activité) | Send Quest Heartbeat, Video Progress, Console Start | `POST /quests/{id}/heartbeat`, `/video-progress`, `/console/start` | fort | **écarté, définitivement** : ce serait déclarer une activité qui n'a pas lieu. La carte dit « Commencer la quête » (ou la progression reçue) et ouvre la quête dans Discord |
+| Progression (jeu, vidéo, console, activité) | Send Quest Heartbeat, Video Progress, Console Start | `POST /quests/{id}/heartbeat`, `/video-progress`, `/console/start` | fort | **fait pour le jeu et la vidéo (0.1.13), à la demande de l'utilisateur, coupé par défaut** : seule l'activité réelle est déclarée (jeu de la quête détecté en cours, secondes de vidéo réellement lues dans Ferrocord). Console et activité : écartés, la carte ouvre la quête dans Discord. Simuler une activité : écarté, définitivement |
 | Récompense avec choix de console | Claim Quest Reward (`platform`) | — | moyen | renvoyé vers l'application officielle |
 
 ## 4. Serveurs : découverte, adhésion, accueil

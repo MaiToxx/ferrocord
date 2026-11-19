@@ -32,10 +32,23 @@
 //! « Quests User Completion Update » (`quest_enrollment_blocked_until`),
 //! « Virtual Currency Balance Update » (`balance`).
 //!
-//! **Jamais appelés, et absents du code** : `/quests/{id}/heartbeat`,
-//! `/quests/{id}/video-progress`, `/quests/{id}/console/start` : Ferrocord
-//! ne déclare aucune progression. Les champs scellés des publicités
-//! (`metadata_sealed`, `traffic_metadata_sealed`) ne sont ni lus ni envoyés.
+//! Progression (0.1.13, réglage coupé par défaut ; formes relues le
+//! 19 novembre 2026 sur la même page) :
+//! - « Send Quest Heartbeat » : `POST /quests/{quest.id}/heartbeat`, corps
+//!   `{ application_id, terminal }` (`stream_key`, `executable_path` et
+//!   `executable_fingerprint`, facultatifs, ne sont pas envoyés) ; réponse :
+//!   l'état de l'utilisateur ; la valeur de la tâche avance du temps écoulé
+//!   depuis le battement précédent, deux minutes au plus ; refusé (401) à
+//!   un client qui ne s'annonce pas comme l'application de bureau ;
+//! - « Send Quest Video Progress » : `POST /quests/{quest.id}/video-progress`,
+//!   corps `{ timestamp }` (secondes) ; réponse : l'état de l'utilisateur ;
+//! - tâche : `applications[].id`, `assets { video, video_low_res } { url }`.
+//!
+//! Ces deux requêtes ne partent que pour une activité constatée (jeu
+//! détecté, vidéo en lecture : `state::quests`). **Jamais appelé, et absent
+//! du code** : `/quests/{id}/console/start`. Les champs scellés des
+//! publicités (`metadata_sealed`, `traffic_metadata_sealed`) ne sont ni lus
+//! ni envoyés.
 //!
 //! Chaque requête suit un clic et passe par `api` (limiteur commun). Un
 //! captcha demandé arrête l'action (`Refused::Captcha`). Un compte bot
@@ -89,6 +102,24 @@ struct RawTask {
     target: Option<u64>,
     #[serde(default, deserialize_with = "de_lenient")]
     messages: Option<RawTaskMessages>,
+    #[serde(default, deserialize_with = "de_lenient")]
+    applications: Option<Vec<Item<RawApp>>>,
+    #[serde(default, deserialize_with = "de_lenient")]
+    assets: Option<RawTaskAssets>,
+}
+
+#[derive(Deserialize)]
+struct RawApp {
+    #[serde(default, deserialize_with = "de_loose_id")]
+    id: Option<u64>,
+}
+
+#[derive(Deserialize)]
+struct RawTaskAssets {
+    #[serde(default, deserialize_with = "de_lenient")]
+    video: Option<RawLink>,
+    #[serde(default, deserialize_with = "de_lenient")]
+    video_low_res: Option<RawLink>,
 }
 
 #[derive(Deserialize)]
@@ -97,11 +128,16 @@ struct RawTaskMessages {
     task_description: Option<String>,
 }
 
-/// `cta_config` et `application` : seul leur lien est lu.
+/// `cta_config` et `application` : leur lien (et l'identifiant de
+/// l'application) ; vidéo d'une tâche : son adresse.
 #[derive(Deserialize)]
 struct RawLink {
     #[serde(default, deserialize_with = "de_lenient")]
     link: Option<String>,
+    #[serde(default, deserialize_with = "de_lenient")]
+    url: Option<String>,
+    #[serde(default, deserialize_with = "de_loose_id")]
+    id: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -278,7 +314,10 @@ impl RawQuest {
             .filter_map(|(k, t)| {
                 let t = t.0.as_ref()?;
                 let key = task_key(t.kind.as_deref().unwrap_or(k))?;
-                Some(Task { kind: TaskKind::parse(&key), key, target: t.target.unwrap_or(0).min(u64::from(u32::MAX)) as u32, text: text(t.messages.as_ref().and_then(|m| m.task_description.as_deref())) })
+                let apps = t.applications.iter().flatten().filter_map(|a| a.0.as_ref()?.id).take(crate::state::quests::MAX_APPS).collect();
+                let url = |l: &Option<RawLink>| https_link(l.as_ref().and_then(|l| l.url.as_deref()));
+                let video = t.assets.as_ref().and_then(|a| url(&a.video_low_res).or_else(|| url(&a.video)));
+                Some(Task { kind: TaskKind::parse(&key), key, target: t.target.unwrap_or(0).min(u64::from(u32::MAX)) as u32, text: text(t.messages.as_ref().and_then(|m| m.task_description.as_deref())), apps, video })
             })
             .take(MAX_PARTS)
             .collect();
@@ -304,6 +343,7 @@ impl RawQuest {
         let colors = c.colors.as_ref().and_then(|c| Some([hex(c.primary.as_deref())?, hex(c.secondary.as_deref())?]));
         Some(Quest {
             id,
+            app_id: c.application.as_ref().and_then(|a| a.id),
             name,
             game,
             publisher: text(m.and_then(|m| m.game_publisher.as_deref())),
@@ -414,6 +454,7 @@ pub(super) async fn run(ctx: Arc<Ctx>, cmd: QuestCmd) {
             QuestCmd::Enroll { id } => QuestEvent::Enrolled { id, result: Err(no()) },
             QuestCmd::Claim { id } => QuestEvent::Claimed { id, result: Err(no()) },
             QuestCmd::Code { id } => QuestEvent::Code { id, result: Err(no()) },
+            QuestCmd::Heartbeat { id, .. } | QuestCmd::VideoProgress { id, .. } => QuestEvent::Progress { id, result: Err(Some(no())) },
         }));
     }
     let call = |r: Route, m: Method, url: String, body: Option<serde_json::Value>| {
@@ -429,6 +470,18 @@ pub(super) async fn run(ctx: Arc<Ctx>, cmd: QuestCmd) {
         },
     };
     let unreadable = || Refused::Other(Problem::Api(String::new()));
+    // Progression : un refus (401 compris, que Discord rend à un client qui
+    // n'est pas l'application de bureau) arrête la quête, jamais la session.
+    let progress = |id: u64, res: Result<String, ApiError>| {
+        q(QuestEvent::Progress {
+            id,
+            result: match res {
+                Ok(b) => decode_quest_status(&b).map(|(_, s)| s).ok_or_else(|| Some(unreadable())),
+                Err(ApiError::Unauthorized) => Err(None),
+                Err(e) => Err(Some(refused(e).unwrap_or(Refused::Other(Problem::Forbidden)))),
+            },
+        })
+    };
     let ev = match cmd {
         QuestCmd::List => match call(route("GET /quests/@me"), Method::GET, format!("{root}/quests/@me"), None).await.map(|b| decode_quests(&b)) {
             Ok(Some(list)) => q(QuestEvent::List(Ok(list))),
@@ -446,6 +499,15 @@ pub(super) async fn run(ctx: Arc<Ctx>, cmd: QuestCmd) {
         QuestCmd::Code { id } => {
             let res = call(route("GET /quests/{}/reward-code"), Method::GET, format!("{root}/quests/{id}/reward-code"), None).await;
             write(res, &|r| QuestEvent::Code { id, result: r.and_then(|b| code_of(&b).ok_or_else(unreadable)) })
+        }
+        // Sans l'identité de bureau, Discord répond 401 : la requête n'est pas envoyée.
+        QuestCmd::Heartbeat { id, .. } if !ctx.identity_is_desktop() => q(QuestEvent::Progress { id, result: Err(None) }),
+        QuestCmd::Heartbeat { id, application_id, terminal } => {
+            let body = json!({ "application_id": application_id.to_string(), "terminal": terminal });
+            progress(id, call(route("POST /quests/{}/heartbeat"), Method::POST, format!("{root}/quests/{id}/heartbeat"), Some(body)).await)
+        }
+        QuestCmd::VideoProgress { id, seconds } => {
+            progress(id, call(route("POST /quests/{}/video-progress"), Method::POST, format!("{root}/quests/{id}/video-progress"), Some(json!({ "timestamp": seconds }))).await)
         }
     };
     ctx.out.send(ev);

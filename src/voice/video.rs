@@ -44,6 +44,12 @@ pub trait VideoBackend: Send + Sync {
     fn open(&self, source: &Source, want: Quality, on_frame: Box<dyn FnMut(Frame) + Send>) -> Result<Box<dyn Capturing>, CaptureError>;
     /// `None` : pas d'encodeur pour cette définition (carte graphique qui refuse).
     fn encoder(&self, codec: Codec, width: u32, height: u32, fps: u32, bps: u32) -> Option<Box<dyn Encoder>>;
+    /// Encodeur de repli quand celui d'[`encoder`](Self::encoder) s'ouvre
+    /// mais échoue à l'envoi (encodeur de la carte graphique occupé ou en
+    /// panne) ; `None` : pas de repli.
+    fn fallback_encoder(&self, _codec: Codec, _width: u32, _height: u32, _fps: u32, _bps: u32) -> Option<Box<dyn Encoder>> {
+        None
+    }
     fn decoder(&self, codec: Codec) -> Option<Box<dyn Decoder>>;
     /// Codecs (encodables, décodables) à proposer à la passerelle vocale.
     fn codecs(&self) -> (Vec<Codec>, Vec<Codec>) {
@@ -65,6 +71,9 @@ impl VideoBackend for WindowsVideo {
     }
     fn encoder(&self, codec: Codec, width: u32, height: u32, fps: u32, bps: u32) -> Option<Box<dyn Encoder>> {
         codec::encoder(codec, width, height, fps, bps)
+    }
+    fn fallback_encoder(&self, codec: Codec, width: u32, height: u32, fps: u32, bps: u32) -> Option<Box<dyn Encoder>> {
+        codec::fallback_encoder(codec, width, height, fps, bps)
     }
     fn decoder(&self, codec: Codec) -> Option<Box<dyn Decoder>> {
         codec::decoder(codec)
@@ -267,6 +276,9 @@ struct Enc {
     level: usize,
     size: (u32, u32),
     enc: Option<Box<dyn Encoder>>,
+    /// L'encodeur ordinaire a échoué à l'envoi : le repli logiciel sert
+    /// jusqu'à la fin de cette vidéo.
+    fallback: bool,
 }
 
 fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
@@ -304,7 +316,7 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
         }
     };
     let fps = cfg.quality.fps.clamp(1, 60);
-    let mut enc = Enc { codec: cfg.codec, level: first_level(cfg.quality), size: (0, 0), enc: None };
+    let mut enc = Enc { codec: cfg.codec, level: first_level(cfg.quality), size: (0, 0), enc: None, fallback: false };
     let mut scaler = crate::video::convert::Scaler::new();
     let mut announced = None;
     loop {
@@ -317,7 +329,7 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
                 }
                 if let Some(f) = s.frame.take() {
                     if let Some(c) = s.codec.take().filter(|c| *c != enc.codec) {
-                        enc = Enc { codec: c, level: first_level(cfg.quality), size: (0, 0), enc: None };
+                        enc = Enc { codec: c, level: first_level(cfg.quality), size: (0, 0), enc: None, fallback: false };
                     }
                     break (f, std::mem::take(&mut s.keyframe));
                 }
@@ -335,7 +347,8 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
             let before = enc.level;
             loop {
                 let bps = bitrate(size.0, size.1, fps, cfg.screen);
-                if let Some(e) = cfg.backend.encoder(enc.codec, size.0, size.1, fps, bps) {
+                let made = if enc.fallback { cfg.backend.fallback_encoder(enc.codec, size.0, size.1, fps, bps) } else { None };
+                if let Some(e) = made.or_else(|| cfg.backend.encoder(enc.codec, size.0, size.1, fps, bps)) {
                     enc.enc = Some(e);
                     enc.size = size;
                     break;
@@ -374,8 +387,16 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
             }
             Err(CodecError::BadFrame(_)) => continue,
             Err(err) => {
-                // L'encodeur lâche à cette définition : palier suivant au prochain tour.
                 enc.enc = None;
+                // Première panne à l'envoi (constaté : « Media Foundation :
+                // 0x8000ffff » de l'encodeur de la carte graphique, qui
+                // s'ouvrait pourtant) : même définition, encodeur logiciel.
+                if !enc.fallback && cfg.backend.fallback_encoder(enc.codec, size.0, size.1, fps, 1).is_some() {
+                    enc.fallback = true;
+                    lock(&mail.slot).keyframe = true;
+                    continue;
+                }
+                // L'encodeur lâche à cette définition : palier suivant au prochain tour.
                 match (enc.level + 1..LEVELS.len()).find(|l| level_size(img.width, img.height, *l) != size) {
                     Some(next) => enc.level = next,
                     None => {

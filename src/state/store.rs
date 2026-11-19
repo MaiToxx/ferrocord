@@ -360,7 +360,7 @@ pub struct Store {
     /// (position de la ligne « Nouveaux messages » à la prochaine ouverture).
     unread_from: HashMap<u64, u64>,
     /// Écart (ms) entre l'horloge de Discord (en-tête `Date`) et la nôtre.
-    clock_offset: i64,
+    pub(super) clock_offset: i64,
     /// Dernière heure de Discord reçue, telle quelle (même absurde), avec
     /// l'instant monotone de sa réception : la seule horloge que la machine
     /// ne peut pas fausser (étape 2 de la migration du jeton, B1).

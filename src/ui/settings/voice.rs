@@ -372,8 +372,11 @@ impl App {
         }
 
         section(ui, t, at::SEC_PROCESSING.get(lang));
-        for (slot, label, tip) in [(&mut v.noise_suppression, at::NOISE, at::NOISE_TIP), (&mut v.echo_cancellation, at::ECHO, at::ECHO_TIP), (&mut v.auto_gain, at::AGC, at::AGC_TIP)] {
-            if let Some(on) = toggle(ui, label.get(lang), tip.get(lang), Some(*slot), true) {
+        // Suppression de bruit : seulement avec le plugin RNNoise (l'étage
+        // d'origine a été retiré, 0.1.13).
+        let rnn_on = crate::plugins::on(crate::plugins::Id::NoiseRnn);
+        for (slot, label, tip, shown) in [(&mut v.noise_suppression, at::NOISE, at::NOISE_TIP, rnn_on), (&mut v.echo_cancellation, at::ECHO, at::ECHO_TIP, true), (&mut v.auto_gain, at::AGC, at::AGC_TIP, true)] {
+            if shown && let Some(on) = toggle(ui, label.get(lang), tip.get(lang), Some(*slot), true) {
                 *slot = on;
             }
         }

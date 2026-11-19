@@ -2,11 +2,19 @@
 //! acceptation, la récompense à réclamer, et la progression **que Discord
 //! renvoie**.
 //!
-//! Ferrocord n'accomplit aucune quête : il n'envoie ni battement de cœur de
-//! jeu ou de diffusion (`/quests/{id}/heartbeat`), ni progression de vidéo
-//! (`/quests/{id}/video-progress`), ni démarrage sur console. Ces points
-//! d'API ne figurent nulle part dans le code. Une quête se termine dans
-//! l'application officielle ; la page le dit et propose de l'y ouvrir.
+//! Progression (0.1.13, réglage « Déclarer ma progression des quêtes »,
+//! coupé par défaut) : Ferrocord ne déclare que ce qui a lieu.
+//! - quête « jouer sur ordinateur » : un battement (`/quests/{id}/heartbeat`)
+//!   part toutes les [`BEAT_EVERY_MS`] tant que la détection des jeux voit
+//!   tourner l'application de la quête, et un dernier (`terminal`) quand
+//!   elle s'arrête ([`Store::quests_tick`]) ;
+//! - quête « regarder une vidéo » : le temps réellement lu par le lecteur de
+//!   Ferrocord est déclaré par pas de [`VIDEO_STEP_S`] secondes
+//!   (`/quests/{id}/video-progress`, [`Store::quest_watched`]).
+//!
+//! Jamais : diffusion, console, activité intégrée, vidéo sur mobile, ni
+//! aucune progression sans le jeu détecté ou la vidéo en lecture. Un refus
+//! de Discord arrête la progression de cette quête pour la session.
 //!
 //! Points d'API non documentés par Discord ; formes vérifiées sur
 //! docs.discord.food, page « Quests » (détail dans `net/quests.rs` et
@@ -27,6 +35,14 @@ pub const MAX_PARTS: usize = 12;
 pub const MAX_TEXT: usize = 256;
 /// La page rouverte après ce délai redemande la liste (ms).
 pub const STALE_MS: i64 = 5 * 60_000;
+/// Écart entre deux battements d'une quête « jouer » (Discord compte au plus
+/// deux minutes par battement : docs.discord.food, « Send Quest Heartbeat »).
+pub const BEAT_EVERY_MS: i64 = 60_000;
+/// Pas de la progression d'une vidéo, en secondes lues (même page, « Send
+/// Quest Video Progress » : « every 10-15 seconds a video plays »).
+pub const VIDEO_STEP_S: u32 = 10;
+/// Applications lues au plus par tâche.
+pub const MAX_APPS: usize = 8;
 /// Hôte des images des quêtes (docs.discord.food, « CDN Endpoints » :
 /// `/assets/quests/{quest_id}/{asset_name}` et, pour le logotype et la
 /// vignette du jeu, `/assets/quests/{quest_id}/{theme}/{asset_name}`).
@@ -78,6 +94,11 @@ pub struct Task {
     pub target: u32,
     /// Consigne rédigée par l'éditeur (`messages.task_description`), s'il y en a une.
     pub text: String,
+    /// Applications qui comptent pour une tâche « jouer » (`applications[].id`).
+    pub apps: Vec<u64>,
+    /// Vidéo d'une tâche « regarder » (`assets.video_low_res.url`, sinon
+    /// `assets.video.url`) : toujours en `https://`.
+    pub video: Option<String>,
 }
 
 /// Grande famille d'une tâche, pour le filtre de la page.
@@ -182,6 +203,8 @@ pub struct Status {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Quest {
     pub id: u64,
+    /// Application du jeu de la quête (`config.application.id`).
+    pub app_id: Option<u64>,
     pub name: String,
     pub game: String,
     pub publisher: String,
@@ -249,6 +272,24 @@ impl Quest {
         let all = self.tasks.iter().filter(|t| t.target > 0).map(done);
         // À égalité, la première tâche (`max_by_key` rendrait la dernière).
         if self.any_task { all.rev().max_by_key(ratio) } else { all.min_by_key(ratio) }
+    }
+
+    /// Valeur atteinte pour la tâche `key`, d'après Discord.
+    pub fn task_value(&self, key: &str) -> u32 {
+        self.status.as_ref().and_then(|s| s.progress.iter().find(|(k, _)| k == key)).map_or(0, |(_, v)| *v)
+    }
+
+    /// Applications à voir tourner pour avancer la tâche « jouer sur
+    /// ordinateur », tant qu'elle n'est pas finie : celles de la tâche,
+    /// sinon celle de la quête.
+    pub fn play_apps(&self) -> Vec<u64> {
+        let Some(t) = self.tasks.iter().find(|t| t.kind == TaskKind::PlayOnDesktop && self.task_value(&t.key) < t.target) else { return Vec::new() };
+        if t.apps.is_empty() { self.app_id.into_iter().collect() } else { t.apps.clone() }
+    }
+
+    /// Tâche « regarder une vidéo » encore à finir et dont la vidéo est connue.
+    pub fn video_task(&self) -> Option<&Task> {
+        self.tasks.iter().find(|t| t.kind == TaskKind::WatchVideo && t.video.is_some() && t.target > 0 && self.task_value(&t.key) < t.target)
     }
 
     /// Première récompense (celle que la page met en avant).
@@ -429,6 +470,11 @@ pub enum QuestCmd {
     Claim { id: u64 },
     /// `GET /quests/{id}/reward-code`.
     Code { id: u64 },
+    /// `POST /quests/{id}/heartbeat` : le jeu `application_id` tourne
+    /// (`terminal` : il vient de s'arrêter).
+    Heartbeat { id: u64, application_id: u64, terminal: bool },
+    /// `POST /quests/{id}/video-progress` : secondes de vidéo réellement lues.
+    VideoProgress { id: u64, seconds: u32 },
 }
 
 /// Pourquoi une écriture n'a pas abouti.
@@ -447,6 +493,10 @@ pub enum QuestEvent {
     /// Récompense réclamée à cette heure (ms Unix).
     Claimed { id: u64, result: Result<Option<i64>, Refused> },
     Code { id: u64, result: Result<String, Refused> },
+    /// Réponse à un battement ou à une progression de vidéo : mon nouvel
+    /// état. `Err(None)` : Discord n'accepte la progression d'un jeu que du
+    /// client de bureau (identité « application de bureau » des réglages).
+    Progress { id: u64, result: Result<Status, Option<Refused>> },
     /// QUESTS_USER_STATUS_UPDATE : mon état dans une quête a changé.
     Status { id: u64, status: Status },
     /// QUESTS_USER_COMPLETION_UPDATE.
@@ -473,6 +523,17 @@ pub struct Quests {
     /// Quêtes masquées par l'utilisateur : choix local, pour la session ;
     /// rien n'est dit à Discord.
     pub hidden: HashSet<u64>,
+    /// Quêtes « jouer » dont le jeu tourne : application et heure (ms Unix)
+    /// du dernier battement.
+    beats: HashMap<u64, (u64, i64)>,
+    /// Vidéo en cours de lecture, par quête : valeur de Discord quand la
+    /// lecture a commencé, secondes déclarées, dernier cumul reçu du lecteur.
+    video_sent: HashMap<u64, (u32, u32, u32)>,
+    /// Quêtes dont Discord a refusé la progression : plus rien n'est déclaré
+    /// pour elles jusqu'à la fin de la session.
+    progress_off: HashSet<u64>,
+    /// Un battement a été refusé faute d'identité de bureau.
+    pub needs_identity: bool,
 }
 
 impl Quests {
@@ -512,6 +573,16 @@ impl Quests {
 
     pub fn quest(&self, id: u64) -> Option<&Quest> {
         self.list.ready()?.iter().find(|q| q.id == id)
+    }
+
+    /// Le jeu de cette quête tourne et sa progression est déclarée.
+    pub fn beating(&self, id: u64) -> bool {
+        self.beats.contains_key(&id)
+    }
+
+    /// Discord a refusé la progression de cette quête.
+    pub fn progress_refused(&self, id: u64) -> bool {
+        self.progress_off.contains(&id)
     }
 
     /// Nombre de quêtes terminées dont la récompense attend.
@@ -578,6 +649,80 @@ impl Store {
         claimed && self.quests.code(id).is_none() && self.quest_write(id, QuestCmd::Code { id })
     }
 
+    /// Progression des quêtes « jouer sur ordinateur » : à appeler
+    /// régulièrement. `on` : le réglage. Un battement part pour chaque quête
+    /// acceptée dont une application tourne d'après la détection des jeux
+    /// (`activity.running`), au plus toutes les [`BEAT_EVERY_MS`] ; un
+    /// dernier, `terminal`, quand le jeu s'arrête. Rend le délai (ms) avant
+    /// le prochain battement dû, s'il y en a un.
+    pub fn quests_tick(&mut self, on: bool) -> Option<i64> {
+        if self.quests.beats.is_empty() && (!on || self.activity.running.is_empty()) {
+            return None;
+        }
+        let now = self.now();
+        let running: Vec<u64> = self.activity.running.iter().filter_map(|g| g.app_id).collect();
+        let accepted = |q: &Quest, off: &HashSet<u64>| q.stage(now) == Stage::Accepted && !off.contains(&q.id);
+        let mut wanted: Vec<(u64, u64)> = Vec::new();
+        if on && let Some(list) = self.quests.list.ready() {
+            for q in list.iter().filter(|q| accepted(q, &self.quests.progress_off)) {
+                if let Some(app) = q.play_apps().into_iter().find(|a| running.contains(a)) {
+                    wanted.push((q.id, app));
+                }
+            }
+        }
+        let mut cmds = Vec::new();
+        let stopped: Vec<(u64, u64)> = self.quests.beats.iter().filter(|(id, _)| !wanted.iter().any(|(w, _)| w == *id)).map(|(id, (app, _))| (*id, *app)).collect();
+        for (id, application_id) in stopped {
+            self.quests.beats.remove(&id);
+            // Jeu arrêté (et non quête finie, refusée ou réglage coupé) : le dernier battement le dit.
+            if on && self.quests.quest(id).is_some_and(|q| accepted(q, &self.quests.progress_off) && q.play_apps().contains(&application_id)) {
+                cmds.push(QuestCmd::Heartbeat { id, application_id, terminal: true });
+            }
+        }
+        let mut next: Option<i64> = None;
+        for (id, application_id) in wanted {
+            let last = self.quests.beats.get(&id).map(|(_, at)| *at);
+            let at = match last {
+                Some(at) if now.saturating_sub(at) < BEAT_EVERY_MS => at,
+                _ => {
+                    cmds.push(QuestCmd::Heartbeat { id, application_id, terminal: false });
+                    now
+                }
+            };
+            self.quests.beats.insert(id, (application_id, at));
+            let wait = (BEAT_EVERY_MS - now.saturating_sub(at)).max(0);
+            next = Some(next.map_or(wait, |n| n.min(wait)));
+        }
+        for c in cmds {
+            self.push_command(Cmd::Quests(c));
+        }
+        next
+    }
+
+    /// Le lecteur a réellement lu `seconds` secondes de la vidéo de la quête
+    /// `id` (cumul depuis l'ouverture, hors pauses et sauts) : la
+    /// progression est déclarée par pas de [`VIDEO_STEP_S`], et à la cible.
+    /// `on` : le réglage. Rien ne part pour une quête non acceptée.
+    pub fn quest_watched(&mut self, id: u64, seconds: u32, on: bool) {
+        let now = self.now();
+        let Some(q) = self.quests.quest(id).filter(|q| on && q.stage(now) == Stage::Accepted && !self.quests.progress_off.contains(&id)) else { return };
+        let Some(t) = q.video_task() else { return };
+        let (value, target) = (q.task_value(&t.key), t.target);
+        // Le temps lu s'ajoute à ce que Discord avait compté au début de cette
+        // lecture ; un cumul qui repart de zéro (lecteur rouvert) repart de
+        // la valeur du moment.
+        let (base, sent) = match self.quests.video_sent.get(&id) {
+            Some((base, sent, last)) if seconds >= *last => (*base, *sent),
+            _ => (value, value),
+        };
+        let total = base.saturating_add(seconds).min(target);
+        let due = total >= sent.saturating_add(VIDEO_STEP_S) || (total >= target && sent < target);
+        self.quests.video_sent.insert(id, (base, if due { total } else { sent }, seconds));
+        if due {
+            self.push_command(Cmd::Quests(QuestCmd::VideoProgress { id, seconds: total }));
+        }
+    }
+
     pub(super) fn apply_quests(&mut self, e: QuestEvent) {
         let now = self.now();
         let q = &mut self.quests;
@@ -638,6 +783,26 @@ impl Store {
                     quest.status = Some(status);
                 }
             }
+            QuestEvent::Progress { id, result } => match result {
+                Ok(status) => {
+                    if let Some(quest) = q.quest_mut(id) {
+                        quest.status = Some(status);
+                    }
+                }
+                // Refus : plus aucune déclaration pour cette quête, pas de nouvel essai.
+                Err(r) => {
+                    q.beats.remove(&id);
+                    if q.progress_off.len() < MAX_QUESTS {
+                        q.progress_off.insert(id);
+                    }
+                    match r {
+                        Some(r) => {
+                            q.refused.insert(id, r);
+                        }
+                        None => q.needs_identity = true,
+                    }
+                }
+            },
             QuestEvent::BlockedUntil(t) => q.blocked_until = t,
             QuestEvent::Orbs(n) => q.orbs = Some(n),
         }
@@ -648,9 +813,100 @@ impl Store {
 mod tests {
     use super::*;
 
+    /// Progression « jouer » : rien sans le réglage ni sans le jeu ; un
+    /// battement à la détection, puis un par minute ; un dernier à l'arrêt
+    /// du jeu ; un refus arrête tout pour cette quête.
+    #[test]
+    fn play_progress_beats_only_while_the_game_runs() {
+        use crate::state::activity::RunningGame;
+        let mut s = Store::new();
+        let mut q = quest(1);
+        q.status = Some(Status { enrolled_at: Some(1), ..Default::default() });
+        let mut other = quest(2);
+        other.tasks[0].apps = vec![99];
+        s.apply(crate::state::Event::Quests(QuestEvent::List(Ok((vec![q, other], None)))));
+        s.take_commands();
+        let game = |app: u64| RunningGame { app_id: Some(app), name: "Jeu".into(), start_ms: 0 };
+        let beats = |s: &mut Store| s.take_commands().into_iter().filter_map(|c| match c { Cmd::Quests(QuestCmd::Heartbeat { id, application_id, terminal }) => Some((id, application_id, terminal)), _ => None }).collect::<Vec<_>>();
+        // Jeu absent, autre jeu, réglage coupé, quête non acceptée : rien.
+        assert_eq!(s.quests_tick(true), None);
+        s.activity.running = vec![game(5)];
+        assert_eq!(s.quests_tick(true), None);
+        s.activity.running = vec![game(77), game(99)];
+        assert_eq!(s.quests_tick(false), None);
+        assert!(beats(&mut s).is_empty());
+        // Le jeu de la quête acceptée tourne : un battement, puis rien avant une minute.
+        assert!(s.quests_tick(true).is_some_and(|w| w > BEAT_EVERY_MS - 1_000));
+        assert_eq!(beats(&mut s), [(1, 77, false)]);
+        assert!(s.quests.beating(1) && !s.quests.beating(2));
+        s.clock_offset += 20_000;
+        assert!(s.quests_tick(true).is_some_and(|w| (BEAT_EVERY_MS - 21_000..=BEAT_EVERY_MS - 20_000).contains(&w)));
+        assert!(beats(&mut s).is_empty());
+        s.clock_offset += 40_000;
+        s.quests_tick(true);
+        assert_eq!(beats(&mut s), [(1, 77, false)]);
+        // Jeu arrêté : un dernier battement, puis plus rien.
+        s.activity.running.clear();
+        assert_eq!(s.quests_tick(true), None);
+        assert_eq!(beats(&mut s), [(1, 77, true)]);
+        assert_eq!(s.quests_tick(true), None);
+        assert!(beats(&mut s).is_empty() && !s.quests.beating(1));
+        // Refus de Discord : plus aucun battement pour cette quête.
+        s.activity.running = vec![game(77)];
+        s.quests_tick(true);
+        assert_eq!(beats(&mut s).len(), 1);
+        s.apply(crate::state::Event::Quests(QuestEvent::Progress { id: 1, result: Err(None) }));
+        assert!(s.quests.progress_refused(1) && s.quests.needs_identity && !s.quests.beating(1));
+        s.clock_offset += BEAT_EVERY_MS;
+        assert_eq!(s.quests_tick(true), None);
+        assert!(beats(&mut s).is_empty(), "ni battement ni battement final après un refus");
+    }
+
+    /// Quête finie par la réponse de Discord : le battement s'arrête sans « terminal ».
+    #[test]
+    fn play_progress_stops_when_the_task_is_done() {
+        use crate::state::activity::RunningGame;
+        let mut s = Store::new();
+        let mut q = quest(1);
+        q.status = Some(Status { enrolled_at: Some(1), ..Default::default() });
+        s.apply(crate::state::Event::Quests(QuestEvent::List(Ok((vec![q], None)))));
+        s.activity.running = vec![RunningGame { app_id: Some(77), name: "Jeu".into(), start_ms: 0 }];
+        s.quests_tick(true);
+        s.take_commands();
+        let done = Status { enrolled_at: Some(1), completed_at: None, claimed_at: None, progress: vec![("PLAY_ON_DESKTOP".into(), 900)] };
+        s.apply(crate::state::Event::Quests(QuestEvent::Progress { id: 1, result: Ok(done) }));
+        s.clock_offset += BEAT_EVERY_MS;
+        assert_eq!(s.quests_tick(true), None);
+        assert!(s.take_commands().is_empty());
+    }
+
+    /// Vidéo : le temps lu est déclaré par pas de dix secondes, ajouté à ce
+    /// que Discord a déjà compté, plafonné à la cible ; rien sans le réglage.
+    #[test]
+    fn video_progress_is_reported_in_steps_up_to_the_target() {
+        let mut s = Store::new();
+        let mut q = quest(1);
+        q.status = Some(Status { enrolled_at: Some(1), completed_at: None, claimed_at: None, progress: vec![("WATCH_VIDEO".into(), 5)] });
+        s.apply(crate::state::Event::Quests(QuestEvent::List(Ok((vec![q, quest(2)], None)))));
+        s.take_commands();
+        let sent = |s: &mut Store| s.take_commands().into_iter().filter_map(|c| match c { Cmd::Quests(QuestCmd::VideoProgress { id, seconds }) => Some((id, seconds)), _ => None }).collect::<Vec<_>>();
+        s.quest_watched(1, 12, false);
+        s.quest_watched(2, 12, true);
+        s.quest_watched(1, 9, true);
+        assert!(sent(&mut s).is_empty(), "réglage coupé, quête non acceptée, pas encore dix secondes");
+        s.quest_watched(1, 10, true);
+        s.quest_watched(1, 14, true);
+        assert_eq!(sent(&mut s), [(1, 15)]);
+        s.quest_watched(1, 21, true);
+        s.quest_watched(1, 500, true);
+        s.quest_watched(1, 600, true);
+        assert_eq!(sent(&mut s), [(1, 26), (1, 30)], "la cible (30 s) n'est déclarée qu'une fois");
+    }
+
     pub(crate) fn quest(id: u64) -> Quest {
         Quest {
             id,
+            app_id: None,
             name: format!("Quête {id}"),
             game: "Jeu fictif".into(),
             publisher: "Studio fictif".into(),
@@ -661,7 +917,7 @@ mod tests {
             logo: Themed::default(),
             link: None,
             colors: None,
-            tasks: vec![Task { kind: TaskKind::PlayOnDesktop, key: "PLAY_ON_DESKTOP".into(), target: 900, text: String::new() }, Task { kind: TaskKind::WatchVideo, key: "WATCH_VIDEO".into(), target: 30, text: String::new() }],
+            tasks: vec![Task { kind: TaskKind::PlayOnDesktop, key: "PLAY_ON_DESKTOP".into(), target: 900, text: String::new(), apps: vec![77], video: None }, Task { kind: TaskKind::WatchVideo, key: "WATCH_VIDEO".into(), target: 30, text: String::new(), apps: Vec::new(), video: Some("https://exemple.invalid/v.mp4".into()) }],
             any_task: true,
             rewards: vec![Reward { kind: RewardKind::Orbs, name: "700 Orbes".into(), article: String::new(), orbs: Some(700), asset: None }],
             claim_here: true,
@@ -740,7 +996,7 @@ mod tests {
             let mut q = quest(id);
             (q.starts_ms, q.expires_ms) = (Some(starts), Some(expires));
             q.rewards[0].kind = reward;
-            q.tasks = vec![Task { kind: task, key: "T".into(), target: 60, text: String::new() }];
+            q.tasks = vec![Task { kind: task, key: "T".into(), target: 60, text: String::new(), apps: Vec::new(), video: None }];
             q
         };
         let mut list = vec![

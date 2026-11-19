@@ -19,6 +19,8 @@ use eframe::egui::{self, Align, Color32, CornerRadius, Layout, Rect, RichText, S
 /// Choix d'un menu du clic droit, appliqué après la liste.
 enum Pick {
     MarkRead(Vec<u64>),
+    /// « Tout marquer comme lu » : tous les serveurs et les conversations.
+    MarkAll,
     Invite(u64),
     Invites(u64),
     Leave(u64),
@@ -199,12 +201,21 @@ impl App {
                 for m in menus {
                     match m {
                         Menu::Dm(resp) => {
-                            resp.context_menu(|ui| self.notif_menu(ui, NotifTarget::Guild(None)));
+                            resp.context_menu(|ui| {
+                                if self.mark_all_entry(ui) {
+                                    pick = Some(Pick::MarkAll);
+                                }
+                                crate::ui::menu::separator(ui, &self.theme);
+                                self.notif_menu(ui, NotifTarget::Guild(None));
+                            });
                         }
                         Menu::Guild(id, resp) => {
                             resp.context_menu(|ui| {
                                 if self.guild_menu(ui) {
                                     pick = Some(Pick::MarkRead(vec![id]));
+                                }
+                                if self.mark_all_entry(ui) {
+                                    pick = Some(Pick::MarkAll);
                                 }
                                 crate::ui::menu::separator(ui, &self.theme);
                                 if let Some(p) = self.server_menu(ui, id) {
@@ -223,6 +234,9 @@ impl App {
                                     pick = Some(Pick::MarkRead(guilds.clone()));
                                     ui.close();
                                 }
+                                if self.mark_all_entry(ui) {
+                                    pick = Some(Pick::MarkAll);
+                                }
                                 crate::ui::menu::separator(ui, &self.theme);
                                 if crate::ui::menu::item(ui, &self.theme, gx::FOLDER_SETTINGS.get(lang), Some(crate::theme::icons::Icon::Gear), false).clicked() {
                                     pick = Some(Pick::FolderSettings(FolderEdit { entry, name: name.clone().unwrap_or_default(), color }));
@@ -238,6 +252,7 @@ impl App {
                 }
                 match pick {
                     Some(Pick::MarkRead(ids)) => self.store.mark_guilds_read(&ids),
+            Some(Pick::MarkAll) => self.store.mark_all_read(),
                     Some(Pick::Invite(id)) => self.open_invite(id),
                     Some(Pick::Invites(id)) => self.open_invites(id),
                     Some(Pick::Leave(id)) => self.servers.leave = Some(id),
@@ -288,6 +303,7 @@ impl App {
         }
         match pick {
             Some(Pick::MarkRead(ids)) => self.store.mark_guilds_read(&ids),
+            Some(Pick::MarkAll) => self.store.mark_all_read(),
             Some(Pick::Invite(id)) => self.open_invite(id),
             Some(Pick::Invites(id)) => self.open_invites(id),
             Some(Pick::Leave(id)) => self.servers.leave = Some(id),
