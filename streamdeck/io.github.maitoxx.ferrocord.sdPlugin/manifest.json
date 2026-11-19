@@ -1,9 +1,9 @@
 {
 	"$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
 	"Name": "Ferrocord",
-	"Version": "1.0.0.0",
+	"Version": "1.1.0.0",
 	"Author": "Ferrocord",
-	"Description": "Pilote Ferrocord depuis le Stream Deck : micro, casque, appui-pour-parler, tableau de sons, caméra, partage d'écran, raccrocher, répondre ou refuser un appel. Les touches montrent l'état réel. Demande le plugin « Stream Deck » activé dans Ferrocord.",
+	"Description": "Pilote Ferrocord depuis le Stream Deck : micro, casque, appui-pour-parler, tableau de sons, volume du casque et du micro à la molette, caméra, partage d'écran, raccrocher, répondre ou refuser un appel. Les touches montrent l'état réel. Demande le plugin « Stream Deck » activé dans Ferrocord.",
 	"UUID": "io.github.maitoxx.ferrocord",
 	"Category": "Ferrocord",
 	"CategoryIcon": "imgs/plugin/category",
@@ -155,6 +155,58 @@
 					"Image": "imgs/keys/sound",
 					"TitleAlignment": "bottom",
 					"FontSize": 9
+				}
+			]
+		},
+		{
+			"SupportedInMultiActions": false,
+			"UserTitleEnabled": false,
+			"Encoder": {
+				"layout": "$B1",
+				"Icon": "imgs/actions/volume-out",
+				"TriggerDescription": {
+					"Rotate": "Volume",
+					"Push": "Couper / rétablir",
+					"Touch": "Couper / rétablir"
+				}
+			},
+			"Name": "Volume du casque",
+			"UUID": "io.github.maitoxx.ferrocord.volume-out",
+			"Icon": "imgs/actions/volume-out",
+			"Tooltip": "Molette : tourner règle le volume de sortie, appuyer coupe ou rétablit le casque.",
+			"Controllers": [
+				"Encoder"
+			],
+			"States": [
+				{
+					"Image": "imgs/keys/volume-out",
+					"ShowTitle": false
+				}
+			]
+		},
+		{
+			"SupportedInMultiActions": false,
+			"UserTitleEnabled": false,
+			"Encoder": {
+				"layout": "$B1",
+				"Icon": "imgs/actions/volume-in",
+				"TriggerDescription": {
+					"Rotate": "Volume",
+					"Push": "Couper / rétablir",
+					"Touch": "Couper / rétablir"
+				}
+			},
+			"Name": "Volume du micro",
+			"UUID": "io.github.maitoxx.ferrocord.volume-in",
+			"Icon": "imgs/actions/volume-in",
+			"Tooltip": "Molette : tourner règle le volume d'entrée, appuyer coupe ou rétablit le micro.",
+			"Controllers": [
+				"Encoder"
+			],
+			"States": [
+				{
+					"Image": "imgs/keys/volume-in",
+					"ShowTitle": false
 				}
 			]
 		},

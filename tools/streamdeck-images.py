@@ -44,6 +44,10 @@ ACTIONS = [
         [ink(MIC + WAVES, "#949ba4"), (ink(MIC + WAVES, WHITE, GREEN), GREEN)]),
     ("sound", "Son", "Joue un son du tableau de sons dans le salon vocal. Le son se choisit dans les réglages de la touche.", SPEAKER,
         [ink(SPEAKER, WHITE)]),
+    ("volume-out", "Volume du casque", "Molette : tourner règle le volume de sortie, appuyer coupe ou rétablit le casque.", HEAD,
+        [ink(HEAD, WHITE)]),
+    ("volume-in", "Volume du micro", "Molette : tourner règle le volume d'entrée, appuyer coupe ou rétablit le micro.", MIC,
+        [ink(MIC, WHITE)]),
     ("answer", "Répondre", "Répond à l'appel qui sonne.", up(PHONE),
         [(up(ink(PHONE, WHITE, GREEN)), GREEN)]),
     ("decline", "Refuser", "Refuse l'appel qui sonne.", PHONE,
@@ -63,12 +67,15 @@ for key, name, tip, glyph, states in ACTIONS:
         write(f"{root}/imgs/keys/{file}.svg", svg(body, 144, bg))
         st.append({"Image": f"imgs/keys/{file}", "TitleAlignment": "bottom", "FontSize": 9} if key == "sound" else {"Image": f"imgs/keys/{file}", "ShowTitle": False})
     extra = {"PropertyInspectorPath": "ui/sound.html", "UserTitleEnabled": False} if key == "sound" else {"DisableAutomaticStates": True}
+    dial = key.startswith("volume-")
+    if dial:
+        extra = {"SupportedInMultiActions": False, "UserTitleEnabled": False, "Encoder": {"layout": "$B1", "Icon": f"imgs/actions/{key}", "TriggerDescription": {"Rotate": "Volume", "Push": "Couper / rétablir", "Touch": "Couper / rétablir"}}}
     actions.append({**extra,
         "Name": name,
         "UUID": f"{ID}.{key}",
         "Icon": f"imgs/actions/{key}",
         "Tooltip": tip,
-        "Controllers": ["Keypad"],
+        "Controllers": ["Encoder"] if dial else ["Keypad"],
         "States": st,
     })
 
@@ -80,7 +87,7 @@ manifest = {
     "Name": "Ferrocord",
     "Version": sys.argv[2],
     "Author": "Ferrocord",
-    "Description": "Pilote Ferrocord depuis le Stream Deck : micro, casque, appui-pour-parler, tableau de sons, caméra, partage d'écran, raccrocher, répondre ou refuser un appel. Les touches montrent l'état réel. Demande le plugin « Stream Deck » activé dans Ferrocord.",
+    "Description": "Pilote Ferrocord depuis le Stream Deck : micro, casque, appui-pour-parler, tableau de sons, volume du casque et du micro à la molette, caméra, partage d'écran, raccrocher, répondre ou refuser un appel. Les touches montrent l'état réel. Demande le plugin « Stream Deck » activé dans Ferrocord.",
     "UUID": ID,
     "Category": "Ferrocord",
     "CategoryIcon": "imgs/plugin/category",

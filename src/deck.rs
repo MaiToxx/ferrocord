@@ -5,13 +5,15 @@
 //! sur ce même ordinateur. Une ligne JSON par message :
 //!
 //! - reçu : `{"do":"mute"}`, `{"do":"talk","on":true}` ([`Do`]) ; tout le reste est ignoré ;
+//! - volume (molettes du Stream Deck +) : `{"do":"volume-out","by":5}` ajoute
+//!   des points de pour cent au volume du casque, `volume-in` à celui du micro ;
 //! - envoyé à la connexion puis à chaque changement : l'état ([`State`]) ;
 //! - tableau de sons : `{"do":"sounds"}` demande la liste (envoyée ensuite à
 //!   chaque changement, [`sounds_line`]), `{"do":"sound","id":"…","guild":"…"}`
 //!   joue un son, comme un clic dans le tableau de sons.
 //!
 //! Rien d'autre ne se commande d'ici (ni message, ni salon, ni compte), rien
-//! ne se lit que ces sept booléens et le nom des sons jouables, et rien ne part chez Discord : les
+//! ne se lit que ces sept booléens, les deux volumes et le nom des sons jouables, et rien ne part chez Discord : les
 //! actions sont celles des boutons du panneau vocal. Le tube est créé avec
 //! `first_pipe_instance` (personne ne s'y glisse) et refuse les clients
 //! distants (valeur par défaut de tokio) ; la sécurité par défaut de Windows
@@ -45,6 +47,8 @@ pub enum Do {
     /// Appui-pour-parler : touche enfoncée (`true`) ou relâchée. Un
     /// programme qui se débranche touche enfoncée la relâche.
     Talk(bool),
+    /// Ajoute `by` points de pour cent au volume du casque (`output`) ou du micro.
+    Volume { output: bool, by: i8 },
     /// Demande la liste des sons du tableau de sons.
     Sounds,
     /// Joue un son ; `guild` : son serveur (`None` : son par défaut).
@@ -82,6 +86,7 @@ pub fn parse(line: &str) -> Option<Do> {
         "decline" => Do::Decline,
         "talk" => Do::Talk(v.get("on")?.as_bool()?),
         "sounds" => Do::Sounds,
+        name @ ("volume-out" | "volume-in") => Do::Volume { output: name == "volume-out", by: v.get("by")?.as_i64()?.clamp(-100, 100) as i8 },
         "sound" => Do::Sound { id: id("id")?, guild: id("guild") },
         _ => return None,
     })
@@ -100,12 +105,16 @@ pub struct State {
     pub ringing: bool,
     /// Touche d'appui-pour-parler tenue.
     pub talk: bool,
+    /// Volumes du casque et du micro, en pour cent (0 à `max`).
+    pub out: u8,
+    pub inp: u8,
+    pub max: u8,
 }
 
 impl State {
     /// La ligne envoyée (terminée par un saut de ligne).
     pub fn line(&self) -> String {
-        let mut s = serde_json::json!({ "v": 1, "voice": self.voice, "mute": self.mute, "deaf": self.deaf, "camera": self.camera, "share": self.share, "ringing": self.ringing, "talk": self.talk }).to_string();
+        let mut s = serde_json::json!({ "v": 1, "voice": self.voice, "mute": self.mute, "deaf": self.deaf, "camera": self.camera, "share": self.share, "ringing": self.ringing, "talk": self.talk, "out": self.out, "in": self.inp, "max": self.max }).to_string();
         s.push('\n');
         s
     }
@@ -327,6 +336,8 @@ const FILES: &[(&str, &[u8])] = files![
     "imgs/actions/decline.svg",
     "imgs/actions/talk.svg",
     "imgs/actions/sound.svg",
+    "imgs/actions/volume-out.svg",
+    "imgs/actions/volume-in.svg",
     "imgs/keys/mute.svg",
     "imgs/keys/mute-on.svg",
     "imgs/keys/deafen.svg",
@@ -341,6 +352,8 @@ const FILES: &[(&str, &[u8])] = files![
     "imgs/keys/talk.svg",
     "imgs/keys/talk-on.svg",
     "imgs/keys/sound.svg",
+    "imgs/keys/volume-out.svg",
+    "imgs/keys/volume-in.svg",
 ];
 
 /// Ce que [`install`] a fait.
@@ -394,6 +407,9 @@ mod tests {
         assert_eq!(parse(r#"{"do":"talk","on":true}"#), Some(Do::Talk(true)));
         assert_eq!(parse(r#"{"do":"talk","on":false}"#), Some(Do::Talk(false)));
         assert_eq!(parse(r#"{"do":"sounds"}"#), Some(Do::Sounds));
+        assert_eq!(parse(r#"{"do":"volume-out","by":-5}"#), Some(Do::Volume { output: true, by: -5 }));
+        assert_eq!(parse(r#"{"do":"volume-in","by":900}"#), Some(Do::Volume { output: false, by: 100 }), "pas borné");
+        assert_eq!(parse(r#"{"do":"volume-in"}"#), None);
         assert_eq!(parse(r#"{"do":"sound","id":"1234567890123456789","guild":"42"}"#), Some(Do::Sound { id: 1_234_567_890_123_456_789, guild: Some(42) }));
         assert_eq!(parse(r#"{"do":"sound","id":"7","guild":null}"#), Some(Do::Sound { id: 7, guild: None }));
         assert_eq!(parse(r#"{"do":"sound","id":7}"#), None, "identifiant en chaîne seulement");
@@ -415,11 +431,11 @@ mod tests {
         let has = |p: &str| FILES.iter().any(|(f, _)| *f == p);
         assert!(has(manifest["CodePath"].as_str().unwrap_or("?")));
         let actions = manifest["Actions"].as_array().cloned().unwrap_or_default();
-        assert_eq!(actions.len(), 9);
+        assert_eq!(actions.len(), 11);
         assert!(has(actions.iter().find_map(|a| a["PropertyInspectorPath"].as_str()).unwrap_or("?")));
         for a in &actions {
             let id = a["UUID"].as_str().unwrap_or_default().rsplit('.').next().unwrap_or_default().to_string();
-            assert!(parse(&format!(r#"{{"do":"{id}","on":true,"id":"1"}}"#)).is_some(), "action inconnue de Ferrocord : {id}");
+            assert!(parse(&format!(r#"{{"do":"{id}","on":true,"id":"1","by":1}}"#)).is_some(), "action inconnue de Ferrocord : {id}");
             assert!(has(&format!("{}.svg", a["Icon"].as_str().unwrap_or("?"))), "{id}");
             for s in a["States"].as_array().cloned().unwrap_or_default() {
                 assert!(has(&format!("{}.svg", s["Image"].as_str().unwrap_or("?"))), "{id}");

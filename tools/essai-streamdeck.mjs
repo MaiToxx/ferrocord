@@ -90,6 +90,17 @@ try {
   ev("keyDown", "sound", "S");
   await until("son joué", () => asked.includes('{"do":"sound","id":"1234567890123456789","guild":"42"}'));
   if (last("A") !== 0) throw new Error("la liste des sons a changé l'état des touches");
+  // Molette : affichage du volume, rotation, appui.
+  ev("willAppear", "volume-out", "D");
+  ferro.write(JSON.stringify({ v: 1, voice: true, mute: false, deaf: false, out: 80, in: 100, max: 200 }) + "\n");
+  await until("volume affiché", () => got.some((m) => m.event === "setFeedback" && m.context === "D" && m.payload.value === "80 %" && m.payload.indicator.value === 40 && m.payload.title === "Casque"));
+  sock.write(frame(JSON.stringify({ event: "dialRotate", action: "io.github.maitoxx.ferrocord.volume-out", context: "D", payload: { ticks: -2, pressed: false } })));
+  ev("dialDown", "volume-out", "D");
+  await until("molette", () => asked.includes('{"do":"volume-out","by":-10}') && asked.at(-1) === '{"do":"deafen"}');
+  ferro.write(JSON.stringify({ v: 1, voice: true, mute: true, deaf: true, out: 70, in: 100, max: 200 }) + "\n");
+  await until("casque coupé affiché", () => got.some((m) => m.event === "setFeedback" && m.context === "D" && m.payload.value === "Coupé"));
+  ferro.write(JSON.stringify({ v: 1, voice: true, mute: false, deaf: false, out: 70, in: 100, max: 200 }) + "\n");
+  await until("touche du micro éteinte", () => last("A") === 0);
   // Ferrocord fermé : tout s'éteint.
   ferro.write(JSON.stringify({ v: 1, voice: true, mute: true }) + "\n");
   await until("rallumée", () => last("A") === 1);

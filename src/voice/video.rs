@@ -279,7 +279,16 @@ struct Enc {
     /// L'encodeur ordinaire a échoué à l'envoi : le repli logiciel sert
     /// jusqu'à la fin de cette vidéo.
     fallback: bool,
+    /// Images données de suite à l'encodeur sans qu'il rende rien.
+    dry: u32,
 }
+
+/// Images sans sortie avant de tenir l'encodeur ordinaire pour muet : il
+/// s'ouvre et accepte les images mais ne rend rien, et ceux qui regardent
+/// voient le direct charger sans fin (constaté par l'utilisateur, 0.1.12).
+/// Un encodeur qui saute des images pour tenir son débit n'en saute jamais
+/// autant de suite.
+const DRY_FRAMES: u32 = 90;
 
 fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
     let lang = crate::i18n::language();
@@ -316,7 +325,7 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
         }
     };
     let fps = cfg.quality.fps.clamp(1, 60);
-    let mut enc = Enc { codec: cfg.codec, level: first_level(cfg.quality), size: (0, 0), enc: None, fallback: false };
+    let mut enc = Enc { codec: cfg.codec, level: first_level(cfg.quality), size: (0, 0), enc: None, fallback: false, dry: 0 };
     let mut scaler = crate::video::convert::Scaler::new();
     let mut announced = None;
     loop {
@@ -329,7 +338,7 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
                 }
                 if let Some(f) = s.frame.take() {
                     if let Some(c) = s.codec.take().filter(|c| *c != enc.codec) {
-                        enc = Enc { codec: c, level: first_level(cfg.quality), size: (0, 0), enc: None, fallback: false };
+                        enc = Enc { codec: c, level: first_level(cfg.quality), size: (0, 0), enc: None, fallback: false, dry: 0 };
                     }
                     break (f, std::mem::take(&mut s.keyframe));
                 }
@@ -376,6 +385,14 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
         let Some(e) = enc.enc.as_mut() else { continue };
         match e.encode(&img, key) {
             Ok(list) => {
+                enc.dry = if list.is_empty() { enc.dry + 1 } else { 0 };
+                if enc.dry >= DRY_FRAMES && !enc.fallback && cfg.backend.fallback_encoder(enc.codec, size.0, size.1, fps, 1).is_some() {
+                    enc.enc = None;
+                    enc.fallback = true;
+                    enc.dry = 0;
+                    lock(&mail.slot).keyframe = true;
+                    continue;
+                }
                 for f in list {
                     match cfg.net.try_send(VoiceCtl::Video(f)) {
                         Ok(()) => {}

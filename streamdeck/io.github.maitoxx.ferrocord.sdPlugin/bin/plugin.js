@@ -9,6 +9,7 @@
 //   de Ferrocord   : {"v":1,"voice":true,"mute":false,"deaf":false,"camera":false,"share":false,"ringing":false,"talk":false}
 // Tableau de sons : {"do":"sounds"} demande la liste ({"sounds":[{"id","guild","name"}]}),
 // {"do":"sound","id":"…","guild":"…"} joue le son choisi dans les réglages de la touche.
+// Molettes (Stream Deck +) : {"do":"volume-out","by":5} et "volume-in" ; appuyer coupe.
 // Rien ne sort de cet ordinateur.
 import net from "node:net";
 
@@ -40,6 +41,50 @@ const deck = new WebSocket(`ws://127.0.0.1:${arg("-port")}`);
 const send = (event, context, payload) => {
   if (deck.readyState === WebSocket.OPEN) deck.send(JSON.stringify({ event, context, payload }));
 };
+
+/** Molettes : action → volume lu dans l'état, coupure, nom affiché. */
+const DIALS = {
+  "volume-out": { level: "out", off: "deaf", push: "deafen", title: "Casque" },
+  "volume-in": { level: "in", off: "mute", push: "mute", title: "Micro" },
+};
+/** Pas d'un cran de molette, en points de pour cent. */
+const STEP = 5;
+/** Molettes affichées : contexte → action. */
+const dials = new Map();
+
+function paintDial(context) {
+  const d = DIALS[dials.get(context)];
+  const level = state && typeof state[d.level] === "number" ? state[d.level] : null;
+  const value = level === null ? "—" : state[d.off] ? "Coupé" : `${level} %`;
+  const max = (state && state.max) || 200;
+  send("setFeedback", context, { title: d.title, value, indicator: { value: level === null ? 0 : Math.round((level * 100) / max) } });
+}
+function dialEvent(e, name) {
+  const context = e.context;
+  const d = DIALS[name];
+  const ask = (o) => {
+    if (pipe && state) pipe.write(JSON.stringify(o) + "\n");
+    else send("showAlert", context);
+  };
+  switch (e.event) {
+    case "willAppear":
+      dials.set(context, name);
+      paintDial(context);
+      break;
+    case "willDisappear":
+      dials.delete(context);
+      break;
+    case "dialRotate": {
+      const ticks = Number(e.payload && e.payload.ticks) || 0;
+      if (ticks) ask({ do: name, by: Math.max(-100, Math.min(100, ticks * STEP)) });
+      break;
+    }
+    case "dialDown":
+    case "touchTap":
+      ask({ do: d.push });
+      break;
+  }
+}
 
 /** Dit aux réglages ouverts la liste des sons. */
 function tellInspectors() {
@@ -80,7 +125,10 @@ function paint(context) {
   const field = LIT[keys.get(context)];
   send("setState", context, { state: field && state && state[field] ? 1 : 0 });
 }
-const paintAll = () => keys.forEach((_, context) => paint(context));
+const paintAll = () => {
+  keys.forEach((_, context) => paint(context));
+  dials.forEach((_, context) => paintDial(context));
+};
 
 deck.addEventListener("open", () => {
   deck.send(JSON.stringify({ event: arg("-registerEvent"), uuid: arg("-pluginUUID") }));
@@ -97,6 +145,7 @@ deck.addEventListener("message", (m) => {
   }
   const name = typeof e.action === "string" && e.action.startsWith(PREFIX) ? e.action.slice(PREFIX.length) : null;
   if (name === "sound") return soundEvent(e);
+  if (name in DIALS) return dialEvent(e, name);
   if (!name || !(name in LIT)) return;
   switch (e.event) {
     case "willAppear":

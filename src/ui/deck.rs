@@ -105,7 +105,7 @@ impl App {
 
     fn deck_state(&self) -> State {
         let (v, video) = (&self.store.voice, &self.store.video);
-        State { voice: v.me.is_some(), mute: v.self_mute, deaf: v.self_deaf, camera: video.camera, share: video.share.is_some(), ringing: !self.ringing_calls().is_empty(), talk: self.deck.talk }
+        State { voice: v.me.is_some(), mute: v.self_mute, deaf: v.self_deaf, camera: video.camera, share: video.share.is_some(), ringing: !self.ringing_calls().is_empty(), talk: self.deck.talk, out: self.local.prefs.audio.output_volume, inp: self.local.prefs.audio.input_volume, max: crate::state::audio_prefs::VOLUME_MAX }
     }
 
     /// Les mêmes gestes que les boutons du panneau vocal et de l'appel entrant.
@@ -126,6 +126,13 @@ impl App {
             Do::Decline => self.run_action(Action::DeclineCall),
             Do::Talk(on) => self.deck_talk(on),
             Do::Sounds => self.deck_sounds(true),
+            // Les curseurs « Volume d'entrée » et « Volume de sortie » des réglages.
+            Do::Volume { output, by } => {
+                let mut p = self.local.prefs.clone();
+                let slot = if output { &mut p.audio.output_volume } else { &mut p.audio.input_volume };
+                *slot = (i16::from(*slot) + i16::from(by)).clamp(0, i16::from(crate::state::audio_prefs::VOLUME_MAX)) as u8;
+                self.set_local_prefs(p);
+            }
             // Comme un clic dans le tableau de sons : `play_sound` refuse
             // hors d'un salon vocal, micro coupé ou en sourdine.
             Do::Sound { id, guild } => {
