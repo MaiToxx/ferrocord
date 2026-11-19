@@ -175,10 +175,16 @@ impl RawMeta {
 
 impl RawBadge {
     fn to_badge(&self) -> Option<ProfileBadge> {
+        // Un badge sans description reste affiché s'il a son icône.
+        let icon = self.icon.as_deref().and_then(ImageHash::parse);
+        let description = text(&self.description, MAX_SHORT);
+        if description.is_none() && icon.is_none() {
+            return None;
+        }
         Some(ProfileBadge {
             id: text(&self.id, MAX_SHORT)?,
-            description: text(&self.description, MAX_SHORT)?,
-            icon: self.icon.as_deref().and_then(ImageHash::parse),
+            description: description.unwrap_or_default(),
+            icon,
             // Seuls les liens web sûrs sont gardés.
             link: self.link.as_deref().filter(|l| l.starts_with("https://") && l.len() <= 512).map(str::to_string),
         })
@@ -196,6 +202,36 @@ impl RawConnection {
     }
 }
 
+/// Longueur gardée de la forme des badges.
+const MAX_SHAPE: usize = 4000;
+
+/// Forme des listes `badges` et `guild_badges` de la réponse : noms des
+/// champs et types des valeurs ; seule la valeur de `id` (référence du
+/// badge, pas une donnée du compte) est gardée.
+fn badge_shape(body: &str) -> String {
+    fn shape(v: &serde_json::Value, key: &str, depth: u8) -> String {
+        use serde_json::Value as V;
+        match v {
+            V::Null => "nul".into(),
+            V::Bool(_) => "booléen".into(),
+            V::Number(_) => "nombre".into(),
+            V::String(s) if key == "id" && s.len() <= 64 && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-') => format!("{s:?}"),
+            V::String(s) => format!("texte({})", s.chars().count()),
+            _ if depth >= 4 => "…".into(),
+            V::Array(a) => format!("[{}]", a.iter().take(40).map(|x| shape(x, "", depth + 1)).collect::<Vec<_>>().join(", ")),
+            V::Object(o) => format!("{{{}}}", o.iter().take(40).map(|(k, x)| format!("{}: {}", k.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_').take(40).collect::<String>(), shape(x, k, depth + 1))).collect::<Vec<_>>().join(", ")),
+        }
+    }
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(body) else { return String::new() };
+    let mut out = String::new();
+    for key in ["badges", "guild_badges"] {
+        if let Some(list) = v.get(key).filter(|l| l.as_array().is_some_and(|a| !a.is_empty())) {
+            out.push_str(&format!("{key} = {} ", shape(list, "", 0)));
+        }
+    }
+    out.chars().take(MAX_SHAPE).collect()
+}
+
 fn items<R, T>(list: &Option<Vec<Item<R>>>, f: impl Fn(&R) -> Option<T>) -> Vec<T> {
     list.iter().flatten().filter_map(|x| x.0.as_ref().and_then(&f)).take(MAX_LIST).collect()
 }
@@ -209,7 +245,9 @@ pub(super) fn store(hub: &PeopleHub, user_id: u64, guild_id: Option<u64>, body: 
     }
     let mut badges: Vec<ProfileBadge> = Vec::new();
     for b in items(&raw.badges, RawBadge::to_badge).into_iter().chain(items(&raw.guild_badges, RawBadge::to_badge)) {
-        if badges.len() < MAX_LIST && !badges.iter().any(|x| x.id == b.id) {
+        // Doublon du serveur : même identifiant et même icône (deux badges
+        // distincts peuvent partager un identifiant).
+        if badges.len() < MAX_LIST && !badges.iter().any(|x| x.id == b.id && x.icon == b.icon) {
             badges.push(b);
         }
     }
@@ -219,6 +257,7 @@ pub(super) fn store(hub: &PeopleHub, user_id: u64, guild_id: Option<u64>, body: 
         user: raw.user_profile.as_ref().map(RawMeta::to_text).unwrap_or_default(),
         guild: guild_id.and(raw.guild_member_profile.as_ref()).map(RawMeta::to_text),
         badges,
+        badge_shape: badge_shape(body),
         premium_type: raw.premium_type,
         premium_since: iso_ms(&raw.premium_since),
         premium_guild_since: iso_ms(&raw.premium_guild_since),
@@ -397,6 +436,9 @@ mod tests {
         let ids: Vec<&str> = prof.badges.iter().map(|b| b.id.as_str()).collect();
         assert_eq!(ids, vec!["premium", "hypesquad_house_2", "active_developer"]);
         assert!(prof.badges[0].icon.is_some() && prof.badges[0].link.is_some());
+        // Forme pour le journal : champs et types, l'identifiant du badge, aucun texte.
+        assert!(prof.badge_shape.starts_with(r#"badges = [{description: texte(29), icon: texte(32), id: "premium", link: texte(38)}"#), "{}", prof.badge_shape);
+        assert!(!prof.badge_shape.contains("Abonné") && !prof.badge_shape.contains("exemple.invalid"));
         assert_eq!((prof.badges[1].link.as_deref(), prof.badges[2].icon), (None, None));
         assert_eq!(prof.premium_type, Some(2));
         assert_eq!(prof.premium_since, Some(1_706_781_600_000));

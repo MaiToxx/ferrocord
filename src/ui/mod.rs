@@ -1194,6 +1194,10 @@ impl App {
         self.keys_tick();
         self.global_keys_tick();
         crate::voice::set_extra_codecs(self.local.prefs.audio.extra_codecs);
+        // Journal de débogage : polices de nom que Ferrocord ne connaît pas.
+        for id in fonts::take_unknown() {
+            self.local_log(&format!("police de nom inconnue : font_id {id}"));
+        }
         self.install_tick();
         self.crash_tick();
         self.news_tick();

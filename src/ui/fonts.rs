@@ -775,11 +775,34 @@ static NAME_DATA: std::sync::Mutex<Vec<(&'static str, Bytes)>> = std::sync::Mute
 /// Une police embarquée est chargée ici à sa première demande : le nom est
 /// dessiné en demi-grasse pendant une image, puis dans sa police.
 pub(crate) fn styled(ctx: &egui::Context, font_id: u16) -> FontFamily {
-    let Some(i) = NAMES.iter().position(|n| n.id == font_id) else { return demi() };
+    let Some(i) = NAMES.iter().position(|n| n.id == font_id) else {
+        note_unknown(font_id);
+        return demi();
+    };
     if NAMES[i].embedded() {
         want(ctx, i);
     }
     NAMES[i].family()
+}
+
+/// Identifiants de police de nom rencontrés et absents de [`NAMES`] : à
+/// écrire une fois chacun dans le journal de débogage ([`take_unknown`]).
+/// Borné : seize identifiants au plus sont retenus.
+static UNKNOWN: std::sync::Mutex<(Vec<u16>, usize)> = std::sync::Mutex::new((Vec::new(), 0));
+
+fn note_unknown(font_id: u16) {
+    let mut u = UNKNOWN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if u.0.len() < 16 && !u.0.contains(&font_id) {
+        u.0.push(font_id);
+    }
+}
+
+/// Identifiants inconnus vus depuis le dernier appel.
+pub(crate) fn take_unknown() -> Vec<u16> {
+    let mut u = UNKNOWN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let from = u.1;
+    u.1 = u.0.len();
+    u.0[from..].to_vec()
 }
 
 /// Ce que `ctx` a d'installé : de quoi refaire ses familles quand une police

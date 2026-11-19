@@ -138,6 +138,10 @@ pub struct Profile {
     pub guild: Option<ProfileText>,
     /// Badges du profil puis ceux du serveur, sans doublon.
     pub badges: Vec<ProfileBadge>,
+    /// Forme des badges reçus (noms des champs et types, identifiants des
+    /// badges, aucune autre valeur), pour le journal de débogage : les
+    /// badges à paliers du client n'ont pas de description publique.
+    pub badge_shape: String,
     pub premium_type: Option<u8>,
     /// Début de Nitro (ms Unix).
     pub premium_since: Option<i64>,
