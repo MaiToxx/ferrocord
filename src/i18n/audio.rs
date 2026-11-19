@@ -41,6 +41,8 @@ pub mod t {
         PTT_WAITING = "Appuyez sur une touche… (Échap\u{a0}: annuler)", "Press a key… (Esc: cancel)";
         PTT_CLEAR = "Retirer", "Remove";
         PTT_RELEASE = "Délai de relâchement", "Release delay";
+        GLOBAL_KEYS = "Micro et casque depuis toute application", "Mute and deafen from any application";
+        GLOBAL_KEYS_TIP = "Les raccourcis «\u{a0}Couper le micro\u{a0}» et «\u{a0}Couper le casque\u{a0}» marchent aussi quand Ferrocord n'est pas au premier plan. Ces combinaisons ne sont alors plus transmises aux autres applications.", "The Mute and Deafen shortcuts also work when Ferrocord is in the background. Those key combinations are then no longer passed to other applications.";
         PTT_RELEASE_TIP = "Le micro reste ouvert ce temps après le relâchement de la touche, pour ne pas couper la fin des mots.", "The mic stays open this long after the key is released, so word endings aren't cut off.";
         SEC_PROCESSING = "Traitement de la voix", "Voice processing";
         NOISE = "Suppression du bruit", "Noise suppression";
@@ -77,6 +79,8 @@ pub mod f {
     templates! {
         default_named(name) = "Par défaut (Windows)\u{a0}: {name}", "Default (Windows): {name}";
         unplugged(name) = "{name} (débranché)", "{name} (unplugged)";
+        global_unsuitable(action) = "«\u{a0}{action}\u{a0}» reste limité à la fenêtre\u{a0}: son raccourci doit comporter Ctrl ou Alt, ou être une touche de fonction.", "“{action}” stays limited to the window: its shortcut needs Ctrl or Alt, or must be a function key.";
+        global_refused(action) = "«\u{a0}{action}\u{a0}» reste limité à la fenêtre\u{a0}: une autre application utilise déjà ce raccourci.", "“{action}” stays limited to the window: another application already uses this shortcut.";
         db(n) = "{n}\u{a0}dB", "{n} dB";
         ms(n) = "{n}\u{a0}ms", "{n} ms";
         lost_input(name) = "Micro débranché ({name})\u{a0}: celui par défaut de Windows le remplace.", "Microphone unplugged ({name}): the Windows default replaces it.";

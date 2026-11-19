@@ -47,6 +47,8 @@ pub mod speech;
 // Horloge de dernière entrée, pour le statut inactif automatique (lot FF).
 pub mod idle;
 
+// Raccourcis globaux (micro, casque) hors de la fenêtre.
+pub mod hotkeys;
 // Pointeur pendant un glisser-déposer de fichiers (dépôt sur un salon de la liste).
 pub mod drop_point;
 

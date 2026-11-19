@@ -22,7 +22,7 @@ mod clips;
 mod media;
 mod player;
 mod ptt_hook;
-mod ptt_keys;
+pub(crate) mod ptt_keys;
 mod recorder;
 mod stream;
 pub mod video;

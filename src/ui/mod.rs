@@ -132,6 +132,7 @@ mod streamer_banner;
 // Bandeau du rapport de plantage local (lot E5).
 mod crash_banner;
 mod news_banner;
+mod global_keys;
 // Thèmes partageables : fichiers `.ferrotheme` (lot E5).
 mod theme_share;
 // Mica et transparence de Windows 11 (lot E5).
@@ -527,6 +528,7 @@ pub struct App {
     /// Rapport de plantage local (lot E5).
     crash: crash_banner::CrashUi,
     news: news_banner::NewsUi,
+    global_keys: global_keys::GlobalKeys,
     /// Mica et transparence de Windows 11 (lot E5).
     mica: mica::MicaUi,
     /// Onglets de salons (plugin, lot E2).
@@ -684,6 +686,7 @@ impl App {
             fx: Default::default(),
             crash: Default::default(),
             news: Default::default(),
+            global_keys: Default::default(),
             mica: Default::default(),
             tabs: Default::default(),
             palette: Default::default(),
@@ -1188,6 +1191,7 @@ impl App {
         self.poll_theme();
         self.desk_tick();
         self.keys_tick();
+        self.global_keys_tick();
         self.install_tick();
         self.crash_tick();
         self.news_tick();

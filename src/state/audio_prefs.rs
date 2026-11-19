@@ -40,6 +40,9 @@ pub struct AudioPrefs {
     pub noise_suppression: bool,
     pub echo_cancellation: bool,
     pub auto_gain: bool,
+    /// « Couper le micro » et « Couper le casque » marchent hors de la fenêtre
+    /// (raccourcis globaux de Windows, combinaisons de `keys.toml`).
+    pub global_keys: bool,
 }
 
 impl Default for AudioPrefs {
@@ -56,6 +59,7 @@ impl Default for AudioPrefs {
             noise_suppression: true,
             echo_cancellation: true,
             auto_gain: true,
+            global_keys: false,
         }
     }
 }
@@ -87,6 +91,7 @@ const K_RELEASE: &str = "delai_relache_ms";
 const K_NOISE: &str = "suppression_bruit";
 const K_ECHO: &str = "annulation_echo";
 const K_GAIN: &str = "gain_automatique";
+const K_GLOBAL: &str = "raccourcis_globaux";
 const MODE_VOICE: &str = "voix";
 const MODE_PTT: &str = "appui";
 
@@ -122,6 +127,7 @@ impl AudioPrefs {
             self.input_volume, self.output_volume, self.auto_threshold, self.threshold_db
         );
         s += &format!("{K_RELEASE} = {}\n{K_NOISE} = {}\n{K_ECHO} = {}\n{K_GAIN} = {}\n", self.ptt_release_ms, self.noise_suppression, self.echo_cancellation, self.auto_gain);
+        s += &format!("{K_GLOBAL} = {}\n", self.global_keys);
         s
     }
 
@@ -149,6 +155,7 @@ impl AudioPrefs {
                 K_NOISE => p.noise_suppression = v.as_bool().unwrap_or(p.noise_suppression),
                 K_ECHO => p.echo_cancellation = v.as_bool().unwrap_or(p.echo_cancellation),
                 K_GAIN => p.auto_gain = v.as_bool().unwrap_or(p.auto_gain),
+                K_GLOBAL => p.global_keys = v.as_bool().unwrap_or(p.global_keys),
                 _ => {}
             }
         }
@@ -233,6 +240,7 @@ mod tests {
             noise_suppression: false,
             echo_cancellation: true,
             auto_gain: false,
+            global_keys: true,
         };
         assert_eq!(parse(&p.to_toml()), p);
         assert_eq!(parse(&AudioPrefs::default().to_toml()), AudioPrefs::default());

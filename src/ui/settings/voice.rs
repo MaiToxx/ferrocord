@@ -347,6 +347,22 @@ impl App {
             }
         }
 
+        // Raccourcis globaux du micro et du casque (F22).
+        if let Some(on) = toggle(ui, at::GLOBAL_KEYS.get(lang), at::GLOBAL_KEYS_TIP.get(lang), Some(v.global_keys), cfg!(windows)) {
+            v.global_keys = on;
+        }
+        if base.global_keys && v.global_keys {
+            use super::super::global_keys::GlobalState;
+            for (a, state) in self.global_keys_states() {
+                let name = super::super::keys::action_label(a).get(lang);
+                match state {
+                    GlobalState::Active => {}
+                    GlobalState::Unsuitable => note(ui, t, &af::global_unsuitable(lang, name)),
+                    GlobalState::Refused => note(ui, t, &af::global_refused(lang, name)),
+                }
+            }
+        }
+
         section(ui, t, at::SEC_PROCESSING.get(lang));
         for (slot, label, tip) in [(&mut v.noise_suppression, at::NOISE, at::NOISE_TIP), (&mut v.echo_cancellation, at::ECHO, at::ECHO_TIP), (&mut v.auto_gain, at::AGC, at::AGC_TIP)] {
             if let Some(on) = toggle(ui, label.get(lang), tip.get(lang), Some(*slot), true) {
