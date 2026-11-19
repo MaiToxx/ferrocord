@@ -41,8 +41,8 @@ pub mod t {
         PTT_WAITING = "Appuyez sur une touche… (Échap\u{a0}: annuler)", "Press a key… (Esc: cancel)";
         PTT_CLEAR = "Retirer", "Remove";
         PTT_RELEASE = "Délai de relâchement", "Release delay";
-        GLOBAL_KEYS = "Micro et casque depuis toute application", "Mute and deafen from any application";
-        GLOBAL_KEYS_TIP = "Les raccourcis «\u{a0}Couper le micro\u{a0}» et «\u{a0}Couper le casque\u{a0}» marchent aussi quand Ferrocord n'est pas au premier plan. Ces combinaisons ne sont alors plus transmises aux autres applications.", "The Mute and Deafen shortcuts also work when Ferrocord is in the background. Those key combinations are then no longer passed to other applications.";
+        GLOBAL_KEYS = "Micro, casque et appels depuis toute application", "Mute, deafen and calls from any application";
+        GLOBAL_KEYS_TIP = "Les raccourcis «\u{a0}Couper le micro\u{a0}» et «\u{a0}Couper le casque\u{a0}» marchent aussi quand Ferrocord n'est pas au premier plan. Pendant qu'un appel sonne, «\u{a0}Répondre\u{a0}» et «\u{a0}Refuser\u{a0}» aussi. Ces combinaisons ne sont alors plus transmises aux autres applications.", "The Mute and Deafen shortcuts also work when Ferrocord is in the background. While a call is ringing, so do Answer and Decline. Those key combinations are then no longer passed to other applications.";
         PTT_RELEASE_TIP = "Le micro reste ouvert ce temps après le relâchement de la touche, pour ne pas couper la fin des mots.", "The mic stays open this long after the key is released, so word endings aren't cut off.";
         SEC_PROCESSING = "Traitement de la voix", "Voice processing";
         NOISE = "Suppression du bruit", "Noise suppression";
