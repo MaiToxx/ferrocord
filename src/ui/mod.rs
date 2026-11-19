@@ -1425,6 +1425,7 @@ impl App {
         self.theme.paint_panel_borders(ui.painter(), rail_line, channels_rect, ui.ctx().content_rect());
         // Par-dessus le reste, après les zones qui ont pu l'ouvrir à cette image.
         self.profile_ui(ui);
+        self.badge_window(ui.ctx());
         self.mentions_ui(ui.ctx());
         // Édition rapide du profil, par-dessus la carte qui l'a ouverte.
         self.profile_editor_ui(ui);

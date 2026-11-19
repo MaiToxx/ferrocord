@@ -537,6 +537,10 @@ struct HttpState {
 }
 
 impl HttpState {
+    fn has_route(&self, method: &str, path: &str) -> bool {
+        self.routes.lock().map(|r| r.iter().any(|r| r.method == method && r.path == path)).unwrap_or(false)
+    }
+
     /// Réponse de la route correspondante ; la dernière réponse d'une route
     /// est répétée indéfiniment.
     fn respond(&self, method: &str, path: &str) -> Response {
@@ -651,10 +655,15 @@ async fn serve_http(tcp: TcpStream, st: Arc<HttpState>, tx: mpsc::UnboundedSende
             received_at: Instant::now(),
             in_flight,
         };
-        if let Ok(mut log) = st.log.lock() {
-            log.push(req.clone());
+        // Répertoire des badges : complément demandé après chaque profil. Sans
+        // réponse programmée, il est refusé (404) sans être compté.
+        let quiet = req.method == "GET" && req.path.ends_with("/badges") && !st.has_route(&req.method, &req.path);
+        if !quiet {
+            if let Ok(mut log) = st.log.lock() {
+                log.push(req.clone());
+            }
+            let _ = tx.send(req.clone());
         }
-        let _ = tx.send(req.clone());
         let resp = st.respond(&req.method, &req.path);
         if !resp.delay.is_zero() {
             tokio::time::sleep(resp.delay).await;

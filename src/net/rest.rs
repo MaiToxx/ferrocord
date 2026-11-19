@@ -154,6 +154,30 @@ impl Ctx {
         self.refusals.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    /// Le jeton est-il celui du compte `user_id` ? Sa première partie est
+    /// l'identifiant du compte en base64 (rien d'autre n'en est lu).
+    pub(super) fn is_me(&self, user_id: u64) -> bool {
+        let head = self.token.split('.').next().unwrap_or_default();
+        let (mut bits, mut n, mut out) = (0u32, 0u8, String::new());
+        for c in head.bytes() {
+            let v = match c {
+                b'A'..=b'Z' => c - b'A',
+                b'a'..=b'z' => c - b'a' + 26,
+                b'0'..=b'9' => c - b'0' + 52,
+                b'+' | b'-' => 62,
+                b'/' | b'_' => 63,
+                _ => break,
+            };
+            bits = (bits << 6) | u32::from(v);
+            n += 6;
+            if n >= 8 {
+                n -= 8;
+                out.push(char::from(((bits >> n) & 0xFF) as u8));
+            }
+        }
+        out.parse::<u64>().is_ok_and(|id| id == user_id)
+    }
+
     /// Compte bot : les points d'API réservés aux comptes utilisateur ne sont pas appelés.
     pub(super) fn is_bot(&self) -> bool {
         self.token.starts_with("Bot ")

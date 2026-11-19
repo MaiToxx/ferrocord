@@ -244,6 +244,9 @@ pub fn image_url(base: &str, r: &ImageRef, size: u32, format: Format) -> String 
         ImageRef::TagBadge { guild_id, hash } => format!("guild-tag-badges/{guild_id}/{hash}"),
         // Documentation « Image Formatting » : Application Icon, Application Cover.
         ImageRef::AppIcon { app_id, hash } => format!("app-icons/{app_id}/{hash}"),
+        // Adresses reçues de `GET /users/{id}/badges` (relevé du client web,
+        // 19/11/2026) : taille fixe, pas de paramètre.
+        ImageRef::BadgeArt { hash, svg } => return format!("{base}/assets/content/{hash}.{}", if *svg { "svg" } else { "png" }),
     };
     let size = accepted_size(size, FINE_SIZES);
     let animated = if format == Format::AnimatedWebP { "&animated=true" } else { "" };
@@ -381,7 +384,7 @@ impl Cdn {
             ImageRef::Sticker { gif: false, .. } => image_url(&self.base, r, size, Format::Png),
             ImageRef::Sticker { gif: true, .. } if loopback => image_url(&self.base, r, size, Format::Gif),
             ImageRef::Sticker { gif: true, .. } => image_url("https://media.discordapp.net", r, size, Format::Gif),
-            ImageRef::BadgeIcon { .. } | ImageRef::TagBadge { .. } | ImageRef::Decoration { .. } | ImageRef::Nameplate { .. } => image_url(&self.base, r, size, Format::Png),
+            ImageRef::BadgeIcon { .. } | ImageRef::BadgeArt { .. } | ImageRef::TagBadge { .. } | ImageRef::Decoration { .. } | ImageRef::Nameplate { .. } => image_url(&self.base, r, size, Format::Png),
             _ => image_url(&self.base, r, size, Format::WebP),
         }
     }

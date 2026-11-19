@@ -36,7 +36,7 @@ pub type Frames = Vec<(ColorImage, Duration)>;
 /// Les octets sont-ils ceux d'une image ou d'une animation lisible ici
 /// (format reconnu au contenu) ?
 pub fn readable(bytes: &[u8]) -> bool {
-    decode::sniff(bytes).is_some() || super::webm::is_webm(bytes) || super::lottie::is_lottie(bytes)
+    decode::sniff(bytes).is_some() || super::webm::is_webm(bytes) || super::lottie::is_lottie(bytes) || decode::is_svg(bytes)
 }
 
 /// L'image contient-elle plus d'une image (GIF, WebP ou APNG) ? Lit au plus
@@ -233,6 +233,10 @@ fn fitted_bytes(w: u32, h: u32) -> usize {
 /// Images de l'animation, dimensions vérifiées ; `None` : image fixe (ou
 /// format sans animation).
 fn open(bytes: &[u8], max_side: u32) -> Result<Option<image::Frames<'_>>, DecodeError> {
+    // Dessin vectoriel : une image fixe.
+    if decode::is_svg(bytes) {
+        return Ok(None);
+    }
     Ok(Some(match decode::sniff(bytes).ok_or(DecodeError::Unsupported)? {
         ImageFormat::Gif => {
             let mut d = codecs::gif::GifDecoder::new(Cursor::new(bytes)).map_err(|e| classify(&e))?;

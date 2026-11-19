@@ -238,6 +238,7 @@ impl Source for Generated {
             ImageRef::Nameplate { asset } => ("plaque", name_seed(&asset.name())),
             ImageRef::TagBadge { guild_id, .. } => ("badge", *guild_id),
             ImageRef::AppIcon { app_id, .. } => ("couverture", *app_id),
+            ImageRef::BadgeArt { hash, .. } => ("badge", name_seed(&hash.to_string())),
         };
         format!("apercu://{kind}/{id}/{size}")
     }
