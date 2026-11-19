@@ -67,6 +67,9 @@ pub struct ProfileBadge {
     pub id: String,
     pub description: String,
     pub icon: Option<ImageHash>,
+    /// Petite icône vectorielle (`simple_icon_url`) : la même que celle du
+    /// badge dans le répertoire, ce qui relie les deux listes.
+    pub simple: Option<super::model::ContentHash>,
     /// Lien du badge, seulement en `https://`.
     pub link: Option<String>,
 }
@@ -82,8 +85,17 @@ pub struct BadgeTier {
     pub owned: bool,
     /// Petite icône (PNG).
     pub icon: Option<super::model::ContentHash>,
+    /// Petite icône vectorielle (SVG).
+    pub simple: Option<super::model::ContentHash>,
     /// Grande illustration, si Discord en sert une ; vrai : dessin vectoriel (SVG).
     pub art: Option<(super::model::ContentHash, bool)>,
+}
+
+impl BadgeTier {
+    /// Petite icône : le PNG, sinon le dessin vectoriel (vrai).
+    pub fn small(&self) -> Option<(super::model::ContentHash, bool)> {
+        self.icon.map(|h| (h, false)).or(self.simple.map(|h| (h, true)))
+    }
 }
 
 /// Avancement vers le palier suivant.
@@ -107,6 +119,8 @@ pub struct DirBadge {
     /// « 5 jeux joués », « Abonné depuis 25/05/2026 ».
     pub info: String,
     pub icon: Option<super::model::ContentHash>,
+    /// Petite icône vectorielle (SVG).
+    pub simple: Option<super::model::ContentHash>,
     pub art: Option<(super::model::ContentHash, bool)>,
     pub owned: bool,
     pub hidden: bool,
@@ -135,12 +149,18 @@ impl DirBadge {
     /// Grande image : celle du palier atteint, sinon celle du badge, sinon les petites icônes.
     pub fn best_art(&self) -> Option<(super::model::ContentHash, bool)> {
         let tier = self.tier();
-        tier.and_then(|t| t.art).or(self.art).or(self.small_icon().map(|h| (h, false)))
+        tier.and_then(|t| t.art).or(self.art).or(self.small_icon())
     }
 
-    /// Petite icône : celle du palier atteint, sinon celle du badge.
-    pub fn small_icon(&self) -> Option<super::model::ContentHash> {
-        self.tier().and_then(|t| t.icon).or(self.icon)
+    /// Petite icône : celle du palier atteint, sinon celle du badge (vrai :
+    /// dessin vectoriel, faute de PNG).
+    pub fn small_icon(&self) -> Option<(super::model::ContentHash, bool)> {
+        self.tier().and_then(BadgeTier::small).or(self.icon.map(|h| (h, false))).or(self.simple.map(|h| (h, true)))
+    }
+
+    /// `hash` est-il la petite icône vectorielle du badge ou d'un de ses paliers ?
+    pub fn has_simple(&self, hash: super::model::ContentHash) -> bool {
+        self.simple == Some(hash) || self.tiers.iter().any(|t| t.simple == Some(hash))
     }
 
     /// Date du palier atteint, sinon celle du badge.

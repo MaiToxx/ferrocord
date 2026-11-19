@@ -165,10 +165,12 @@ pub(super) fn badge_tip(lang: Lang, b: &ProfileBadge, user_id: u64, p: Option<&P
     plain(None)
 }
 
-/// Badge du répertoire qui correspond au badge `b` du profil. Les deux
-/// listes n'ont pas de clé commune : identifiants relevés dans le client
-/// (19/11/2026) pour les badges à paliers, sinon le même nom.
-fn dir_matches(d: &DirBadge, b: &ProfileBadge) -> bool {
+/// Badge du répertoire `list` qui correspond au badge `b` du profil. Les
+/// deux listes n'ont pas de clé commune ; du plus sûr au moins sûr :
+/// identifiants relevés dans le client (19/11/2026), puis la même petite
+/// icône vectorielle, puis le même nom (mots dans n'importe quel ordre :
+/// « HypeSquad Balance » dans le profil, « Balance HypeSquad » ici).
+fn dir_find<'a>(list: &'a [DirBadge], b: &ProfileBadge) -> Option<&'a DirBadge> {
     let id = b.id.as_str();
     let known = if id.starts_with("premium") {
         Some(1)
@@ -176,6 +178,7 @@ fn dir_matches(d: &DirBadge, b: &ProfileBadge) -> bool {
         Some(12)
     } else {
         match id {
+            "hypesquad_house_3" => Some(7),
             "legacy_username" => Some(13),
             "account_age" => Some(18),
             "streaming" => Some(19),
@@ -184,10 +187,16 @@ fn dir_matches(d: &DirBadge, b: &ProfileBadge) -> bool {
             _ => None,
         }
     };
-    match known {
-        Some(k) => d.id == k,
-        None => !d.name.is_empty() && d.name == b.description,
-    }
+    let words = |s: &str| {
+        let mut w: Vec<String> = s.split_whitespace().map(str::to_lowercase).collect();
+        w.sort();
+        w
+    };
+    let mine = words(&b.description);
+    known
+        .and_then(|k| list.iter().find(|d| d.id == k))
+        .or_else(|| b.simple.and_then(|h| list.iter().find(|d| d.has_simple(h))))
+        .or_else(|| list.iter().find(|d| !mine.is_empty() && words(&d.name) == mine))
 }
 
 /// Fenêtre des badges ouverte : (utilisateur, badge choisi).
@@ -195,17 +204,34 @@ fn badge_window_id() -> Id {
     Id::unique("ferrocord.profils.fenêtre-badges")
 }
 
-/// Illustration `art` d'un badge du répertoire dans un carré de côté
-/// `side` ; illisible : la petite icône `fallback` à sa place.
-fn dir_art(ui: &mut egui::Ui, images: &Images, art: Option<(ContentHash, bool)>, fallback: Option<ContentHash>, side: f32) -> Rect {
-    let (rect, _) = ui.allocate_exact_size(egui::Vec2::splat(side), Sense::hover());
-    let shown = match art.map(|(hash, svg)| images.get(ImageRef::BadgeArt { hash, svg }, side)) {
-        Some(Image::Failed) | None => fallback.map(|hash| images.get(ImageRef::BadgeArt { hash, svg: false }, side)),
+/// Plus grand rectangle aux proportions de `size`, centré dans `rect`.
+fn contained(rect: Rect, size: egui::Vec2) -> Rect {
+    if size.x <= 0.0 || size.y <= 0.0 || !size.is_finite() {
+        return rect;
+    }
+    let k = (rect.width() / size.x).min(rect.height() / size.y);
+    Rect::from_center_size(rect.center(), size * k)
+}
+
+/// Illustration `art` d'un badge du répertoire, entière et centrée dans
+/// `rect` (certaines sont plus larges que hautes : jamais recadrées ni
+/// déformées) ; illisible : la petite icône `fallback` à sa place.
+fn paint_dir_art(ui: &egui::Ui, images: &Images, rect: Rect, art: Option<(ContentHash, bool)>, fallback: Option<(ContentHash, bool)>) {
+    let get = |(hash, svg): (ContentHash, bool)| images.get_within(ImageRef::BadgeArt { hash, svg }, rect.width(), rect.height());
+    let shown = match art.map(get) {
+        Some(Image::Failed) | None => fallback.map(get),
         other => other,
     };
     if let Some(Image::Ready(tex)) = shown {
-        ui.painter().add(images::textured(rect, egui::CornerRadius::ZERO, tex));
+        let size = ui.ctx().tex_manager().read().meta(tex).map(|m| egui::vec2(m.size[0] as f32, m.size[1] as f32));
+        ui.painter().add(images::textured(contained(rect, size.unwrap_or(rect.size())), egui::CornerRadius::ZERO, tex));
     }
+}
+
+/// [`paint_dir_art`] dans un carré de côté `side` réservé ici.
+fn dir_art(ui: &mut egui::Ui, images: &Images, art: Option<(ContentHash, bool)>, fallback: Option<(ContentHash, bool)>, side: f32) -> Rect {
+    let (rect, _) = ui.allocate_exact_size(egui::Vec2::splat(side), Sense::hover());
+    paint_dir_art(ui, images, rect, art, fallback);
     rect
 }
 
@@ -758,11 +784,7 @@ impl App {
                 let fill = if on || resp.hovered() || resp.has_focus() { t.colors.selected } else { tint(t) };
                 ui.painter().rect(rect, t.r_row(), fill, Stroke::new(t.shapes.border.max(1.0), if on { t.colors.accent } else { t.hairline(false) }), egui::StrokeKind::Inside);
                 let inner = rect.shrink((cell * 0.2).round());
-                if let Some(hash) = d.small_icon()
-                    && let Image::Ready(tex) = self.images.get(ImageRef::BadgeArt { hash, svg: false }, inner.width())
-                {
-                    ui.painter().add(images::textured(inner, egui::CornerRadius::ZERO, tex));
-                }
+                paint_dir_art(ui, &self.images, inner, d.small_icon(), None);
                 resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, on, &d.name));
                 if resp.on_hover_text(&d.name).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                     *pick = d.id;
@@ -825,7 +847,7 @@ impl App {
                     ui.allocate_ui_with_layout(egui::vec2(col, 0.0), egui::Layout::top_down(egui::Align::Center), |ui| {
                         ui.set_width(col);
                         ui.spacing_mut().item_spacing.y = 0.0;
-                        dir_art(ui, &self.images, None, tier.icon, icon);
+                        dir_art(ui, &self.images, tier.small(), None, icon);
                         // Palier pas encore atteint : textes estompés.
                         let (name, sub) = if tier.owned { (t.colors.text_strong, t.colors.muted) } else { (t.colors.muted, t.colors.faint) };
                         if !tier.name.is_empty() {
@@ -843,7 +865,7 @@ impl App {
     /// Infobulle détaillée d'un badge, et son lien au clic.
     fn badge_hover(&self, ui: &egui::Ui, t: &Tokens, user_id: u64, s: &Shown, b: &ProfileBadge, resp: egui::Response) -> egui::Response {
         // Badge connu du répertoire : son palier dans l'infobulle, la fenêtre des badges au clic.
-        let dir = if resp.hovered() || resp.clicked() { self.store.people.lock().profiles().directory(user_id).iter().find(|d| dir_matches(d, b)).cloned() } else { None };
+        let dir = if resp.hovered() || resp.clicked() { dir_find(self.store.people.lock().profiles().directory(user_id), b).cloned() } else { None };
         let resp = resp.on_hover_ui(|ui| match &dir {
             Some(d) => dir_tip_ui(ui, t, &self.images, d),
             None => {
@@ -966,7 +988,44 @@ mod tests {
     }
 
     fn badge(id: &str, description: &str) -> ProfileBadge {
-        ProfileBadge { id: id.into(), description: description.into(), icon: ImageHash::parse("0123456789abcdef0123456789abcdef"), link: None }
+        ProfileBadge { id: id.into(), description: description.into(), icon: ImageHash::parse("0123456789abcdef0123456789abcdef"), simple: None, link: None }
+    }
+
+    #[test]
+    fn profile_badges_find_their_directory_entry() {
+        let hash = |c: char| ContentHash::parse(&c.to_string().repeat(64));
+        let dir = |id: u64, name: &str, simple: Option<ContentHash>| DirBadge {
+            id,
+            name: name.into(),
+            description: String::new(),
+            info: String::new(),
+            icon: None,
+            simple,
+            art: None,
+            owned: true,
+            hidden: false,
+            obtained_at: None,
+            current: None,
+            next: None,
+            tier_at: Vec::new(),
+            tiers: Vec::new(),
+            progress: None,
+        };
+        let list = [dir(21, "Variété de jeux", hash('a')), dir(7, "Balance HypeSquad", None), dir(30, "Inconnu", hash('b')), dir(5, "Bravoure HypeSquad", None)];
+        let found = |b: &ProfileBadge| dir_find(&list, b).map(|d| d.id);
+        // Identifiant relevé, puis la même icône vectorielle, puis les mêmes mots.
+        assert_eq!(found(&badge("game_variety", "x")), Some(21));
+        assert_eq!(found(&badge("hypesquad_house_3", "HypeSquad Balance")), Some(7));
+        assert_eq!(found(&ProfileBadge { simple: hash('b'), ..badge("nouveau", "Autre nom") }), Some(30));
+        assert_eq!(found(&badge("hypesquad_house_1", "hypesquad bravoure")), Some(5));
+        assert_eq!(found(&badge("staff", "Équipe Discord")), None);
+        assert_eq!(found(&badge("vide", "")), None);
+        // Illustration plus large que haute : entière, centrée, jamais déformée.
+        let square = Rect::from_min_size(egui::pos2(10.0, 10.0), egui::Vec2::splat(100.0));
+        let wide = contained(square, egui::vec2(156.0, 100.0));
+        assert!((wide.width() - 100.0).abs() < 0.01 && (wide.height() - 64.1).abs() < 0.1 && wide.center() == square.center());
+        assert_eq!(contained(square, egui::vec2(72.0, 72.0)), square);
+        assert_eq!(contained(square, egui::Vec2::ZERO), square);
     }
 
     /// Identifiant d'un compte créé à cet instant.

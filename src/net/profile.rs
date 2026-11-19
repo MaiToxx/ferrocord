@@ -55,6 +55,8 @@ struct RawBadge {
     #[serde(default, deserialize_with = "de_lenient")]
     icon: Option<String>,
     #[serde(default, deserialize_with = "de_lenient")]
+    simple_icon_url: Option<String>,
+    #[serde(default, deserialize_with = "de_lenient")]
     link: Option<String>,
 }
 
@@ -185,6 +187,7 @@ impl RawBadge {
             id: text(&self.id, MAX_SHORT)?,
             description: description.unwrap_or_default(),
             icon,
+            simple: self.simple_icon_url.as_deref().and_then(|u| crate::state::model::ContentHash::of_url(u, "svg")),
             // Seuls les liens web sûrs sont gardés.
             link: self.link.as_deref().filter(|l| l.starts_with("https://") && l.len() <= 512).map(str::to_string),
         })
@@ -301,7 +304,8 @@ pub(super) fn read_directory(body: &str) -> Vec<DirBadge> {
     let file = |v: &Value, k: &str, ext: &str| v.get(k).and_then(Value::as_str).and_then(|u| crate::state::model::ContentHash::of_url(u, ext));
     let png = |v: &Value, k: &str| file(v, k, "png");
     // Grande illustration : le dessin vectoriel d'abord (net à toute taille), sinon le PNG.
-    let art = |v: &Value| file(v, "complex_icon_static_url", "svg").map(|h| (h, true)).or_else(|| png(v, "complex_icon_animated_url").map(|h| (h, false)));
+    let svg = |v: &Value, k: &str| file(v, k, "svg");
+    let art = |v: &Value| svg(v, "complex_icon_static_url").map(|h| (h, true)).or_else(|| png(v, "complex_icon_static_url").or_else(|| png(v, "complex_icon_animated_url")).map(|h| (h, false)));
     let flag = |v: &Value, k: &str| v.get(k).and_then(Value::as_bool).unwrap_or(false);
     let date = |v: &Value| v.as_str().and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok()).map(|d| d.timestamp_millis());
     let key = |v: &Value, k: &str| Some(text(v, k, MAX_SHORT)).filter(|s| !s.is_empty());
@@ -323,6 +327,7 @@ pub(super) fn read_directory(body: &str) -> Vec<DirBadge> {
                         milestone: text(t, "milestone_text", MAX_SHORT),
                         owned: flag(t, "owned"),
                         icon: png(t, "simple_icon_raster_url"),
+                        simple: svg(t, "simple_icon_url"),
                         art: art(t),
                     })
                 })
@@ -335,6 +340,7 @@ pub(super) fn read_directory(body: &str) -> Vec<DirBadge> {
                 description: text(b, "description", MAX_BIO),
                 info: text(b, "info_label", MAX_SHORT),
                 icon: png(b, "simple_icon_raster_url"),
+                simple: svg(b, "simple_icon_url"),
                 art: art(b),
                 owned: flag(b, "owned"),
                 hidden: flag(b, "hidden"),
@@ -598,7 +604,13 @@ mod tests {
         assert_eq!((g.title(), g.tiers.len(), g.tier_at.len()), ("Amateur(trice)", 3, 1));
         assert_eq!(g.best_art().map(|(a, svg)| (a.to_string(), svg)), Some((h('f'), false)), "palier atteint : son PNG, faute de dessin");
         assert_eq!(g.art.map(|(a, svg)| (a.to_string(), svg)), Some((h('c'), true)), "badge : le dessin vectoriel d'abord");
-        assert_eq!(g.small_icon().map(|a| a.to_string()), Some(h('e')));
+        assert_eq!(g.small_icon().map(|(a, svg)| (a.to_string(), svg)), Some((h('e'), false)));
+        // Icône vectorielle : relie le badge du profil à celui du répertoire, et remplace un PNG absent.
+        let simple = crate::state::model::ContentHash::parse(&h('a'));
+        assert!(simple.is_some_and(|s| g.has_simple(s)) && g.simple == simple);
+        let bare = read_directory(&serde_json::json!({ "badges": [{ "badge_id": 7, "name": "Balance HypeSquad", "simple_icon_url": url('a', "svg"), "complex_icon_static_url": url('c', "png") }] }).to_string());
+        assert_eq!(bare[0].small_icon().map(|(a, svg)| (a.to_string(), svg)), Some((h('a'), true)));
+        assert_eq!(bare[0].best_art().map(|(a, svg)| (a.to_string(), svg)), Some((h('c'), false)), "illustration fixe en PNG acceptée");
         assert_eq!(g.tiers[2].icon, None, "adresse d'un autre hôte refusée");
         assert_eq!(g.progress, Some(BadgeProgress { current: 5, floor: 5, threshold: 10, helper: "5 jeux de plus".into() }));
         assert!(g.unlocked_at().is_some_and(|ms| ms > g.obtained_at.unwrap_or(i64::MAX)));
