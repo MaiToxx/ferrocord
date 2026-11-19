@@ -86,7 +86,7 @@ impl VoiceUi {
 }
 
 /// Qualités du partage, dans l'ordre du sélecteur de partage.
-const QUALITIES: [(Quality, crate::i18n::Text); 4] = [(Quality::HD_30, st::Q_720_30), (Quality::FHD_30, st::Q_1080_30), (Quality::FHD_60, st::Q_1080_60), (Quality::SOURCE, st::Q_SOURCE)];
+const QUALITIES: [(Quality, crate::i18n::Text); 5] = [(Quality::HD_30, st::Q_720_30), (Quality::FHD_30, st::Q_1080_30), (Quality::FHD_60, st::Q_1080_60), (Quality::SOURCE, st::Q_SOURCE), (Quality::SOURCE_60, st::Q_SOURCE_60)];
 
 const MODES: [(InputMode, crate::i18n::Text); 2] = [(InputMode::Voice, at::MODE_VOICE), (InputMode::PushToTalk, at::MODE_PTT)];
 

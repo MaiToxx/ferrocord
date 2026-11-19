@@ -901,6 +901,8 @@ impl Decoder for MfDecoder {
         if f.data.is_empty() {
             return Err(CodecError::Corrupt("image vide".into()));
         }
+        // Un seul décodage VP8 ou VP9 à la fois dans le processus (voir `VPX_ONE`).
+        let _one = matches!(self.codec, Codec::Vp8 | Codec::Vp9).then(|| VPX_ONE.lock().unwrap_or_else(std::sync::PoisonError::into_inner));
         let vp8_key = match self.codec {
             Codec::Vp8 => vp8::keyframe_size(&f.data),
             Codec::Vp9 => vp8::vp9_keyframe_size(&f.data),
@@ -970,6 +972,15 @@ impl Drop for MfDecoder {
         }
     }
 }
+
+/// Les décodeurs VP8 et VP9 des « Extensions vidéo VP9 » de Windows ne supportent
+/// pas d'être appelés en même temps depuis plusieurs fils, même par des
+/// transformées distinctes : de temps en temps, une image décodée n'était jamais
+/// rendue (ni tout de suite, ni après 3 s d'attente, ni avec l'image suivante).
+/// Mesuré : 3 échecs sur 72 passes des tests VP8 en parallèle, 0 sur 120 avec ce
+/// verrou ; jamais d'échec avec un seul décodeur. Le décodage d'une image dure
+/// bien moins qu'une milliseconde à ces tailles : l'attente est sans effet visible.
+static VPX_ONE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Attente au plus d'une image décodée en retard sur son entrée.
 const LATE_OUTPUT: std::time::Duration = std::time::Duration::from_millis(100);

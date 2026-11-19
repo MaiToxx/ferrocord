@@ -21,11 +21,13 @@ pub mod t {
         Q_720_30 = "720p, 30\u{a0}images/s", "720p, 30 fps";
         Q_1080_30 = "1080p, 30\u{a0}images/s", "1080p, 30 fps";
         Q_1080_60 = "1080p, 60\u{a0}images/s", "1080p, 60 fps";
-        Q_SOURCE = "Source (taille d'origine)", "Source (original size)";
+        Q_SOURCE = "Source (taille d'origine), 30\u{a0}images/s", "Source (original size), 30 fps";
+        Q_SOURCE_60 = "Source (taille d'origine), 60\u{a0}images/s", "Source (original size), 60 fps";
         QN_HD = "HD", "HD";
         QN_FHD = "Full HD", "Full HD";
         QN_FHD_60 = "Full HD fluide", "Smooth Full HD";
         QN_SOURCE = "Source", "Source";
+        QN_SOURCE_60 = "Source fluide", "Smooth Source";
         RES_SOURCE = "Taille d'origine", "Original size";
         WITH_SOUND = "son", "sound";
         SETTINGS_TIP = "Qualité et son du partage", "Share quality and sound";
