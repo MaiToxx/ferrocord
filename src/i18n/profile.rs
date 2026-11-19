@@ -91,6 +91,9 @@ pub mod f {
         legacy(name) = "Anciennement {name}", "Formerly {name}";
         tab_count(tab, n) = "{tab} ({n})", "{tab} ({n})";
         tenure(years, months) = "{years}, {months}", "{years}, {months}";
+        tier_rank(n, of) = "Palier {n} sur {of}", "Tier {n} of {of}";
+        next_tier(name, date) = "Prochain palier\u{a0}: {name}, le {date}", "Next tier: {name}, on {date}";
+        boost_level(n) = "Niveau {n}", "Level {n}";
         connection(service, name) = "{service}\u{a0}: {name}", "{service}: {name}";
     }
 }
