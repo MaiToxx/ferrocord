@@ -347,6 +347,14 @@ impl App {
             }
         }
 
+        // Réception de la vidéo en VP9 et AV1 (F23).
+        if let Some(on) = toggle(ui, at::EXTRA_CODECS.get(lang), at::EXTRA_CODECS_TIP.get(lang), Some(v.extra_codecs), cfg!(windows)) {
+            v.extra_codecs = on;
+        }
+        if v.extra_codecs && !crate::voice::extra_codecs_available() {
+            note(ui, t, at::EXTRA_CODECS_NONE.get(lang));
+        }
+
         // Raccourcis globaux du micro et du casque (F22).
         if let Some(on) = toggle(ui, at::GLOBAL_KEYS.get(lang), at::GLOBAL_KEYS_TIP.get(lang), Some(v.global_keys), cfg!(windows)) {
             v.global_keys = on;

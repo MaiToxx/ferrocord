@@ -1192,6 +1192,7 @@ impl App {
         self.desk_tick();
         self.keys_tick();
         self.global_keys_tick();
+        crate::voice::set_extra_codecs(self.local.prefs.audio.extra_codecs);
         self.install_tick();
         self.crash_tick();
         self.news_tick();

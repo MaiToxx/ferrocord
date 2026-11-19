@@ -77,12 +77,31 @@ impl VideoBackend for WindowsVideo {
     }
 }
 
+/// Réglage « Recevoir la vidéo en VP9 et AV1 » (`[voix] codecs_vp9_av1`),
+/// lu à l'ouverture de chaque connexion vocale.
+static EXTRA_CODECS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Windows décode VP9 ou AV1 sur cet ordinateur (premier appel : une
+/// énumération des décodeurs, quelques millisecondes).
+pub fn extra_codecs_available() -> bool {
+    codec::supported_decoders().iter().any(|c| matches!(c, Codec::Vp9 | Codec::Av1))
+}
+
+/// Pose le réglage ; il vaut pour les appels et les directs ouverts ensuite.
+pub fn set_extra_codecs(on: bool) {
+    EXTRA_CODECS.store(on, Relaxed);
+}
+
 /// Réglages de la connexion vocale : les codecs vidéo proposés sont ceux du
-/// moteur vidéo (VP8 quand Windows en a un) ; une liste vide reste « pas de vidéo ».
+/// moteur vidéo (VP8 quand Windows en a un ; VP9 et AV1 en réception si le
+/// réglage le demande) ; une liste vide reste « pas de vidéo ».
 pub(super) fn voice_config(opts: &super::Options) -> VoiceConfig {
     let mut c = opts.voice.clone();
     if !c.video_codecs.is_empty() {
-        let (enc, dec) = opts.video.codecs();
+        let (enc, mut dec) = opts.video.codecs();
+        if !EXTRA_CODECS.load(Relaxed) {
+            dec.retain(|c| !matches!(c, Codec::Vp9 | Codec::Av1));
+        }
         c.video_codecs = crate::net::voice::video::offers(&enc, &dec);
     }
     c
@@ -488,6 +507,26 @@ fn decode_thread(j: DecodeJob) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extra_codecs_follow_the_setting() {
+        let opts = crate::voice::Options::real();
+        let offer = |c: &VoiceConfig, k| c.video_codecs.iter().copied().find(|o| o.codec == k);
+        set_extra_codecs(false);
+        let off = voice_config(&opts);
+        assert!(offer(&off, Codec::H264).is_some());
+        assert!(offer(&off, Codec::Vp9).is_none() && offer(&off, Codec::Av1).is_none());
+        set_extra_codecs(true);
+        let on = voice_config(&opts);
+        set_extra_codecs(false);
+        let (_, dec) = opts.video.codecs();
+        for k in [Codec::Vp9, Codec::Av1] {
+            assert_eq!(offer(&on, k).is_some(), dec.contains(&k), "{k:?}");
+            // Reçu seulement, jamais envoyé.
+            assert!(offer(&on, k).is_none_or(|o| o.decode && !o.encode));
+        }
+        assert_eq!(extra_codecs_available(), dec.iter().any(|c| matches!(c, Codec::Vp9 | Codec::Av1)));
+    }
 
     #[test]
     fn levels_and_sizes() {

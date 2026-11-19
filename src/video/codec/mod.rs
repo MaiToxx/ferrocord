@@ -1,8 +1,9 @@
 //! Décodeurs et encodeurs vidéo.
 //!
 //! H.264 partout ; VP8 quand Windows a les « Extensions vidéo VP9 » (voir
-//! `vp8.rs`). VP9 et AV1 ne sont pas pris en charge : [`decoder`] et
-//! [`encoder`] rendent `None`, et la négociation ne doit annoncer que
+//! `vp8.rs`). VP9 et AV1 sont décodés seulement, par les mêmes extensions
+//! et par l'« Extension vidéo AV1 » (voir `av1.rs`) : [`encoder`] rend
+//! `None` pour eux. La négociation ne doit annoncer que
 //! [`supported_decoders`] et [`supported_encoders`].
 //!
 //! VP8 (mire 720p30 à 1,4 Mb/s, `bench_vp8_720p`, même machine) : 6,7 à
@@ -25,6 +26,8 @@
 //! Foundation + conversions = +752 Kio sur l'exécutable de release ; garder
 //! OpenH264 comme repli assure la vidéo sur toute machine.
 
+#[cfg(windows)]
+mod av1;
 mod h264;
 #[cfg(windows)]
 mod vp8;
@@ -32,6 +35,8 @@ mod vp8;
 mod mf;
 #[cfg(test)]
 mod tests;
+#[cfg(all(test, windows))]
+mod tests_extra;
 #[cfg(all(test, windows))]
 mod tests_vp8;
 
@@ -88,7 +93,7 @@ pub fn decoder(c: Codec) -> Option<Box<dyn Decoder>> {
     match c {
         Codec::H264 => system_decoder().or_else(software_decoder),
         Codec::Vp8 => vp8_decoder(),
-        Codec::Vp9 | Codec::Av1 => None,
+        Codec::Vp9 | Codec::Av1 => extension_decoder(c),
     }
 }
 
@@ -136,20 +141,39 @@ fn vp8_decoder() -> Option<Box<dyn Decoder>> {
     return None;
 }
 
-/// Décodeur pour un fichier (lecteur du fil, lot VID) : comme [`decoder`],
-/// plus VP9 quand Windows l'a. À appeler sur le fil qui décodera.
-pub fn file_decoder(c: Codec) -> Option<Box<dyn Decoder>> {
+/// Décodeur VP9 ou AV1 de Windows, s'il est installé.
+fn extension_decoder(c: Codec) -> Option<Box<dyn Decoder>> {
     #[cfg(windows)]
-    if c == Codec::Vp9 {
-        return mf::MfDecoder::vp9().ok().map(|d| Box::new(d) as Box<dyn Decoder>);
-    }
+    return if c == Codec::Av1 { mf::MfDecoder::av1() } else { mf::MfDecoder::vp9() }.ok().map(|d| Box::new(d) as Box<dyn Decoder>);
+    #[cfg(not(windows))]
+    return {
+        let _ = c;
+        None
+    };
+}
+
+/// Décodeur pour un fichier (lecteur du fil, lot VID). À appeler sur le fil
+/// qui décodera.
+pub fn file_decoder(c: Codec) -> Option<Box<dyn Decoder>> {
     decoder(c)
 }
 
 /// VP9 décodable ici (fil dans le MTA) : pour les essais.
 #[cfg(all(test, windows))]
 pub(crate) fn vp9_decodable() -> bool {
-    mf::vp9_support()
+    mf::extra_support().0
+}
+
+/// VP9 et AV1 décodables sur cette machine. Relevé une fois, sur un fil à
+/// part, comme [`vp8_support`].
+fn extra_support() -> (bool, bool) {
+    #[cfg(windows)]
+    {
+        static SUPPORT: std::sync::OnceLock<(bool, bool)> = std::sync::OnceLock::new();
+        *SUPPORT.get_or_init(|| std::thread::Builder::new().name("ferrocord-codecs".into()).spawn(mf::extra_support).ok().and_then(|t| t.join().ok()).unwrap_or_default())
+    }
+    #[cfg(not(windows))]
+    (false, false)
 }
 
 /// Encodeur VP8 de Windows (voir `vp8.rs`), s'il est installé.
@@ -180,6 +204,13 @@ pub fn supported_decoders() -> Vec<Codec> {
     let mut v = vec![Codec::H264];
     if vp8_support().1 {
         v.push(Codec::Vp8);
+    }
+    let (vp9, av1) = extra_support();
+    if vp9 {
+        v.push(Codec::Vp9);
+    }
+    if av1 {
+        v.push(Codec::Av1);
     }
     v
 }

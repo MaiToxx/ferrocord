@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
-use super::{h264, vp8};
+use super::{av1, h264, vp8, vp9};
 use crate::video::Codec;
 
 /// Trou plus long : le flux repart de zéro (et attend une image clé).
@@ -161,12 +161,7 @@ impl Receiver {
             let ts = parts[0].ts;
             let data = if parts.iter().all(|p| p.ts == ts) { self.depacketize(&parts) } else { None };
             match data {
-                Some(data) => {
-                    let keyframe = match self.codec {
-                        Codec::H264 => h264::is_keyframe(&data),
-                        Codec::Vp8 => vp8::is_keyframe(&data),
-                        Codec::Vp9 | Codec::Av1 => false,
-                    };
+                Some((data, keyframe)) => {
                     if keyframe {
                         self.need_key = false;
                     }
@@ -179,12 +174,21 @@ impl Receiver {
         }
     }
 
-    fn depacketize(&self, parts: &[Incoming]) -> Option<Vec<u8>> {
+    /// Image et « image clé ». H.264 et VP8 : lu dans l'image (ces octets
+    /// restent en clair sous DAVE) ; VP9 et AV1 : dans les en-têtes des paquets.
+    fn depacketize(&self, parts: &[Incoming]) -> Option<(Vec<u8>, bool)> {
         let it = parts.iter().map(|p| p.payload.as_slice());
         match self.codec {
-            Codec::H264 => h264::depacketize(it),
-            Codec::Vp8 => vp8::depacketize(it),
-            Codec::Vp9 | Codec::Av1 => None,
+            Codec::H264 => h264::depacketize(it).map(|d| {
+                let key = h264::is_keyframe(&d);
+                (d, key)
+            }),
+            Codec::Vp8 => vp8::depacketize(it).map(|d| {
+                let key = vp8::is_keyframe(&d);
+                (d, key)
+            }),
+            Codec::Vp9 => vp9::depacketize(it),
+            Codec::Av1 => av1::depacketize(it),
         }
     }
 
