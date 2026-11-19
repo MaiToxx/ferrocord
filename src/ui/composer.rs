@@ -13,6 +13,7 @@
 use super::complete::{self, Draft, Drafts, Kind, Query, Suggestion, COUNTER_FROM, MESSAGE_MAX};
 use super::{util::inline_icon, App};
 use crate::i18n::{self, f, p, t as tx, Lang};
+use crate::i18n::table::restes::t as ct;
 use crate::state::{Cmd, SendBlock};
 use crate::theme::{icons::Icon, Tokens, TypingSignal};
 use eframe::egui::{self, Id, Key, RichText};
@@ -427,6 +428,8 @@ impl App {
         super::a11y::name(ui.ctx(), out.text_edit.response.id, &hint);
         // Clic droit : couper, copier, coller (F7).
         self.composer_context_menu(ui, id, &out.text_edit.response.response);
+        // Barre de mise en forme au-dessus du texte sélectionné (F32).
+        self.format_bar(ui, id, &out.text_edit.galley, out.text_edit.galley_pos, out.text_edit.cursor_range, t);
         if let Some(acc) = &out.accepted
             && let Some(c) = &self.input.cache
             && let Some(i) = c.inserts.iter().position(|ins| acc.insert.strip_suffix(' ') == Some(ins.as_str()))
@@ -709,6 +712,91 @@ impl App {
         self.input.recount();
         state.cursor.set_char_range(Some(egui::text::CCursorRange::two(egui::text::CCursor::new(a), egui::text::CCursor::new(b))));
         egui::TextEdit::store_state(ui.ctx(), id, state);
+    }
+}
+
+/// Barre de mise en forme affichée : passage visé (en caractères), point
+/// d'ancrage (haut du début de la sélection) et place de la barre.
+#[derive(Clone, Copy)]
+struct FormatBar {
+    range: (usize, usize),
+    anchor: egui::Pos2,
+    rect: egui::Rect,
+}
+
+fn format_bar_id() -> Id {
+    Id::unique("ferrocord.saisie.mise-en-forme")
+}
+
+/// Boutons de la barre : marque, texte du bouton, nom lu et affiché au survol.
+const FORMATS: [(&str, &str, crate::i18n::Text); 5] = [("**", "B", ct::FMT_BOLD), ("*", "I", ct::FMT_ITALIC), ("~~", "S", ct::FMT_STRIKE), ("`", "<>", ct::FMT_CODE), ("||", "||", ct::FMT_SPOILER)];
+
+impl App {
+    /// Barre de mise en forme au-dessus du texte sélectionné dans la saisie :
+    /// gras, italique, barré, code, spoiler. Un bouton entoure la sélection
+    /// de sa marque, ou la retire si elle y est déjà (`wrap_selection`).
+    fn format_bar(&mut self, ui: &egui::Ui, id: Id, galley: &egui::Galley, galley_pos: egui::Pos2, cursor: Option<egui::text::CCursorRange>, t: &Tokens) {
+        let ctx = ui.ctx().clone();
+        let kept: Option<FormatBar> = ctx.data(|d| d.get_temp(format_bar_id()));
+        let pointer = ctx.input(|i| i.pointer.latest_pos());
+        let over = kept.is_some_and(|k| pointer.is_some_and(|p| k.rect.expand(4.0).contains(p)));
+        let selected = cursor.filter(|r| r.primary.index != r.secondary.index && ui.memory(|m| m.has_focus(id)));
+        let bar = match selected {
+            // Pendant que la sélection se fait à la souris, la barre attend.
+            Some(_) if !over && ctx.input(|i| i.pointer.primary_down()) => None,
+            Some(r) => {
+                let first = if r.primary.index <= r.secondary.index { r.primary } else { r.secondary };
+                let at = galley.pos_from_cursor(first).translate(galley_pos.to_vec2());
+                Some(FormatBar { range: (r.primary.index.0, r.secondary.index.0), anchor: at.left_top(), rect: kept.map_or(egui::Rect::NOTHING, |k| k.rect) })
+            }
+            // Le clic sur la barre retire le clavier au champ : elle reste tant que le pointeur est dessus.
+            None => kept.filter(|_| over),
+        };
+        let Some(mut bar) = bar else {
+            if kept.is_some() {
+                ctx.data_mut(|d| d.remove::<FormatBar>(format_bar_id()));
+            }
+            return;
+        };
+        let lang = self.lang;
+        let mut picked = None;
+        let height = super::widgets::button_height(t);
+        let pos = egui::pos2(bar.anchor.x, bar.anchor.y - height - 2.0 * t.spacing.item_y - 4.0);
+        let area = egui::Area::new(format_bar_id()).order(egui::Order::Foreground).fixed_pos(pos).constrain_to(ctx.content_rect()).show(&ctx, |ui| {
+            egui::Frame::new().fill(t.colors.bg3).corner_radius(t.r_control()).stroke(egui::Stroke::new(t.shapes.border.max(1.0), t.colors.border)).inner_margin(egui::Margin::same(t.spacing.item_y as i8)).show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = t.spacing.item_y;
+                    for (mark, glyph, name) in FORMATS {
+                        let text = match mark {
+                            "**" => RichText::new(glyph).strong(),
+                            "*" => RichText::new(glyph).italics(),
+                            "~~" => RichText::new(glyph).strikethrough(),
+                            _ => RichText::new(glyph).monospace(),
+                        };
+                        let b = ui.add(egui::Button::new(text.color(t.colors.text_strong)).frame(false).min_size(egui::Vec2::splat(height)));
+                        super::a11y::name(ui.ctx(), b.id, name.get(lang));
+                        if b.on_hover_text(name.get(lang)).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                            picked = Some(mark);
+                        }
+                    }
+                });
+            });
+        });
+        bar.rect = area.response.rect;
+        if let Some(mark) = picked
+            && let Some((text, a, b)) = wrap_selection(&self.input.draft.text, bar.range.0, bar.range.1, mark)
+        {
+            self.input.draft.text = text;
+            self.input.cache = None;
+            self.input.recount();
+            bar.range = (a, b);
+            let mut state = egui::TextEdit::load_state(&ctx, id).unwrap_or_default();
+            state.cursor.set_char_range(Some(egui::text::CCursorRange::two(egui::text::CCursor::new(a), egui::text::CCursor::new(b))));
+            egui::TextEdit::store_state(&ctx, id, state);
+            ctx.memory_mut(|m| m.request_focus(id));
+            ctx.request_repaint();
+        }
+        ctx.data_mut(|d| d.insert_temp(format_bar_id(), bar));
     }
 }
 

@@ -42,6 +42,11 @@ pub fn set_window(hwnd: isize) {
     WINDOW.store(hwnd, Ordering::SeqCst);
 }
 
+/// La fenêtre principale retenue ; 0 : pas encore créée.
+pub fn window() -> isize {
+    WINDOW.load(Ordering::SeqCst)
+}
+
 /// La fenêtre principale est créée transparente (dit avant sa création).
 pub fn set_transparent(on: bool) {
     TRANSPARENT.store(on, Ordering::SeqCst);

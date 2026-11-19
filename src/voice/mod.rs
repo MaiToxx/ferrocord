@@ -22,7 +22,7 @@ mod clips;
 mod media;
 mod player;
 mod ptt_hook;
-mod ptt_keys;
+pub(crate) mod ptt_keys;
 mod recorder;
 mod stream;
 pub mod video;
@@ -171,6 +171,13 @@ struct StreamKey {
 impl StreamKey {
     fn of(t: &StreamTarget<'_>, role: &Role) -> Self {
         StreamKey { server_id: t.server_id, channel_id: t.channel_id, endpoint: t.endpoint.into(), session_id: t.session_id.into(), token: t.token.expose().into(), role: role.clone() }
+    }
+
+    /// Même connexion : tout pareil, sauf ce que montre mon partage (source,
+    /// qualité, son), qui change sans la rouvrir.
+    fn same_connection(&self, o: &StreamKey) -> bool {
+        let role = self.role == o.role || matches!((&self.role, &o.role), (Role::Share { .. }, Role::Share { .. }));
+        role && (self.server_id, self.channel_id, &self.endpoint, &self.session_id, &self.token) == (o.server_id, o.channel_id, &o.endpoint, &o.session_id, &o.token)
     }
 }
 
@@ -404,11 +411,19 @@ impl Voice {
                 }
             }
             StreamWant::Open(t) => {
-                let same = self.streams.get(key).is_some_and(|r| r.key == StreamKey::of(&t, &role));
+                let new = StreamKey::of(&t, &role);
+                let same = self.streams.get(key).is_some_and(|r| r.key.same_connection(&new));
                 if !same {
-                    self.start_stream(key, me, &t, role);
+                    self.start_stream(key, me, &t, role.clone());
                 }
             }
+        }
+        // Mon partage montre autre chose : la connexion reste, la capture change.
+        if let (Role::Share { source_id, quality, audio }, Some(r)) = (&role, self.streams.get_mut(key))
+            && r.key.role != role
+        {
+            r.key.role = role.clone();
+            let _ = r.tx.send(StreamMsg::Source { source_id: source_id.clone(), quality: *quality, audio: *audio });
         }
         if let (Some(q), Some(r)) = (quality, self.streams.get_mut(key))
             && r.quality != Some(q)

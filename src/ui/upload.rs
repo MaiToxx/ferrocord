@@ -44,12 +44,18 @@ pub(super) struct UploadUi {
     wanted: Option<(u64, usize)>,
     /// Compte à qui sont les plateaux (oubliés au changement de compte).
     owner: Option<u64>,
+    /// Ligne de la liste des salons sous des fichiers tirés (cette image).
+    row_target: Option<u64>,
+    /// Dépôts avec Maj sur une ligne : fichiers encore en préparation, par
+    /// salon ; le dernier prêt, le plateau du salon part.
+    direct: HashMap<u64, usize>,
 }
 
 impl UploadUi {
     pub(super) fn clear(&mut self) {
         self.trays.clear();
         self.editing = None;
+        self.direct.clear();
     }
 
     fn tray(&mut self, channel: u64) -> &mut Tray {
@@ -127,7 +133,17 @@ impl App {
     /// Reprend les ajouts terminés.
     fn take_staged(&mut self) {
         let Some(a) = &self.uploads.attach else { return };
+        let mut ready = Vec::new();
         for s in a.poll() {
+            // Dépôt avec Maj : un fichier de moins à attendre, lisible ou non.
+            let (Staged::File { channel, .. } | Staged::Unreadable { channel, .. }) = &s;
+            if let Some(left) = self.uploads.direct.get_mut(channel) {
+                *left = left.saturating_sub(1);
+                if *left == 0 {
+                    self.uploads.direct.remove(channel);
+                    ready.push(*channel);
+                }
+            }
             match s {
                 Staged::File { channel, file, thumb } => {
                     if self.uploads.trays.get(&channel).is_some_and(|t| t.items.len() >= MAX_FILES) {
@@ -145,12 +161,54 @@ impl App {
                 }
             }
         }
+        for channel in ready {
+            if self.has_attachments(channel) {
+                self.send_with_files(channel, String::new());
+            }
+        }
         // Aperçu : la fenêtre demandée s'ouvre dès que sa pièce est dans le plateau.
         if let Some((c, i)) = self.uploads.wanted
             && self.uploads.trays.get(&c).is_some_and(|t| i < t.items.len())
         {
             self.uploads.editing = self.uploads.wanted.take();
         }
+    }
+
+    /// Point de la fenêtre sous des fichiers tirés ou tout juste déposés ;
+    /// `None` hors d'un tel geste. Demandé au système : pendant le geste,
+    /// l'interface ne reçoit pas les mouvements du pointeur.
+    pub(super) fn file_drag_pos(&self, ctx: &egui::Context) -> Option<egui::Pos2> {
+        if !ctx.input(|i| !i.raw.hovered_files.is_empty() || !i.raw.dropped_files.is_empty()) {
+            return None;
+        }
+        match crate::platform::drop_point::pointer() {
+            Some((x, y, _)) => Some(egui::pos2(x, y) / ctx.pixels_per_point()),
+            None => ctx.input(|i| i.pointer.latest_pos()),
+        }
+    }
+
+    /// Fichiers tirés au-dessus d'une ligne de la liste des salons, ou
+    /// déposés dessus (F21). Déposés : ils rejoignent le plateau de ce salon,
+    /// qui s'ouvre (valeur rendue) ; avec Maj, ils partent dès qu'ils sont
+    /// prêts, sans changer de salon.
+    pub(super) fn file_row_drop(&mut self, ctx: &egui::Context, row: Option<(u64, egui::Rect)>) -> Option<u64> {
+        self.uploads.row_target = row.map(|(id, _)| id);
+        if !self.uploads.direct.is_empty() {
+            self.take_staged();
+        }
+        let (cid, rect) = row?;
+        let t = &self.theme;
+        ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, Id::unique("upload_drop_row"))).rect_stroke(rect, t.r_card(), egui::Stroke::new(t.shapes.border.max(1.0) * 2.0, t.colors.accent), egui::StrokeKind::Inside);
+        let paths: Vec<std::path::PathBuf> = ctx.input_mut(|i| std::mem::take(&mut i.raw.dropped_files)).iter().map(|f| f.path().to_path_buf()).collect();
+        if paths.is_empty() {
+            return None;
+        }
+        let shift = crate::platform::drop_point::pointer().map_or_else(|| ctx.input(|i| i.modifiers.shift), |(_, _, shift)| shift);
+        if shift {
+            *self.uploads.direct.entry(cid).or_default() += paths.len();
+        }
+        self.attach().add_paths(cid, paths);
+        (!shift).then_some(cid)
     }
 
     /// Fichiers déposés, image collée, ajouts terminés ; et le voile « Déposez
@@ -183,7 +241,8 @@ impl App {
                 self.attach().add_bytes(cid, super::composer_menu::PASTE_FILE.to_string(), text.into_bytes());
             }
         }
-        if ui.input(|i| !i.raw.hovered_files.is_empty()) {
+        // Au-dessus d'une ligne de la liste : c'est elle la cible, sans voile.
+        if self.uploads.row_target.is_none() && ui.input(|i| !i.raw.hovered_files.is_empty()) {
             let t = &self.theme;
             let screen = ui.ctx().content_rect();
             let painter = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Foreground, Id::unique("upload_drop")));

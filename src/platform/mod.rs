@@ -26,6 +26,9 @@ pub mod backdrop {
         Acrylic,
     }
     pub fn set_window(_: isize) {}
+    pub fn window() -> isize {
+        0
+    }
     pub fn set_transparent(_: bool) {}
     pub fn transparent() -> bool {
         false
@@ -43,6 +46,11 @@ mod prefs_desk;
 pub mod speech;
 // Horloge de dernière entrée, pour le statut inactif automatique (lot FF).
 pub mod idle;
+
+// Raccourcis globaux (micro, casque) hors de la fenêtre.
+pub mod hotkeys;
+// Pointeur pendant un glisser-déposer de fichiers (dépôt sur un salon de la liste).
+pub mod drop_point;
 
 // Signal de changement d'un dossier, icône de la fenêtre (lot « cpu »).
 pub mod dirwatch;

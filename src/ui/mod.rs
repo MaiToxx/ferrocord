@@ -131,6 +131,8 @@ mod msg_select;
 mod streamer_banner;
 // Bandeau du rapport de plantage local (lot E5).
 mod crash_banner;
+mod news_banner;
+mod global_keys;
 // Thèmes partageables : fichiers `.ferrotheme` (lot E5).
 mod theme_share;
 // Mica et transparence de Windows 11 (lot E5).
@@ -525,6 +527,8 @@ pub struct App {
     fx: look::LookFx,
     /// Rapport de plantage local (lot E5).
     crash: crash_banner::CrashUi,
+    news: news_banner::NewsUi,
+    global_keys: global_keys::GlobalKeys,
     /// Mica et transparence de Windows 11 (lot E5).
     mica: mica::MicaUi,
     /// Onglets de salons (plugin, lot E2).
@@ -681,6 +685,8 @@ impl App {
             place: Default::default(),
             fx: Default::default(),
             crash: Default::default(),
+            news: Default::default(),
+            global_keys: Default::default(),
             mica: Default::default(),
             tabs: Default::default(),
             palette: Default::default(),
@@ -1185,8 +1191,10 @@ impl App {
         self.poll_theme();
         self.desk_tick();
         self.keys_tick();
+        self.global_keys_tick();
         self.install_tick();
         self.crash_tick();
+        self.news_tick();
         self.mica_tick();
     }
 
@@ -1218,6 +1226,8 @@ impl App {
         }
         // Rapport d'un plantage précédent (lot E5) : bandeau du haut.
         self.crash_banner(ui);
+        // Notes de la version tout juste installée.
+        self.news_banner(ui);
         // Tant que READY n'est pas arrivé, l'écran de connexion dit où on en est.
         if self.backend.is_connected() && self.store.me.is_some() && self.mobile_active() {
             self.mobile_ui(ui);

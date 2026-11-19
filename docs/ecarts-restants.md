@@ -56,10 +56,10 @@ Importance, pour un utilisateur ordinaire : **A** se remarque tous les jours,
 | F18 | Animation des super réactions ; onglet « Sons » avec sa grille dans le sélecteur | envoi fait ; « Sons » n'est qu'un bouton vers la fenêtre du tableau | M |
 | F19 | Parures animées : effets de profil, plaques animées, polices et effets des noms | les champs sont lus (`font_id`, `effect_id`), pas rendus ; emoji de statut animé fait | L |
 | F20 — fait (lot FF2) | Groupes : changer l'icône, lien d'invitation, transférer la propriété | icône affichée seulement | S |
-| F21 — membre glissé sur un salon vocal fait (lot FF2) ; fichier sur un salon : non fait | Glisser un fichier sur un salon de la liste (Maj : envoi direct), glisser un membre sur un salon vocal | dépôt sur la fenêtre seulement (`ui/upload.rs`) | S |
-| F22 | Raccourcis : globaux réglables (hors appui-pour-parler), Ctrl+Alt+A, Ctrl+Maj+Alt+V, Ctrl+Maj+I | les autres raccourcis de Discord sont faits (`state/keys.rs`) | S |
-| F23 | Partage d'écran : changer de fenêtre sans arrêter ; atténuation des autres applications ; priorité de parole ; arrière-plan vidéo ; décodage VP9 et AV1 | H.264 et VP8 ; arrêt puis nouveau partage | L à XL |
-| F24 — champ réel de la carte et « + » des rôles faits (lot FF2) ; début de MP : non fait | Début de MP complet (serveurs en commun, ajouter en ami, bloquer) ; champ « Envoyer un message » réel sur la carte de profil ; « + » pour ajouter un rôle sur la carte | début réduit (avatar, nom, phrase) ; champ factice qui ouvre le MP ; rôles à cocher dans le menu | S |
+| F21 — fait (membre : lot FF2 ; fichier sur un salon ou un MP de la liste, Maj pour l'envoi direct : 0.1.7) | Glisser un fichier sur un salon de la liste (Maj : envoi direct), glisser un membre sur un salon vocal | dépôt sur la fenêtre seulement (`ui/upload.rs`) | S |
+| F22 — micro et casque globaux faits (0.1.7, réglage « Micro et casque depuis toute application ») ; les autres actions et les trois raccourcis : non faits | Raccourcis : globaux réglables (hors appui-pour-parler), Ctrl+Alt+A, Ctrl+Maj+Alt+V, Ctrl+Maj+I | les autres raccourcis de Discord sont faits (`state/keys.rs`) | S |
+| F23 — changement de source sans arrêter fait (0.1.7) ; le reste : non fait | Partage d'écran : changer de fenêtre sans arrêter ; atténuation des autres applications ; priorité de parole ; arrière-plan vidéo ; décodage VP9 et AV1 | H.264 et VP8 ; arrêt puis nouveau partage | L à XL |
+| F24 — fait (carte et rôles : lot FF2 ; début de MP : 0.1.7, serveurs en commun affichés quand le profil est déjà connu) | Début de MP complet (serveurs en commun, ajouter en ami, bloquer) ; champ « Envoyer un message » réel sur la carte de profil ; « + » pour ajouter un rôle sur la carte | début réduit (avatar, nom, phrase) ; champ factice qui ouvre le MP ; rôles à cocher dans le menu | S |
 | F25 — fait (lot FF) | Forums : consignes de publication affichées, disposition et tri par défaut réglables | consignes modifiables mais pas montrées (`ui/forum.rs`) | S |
 | F26 — fait (lot FF2) | Emojis verrouillés (sans Nitro) montrés grisés avec l'explication | ils sont retirés de la liste (`state/emoji/usable.rs`) | S |
 | F27 — fait (lots FF et FF2) | Petits manques : « Mentionner » dans le menu du message, « effacer aujourd'hui » du statut, volume d'une personne depuis son menu, domaines de confiance modifiables dans les paramètres, lecture automatique des messages `/tts` | — | S chacun |
@@ -70,7 +70,7 @@ Importance, pour un utilisateur ordinaire : **A** se remarque tous les jours,
 |---|---|---|
 | F28 | Paramètres du serveur : vérification des membres (règles à accepter), page Accès, guide du serveur, tag du serveur, permissions des commandes modifiables, « voir le serveur en tant que rôle », filtres de la vue Membres | L |
 | F29 | Lanceur d'applications de la zone de saisie ; « rejoindre la partie », « Écouter avec » | M |
-| F30 — débit de la synthèse vocale fait (lot FF2) | Notes de version dans l'application ; renvois Centre familial et Clips ; débit de la synthèse vocale ; diagnostic et journal vocal | S |
+| F30 — débit de la synthèse vocale fait (lot FF2) ; notes de version après une mise à jour faites (0.1.7) | Notes de version dans l'application ; renvois Centre familial et Clips ; débit de la synthèse vocale ; diagnostic et journal vocal | S |
 | F31 | Découverte de serveurs intégrée (aujourd'hui : navigateur) ; statut « traîne » d'un salon vocal ; signalement d'une personne ou d'un serveur (renvoi) | M |
 | F32 | Correcteur orthographique ; barre de mise en forme sur la sélection | XL, M |
 | F33 | Boutique et inventaire en affichage, cartes de cadeau reçues (`discord.gift`) : à trancher avec l'utilisateur | M |

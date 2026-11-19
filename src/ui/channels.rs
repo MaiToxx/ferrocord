@@ -328,6 +328,9 @@ impl App {
                 let mut nitro = false;
                 let mut events = None;
                 let mut dm_menu = None;
+                // Fichiers tirés au-dessus de la liste : la ligne visée (F21).
+                let file_drag = self.file_drag_pos(ui.ctx()).filter(|p| ui.clip_rect().contains(*p));
+                let mut file_row: Option<(u64, egui::Rect)> = None;
                 // Catégorie de contacts repliée ou dépliée d'un clic (`None` dedans : « Sans catégorie »).
                 let mut fold_toggle: Option<Option<String>> = None;
                 let mut mark_read = None;
@@ -401,6 +404,9 @@ impl App {
                                 clicked = Some(d.id);
                             } else if row.middle_clicked() {
                                 tabbed = Some(d.id);
+                            }
+                            if file_drag.is_some_and(|p| row.rect.contains(p)) {
+                                file_row = Some((d.id, row.rect));
                             }
                         }
                     }
@@ -491,6 +497,9 @@ impl App {
                                         } else if row.middle_clicked() {
                                             tabbed = Some(c.id);
                                         }
+                                        if !c.kind.is_forum() && file_drag.is_some_and(|p| row.rect.contains(p)) {
+                                            file_row = Some((c.id, row.rect));
+                                        }
                                         // Fils du salon, en dessous (lot T10).
                                         let rows = self.thread_rows(ui, c.id, c.kind.is_forum());
                                         clicked = rows.clicked.or(clicked);
@@ -573,6 +582,7 @@ impl App {
                 if let Some(p) = thread_pick {
                     self.apply_thread_pick(p);
                 }
+                let clicked = self.file_row_drop(ui.ctx(), file_row).or(clicked);
                 // Clic molette, ou Ctrl+clic : dans un onglet d'arrière-plan (lot E2).
                 if let Some(id) = tabbed.or(clicked.filter(|_| self.tab_gesture(ui))) {
                     self.tab_open(crate::state::nav::Place { guild: self.store.guild, channel: Some(id) });

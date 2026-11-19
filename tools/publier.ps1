@@ -32,7 +32,11 @@ param(
     # place de src\install\update\cle_publique.txt.
     [string]$ClePublique = '',
     # Essais seulement : ne pas exiger un arbre git propre.
-    [switch]$ArbreNonPropre
+    [switch]$ArbreNonPropre,
+    # Notes de version rédigées (fichier Markdown, UTF-8, hors du dépôt ou ignoré
+    # par git) : elles remplacent le `git log` dans NOTES.md et dans le manifeste
+    # signé, donc dans le bandeau « nouveautés » de l'application.
+    [string]$Notes = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -163,9 +167,18 @@ try {
     $lignes = if ($derniere) { @(& git -c i18n.logOutputEncoding=utf-8 log --no-merges --pretty=format:'- %s' $plage) } else { @(& git -c i18n.logOutputEncoding=utf-8 log --no-merges --pretty=format:'- %s' -n 30 $plage) }
     if (-not $lignes) { $lignes = @('- Corrections.') }
     $titre = if ($derniere) { "Ferrocord $version (depuis $derniere)" } else { "Ferrocord $version" }
-    [IO.File]::WriteAllText($cheminNotes, "# $titre`n`n" + ($lignes -join "`n") + "`n", $sansBom)
-    # Dans le manifeste (affiché dans Paramètres > Ferrocord) : les premières lignes seulement.
-    $court = ($lignes | Select-Object -First 12) -join "`n"
+    if ($Notes) {
+        if (-not (Test-Path -LiteralPath $Notes -PathType Leaf)) { Echec "Fichier de notes introuvable : $Notes" }
+        # Rédigées : reprises telles quelles ; le manifeste les reçoit sans leur titre.
+        $lignes = @([IO.File]::ReadAllLines((Resolve-Path -LiteralPath $Notes).Path, [Text.Encoding]::UTF8) | ForEach-Object { $_.TrimEnd() })
+        [IO.File]::WriteAllText($cheminNotes, ($lignes -join "`n").Trim() + "`n", $sansBom)
+        $lignes = @($lignes | Where-Object { $_ -notmatch '^# ' })
+        $court = (($lignes -join "`n") -replace '(?m)^## ', '').Trim()
+    } else {
+        [IO.File]::WriteAllText($cheminNotes, "# $titre`n`n" + ($lignes -join "`n") + "`n", $sansBom)
+        # Dans le manifeste (affiché dans Paramètres > Ferrocord) : les premières lignes seulement.
+        $court = ($lignes | Select-Object -First 12) -join "`n"
+    }
     if ($court.Length -gt 1500) { $court = $court.Substring(0, 1500) }
     $notesCourtes = Join-Path $dist 'notes-manifeste.tmp'
     [IO.File]::WriteAllText($notesCourtes, $court, $sansBom)

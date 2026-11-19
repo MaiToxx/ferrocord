@@ -623,6 +623,10 @@ impl App {
             if !fit.share && c.tools.1 && menu::item(ui, t, if sharing { xt::STOP_SHARE } else { xt::SHARE }.get(lang), Some(if sharing { Icon::ScreenOff } else { Icon::Screen }), false).clicked() {
                 act = Some(if sharing { Act::StopShare } else { Act::Share });
             }
+            // Partage en cours : une autre fenêtre ou un autre écran, sans l'arrêter.
+            if sharing && c.tools.1 && menu::item(ui, t, crate::i18n::table::video::t::CHANGE_SOURCE.get(lang), Some(Icon::Screen), false).clicked() {
+                act = Some(Act::Share);
+            }
             if !fit.sounds && c.tools.2 && menu::item(ui, t, tx::SOUNDBOARD.get(lang), Some(Icon::Audio), false).clicked() {
                 act = Some(Act::Sounds);
             }

@@ -34,6 +34,22 @@ impl App {
             note(ui, t, &f::other_handler(lang, cmd));
         }
 
+        // Exécutable lancé sans être installé : l'installer d'ici, à tout moment.
+        #[cfg(windows)]
+        if crate::install::setup::running_installable() {
+            section(ui, t, it::SEC_INSTALL.get(lang));
+            note(ui, t, it::INSTALL_TIP.get(lang));
+            if ui.button(it::INSTALL_NOW.get(lang)).clicked() {
+                match crate::install::setup::install_running() {
+                    Ok(target) => {
+                        crate::install::request_restart_as(target);
+                        self.quit_app();
+                    }
+                    Err(why) => self.notify(f::install_failed(lang, why)),
+                }
+            }
+        }
+
         section(ui, t, it::SEC_UPDATES.get(lang));
         note(ui, t, it::UPDATES_TIP.get(lang));
         // Adresse de local.toml, sinon celle du dépôt intégré à la compilation.
@@ -79,7 +95,10 @@ impl App {
             && ui.button(label.get(lang)).clicked()
         {
             match &status {
-                Some(Status::Available(m)) => self.install.backend.download(m.clone()),
+                Some(Status::Available(m)) => {
+                    self.news_keep(m);
+                    self.install.backend.download(m.clone());
+                }
                 Some(Status::Ready(_)) => {
                     crate::install::request_restart();
                     self.quit_app();
