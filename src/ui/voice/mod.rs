@@ -285,6 +285,8 @@ impl App {
         let down = chord.and_then(|c| egui::Key::from_name(&c.key).map(|k| (c, k))).is_some_and(|(c, k)| {
             ui.input(|i| i.key_down(k) && (i.modifiers.ctrl || i.modifiers.command) == c.ctrl && i.modifiers.alt == c.alt && i.modifiers.shift == c.shift)
         });
+        // Touche du Stream Deck tenue (plugin « Stream Deck ») : même effet.
+        let down = down || self.deck.talk;
         if down != self.voice.ptt {
             self.voice.ptt = down;
             self.store.voice_set_ptt(down);

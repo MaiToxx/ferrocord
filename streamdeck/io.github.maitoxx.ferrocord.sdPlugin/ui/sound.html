@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Son</title>
+<style>
+  body { margin: 0; padding: 10px 14px; background: #2d2d2d; color: #d8d8d8; font: 12px "Segoe UI", sans-serif; }
+  label { display: block; margin-bottom: 6px; color: #969696; }
+  select { width: 100%; padding: 5px; background: #3d3d3d; color: #d8d8d8; border: 1px solid #555; border-radius: 3px; font: inherit; }
+  p { margin: 10px 0 0; color: #969696; line-height: 1.4; }
+</style>
+</head>
+<body>
+<label for="son">Son joué par cette touche</label>
+<select id="son"></select>
+<p id="aide"></p>
+<script>
+  // Réglages d'une touche « Son » : la liste vient de Ferrocord, par le plugin.
+  let ws, uuid, settings = {};
+  const select = document.getElementById("son");
+  const help = document.getElementById("aide");
+  const key = (s) => s.id + "|" + (s.guild || "");
+
+  function render(p) {
+    const list = p.sounds || [];
+    select.textContent = "";
+    const add = (value, text) => {
+      const o = document.createElement("option");
+      o.value = value;
+      o.textContent = text;
+      select.appendChild(o);
+    };
+    add("", "Choisir un son…");
+    // Le son déjà choisi reste proposé même s'il n'est pas dans la liste du moment.
+    if (settings.id && !list.some((s) => key(s) === key(settings))) add(key(settings), settings.name || "Son choisi");
+    for (const s of list) add(key(s), (s.guild ? "" : "Par défaut · ") + s.name);
+    select.value = settings.id ? key(settings) : "";
+    help.textContent = !p.connected
+      ? "Ferrocord n'est pas joignable : ouvrez-le et activez son plugin « Stream Deck » (Paramètres → Plugins)."
+      : !p.voice
+        ? "Sons par défaut seulement : rejoignez un salon vocal d'un serveur pour voir aussi ses sons."
+        : "Les sons du serveur du salon vocal en cours et les sons par défaut. Un son se joue dans un salon vocal, micro ouvert.";
+    select.onchange = () => {
+      const s = list.find((x) => key(x) === select.value);
+      if (!s && select.value) return;
+      settings = s ? { id: s.id, guild: s.guild || null, name: s.name } : {};
+      ws.send(JSON.stringify({ event: "setSettings", context: uuid, payload: settings }));
+    };
+  }
+
+  // Appelée par Stream Deck à l'ouverture des réglages.
+  function connectElgatoStreamDeckSocket(port, inUUID, registerEvent, info, actionInfo) {
+    uuid = inUUID;
+    const a = JSON.parse(actionInfo);
+    settings = (a.payload && a.payload.settings) || {};
+    render({ sounds: [], connected: true, voice: true });
+    ws = new WebSocket("ws://127.0.0.1:" + port);
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ event: registerEvent, uuid }));
+      ws.send(JSON.stringify({ event: "sendToPlugin", action: a.action, context: uuid, payload: { ask: "sounds" } }));
+    };
+    ws.onmessage = (m) => {
+      const e = JSON.parse(m.data);
+      if (e.event === "sendToPropertyInspector") render(e.payload || {});
+    };
+  }
+</script>
+</body>
+</html>

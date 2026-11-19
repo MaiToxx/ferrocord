@@ -84,6 +84,8 @@ pub enum Id {
     SplitView,
     /// Un salon dans sa propre fenêtre (lot E2).
     DetachedWindows,
+    /// Commande locale pour le Stream Deck d'Elgato (`deck.rs`, 0.1.14).
+    StreamDeck,
 }
 
 /// Catégorie d'un plugin : filtre de la page.
@@ -320,6 +322,7 @@ pub static ALL: &[Plugin] = &[
     Plugin::new(Id::ChannelZoom, "zoom_par_salon", wx::ZOOM, wx::ZOOM_ABOUT, Category::Messages),
     Plugin::new(Id::SplitView, "vue_scindee", wx::SPLIT, wx::SPLIT_ABOUT, Category::Navigation),
     Plugin::new(Id::DetachedWindows, "fenetres_detachees", wx::DETACH, wx::DETACH_ABOUT, Category::Navigation),
+    Plugin::new(Id::StreamDeck, "stream_deck", wx::DECK, wx::DECK_ABOUT, Category::Voice).off_by_default(),
 ];
 
 // L'état tient dans un mot : le dernier bit dit « publié ».
