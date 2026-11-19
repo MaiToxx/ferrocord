@@ -43,6 +43,12 @@ struct Sub {
     /// Instant où le pointeur est passé sur une autre ligne : il se ferme
     /// s'il y reste (le pointeur qui rejoint le sous-menu en biais en croise une).
     leaving: Option<f64>,
+    /// Le pointeur est passé sur sa ligne ou sur lui : dès lors, il se ferme
+    /// quand le pointeur les quitte (un sous-menu ouvert au clavier ou par
+    /// l'aperçu, pointeur ailleurs, reste ouvert).
+    entered: bool,
+    /// Instant où le pointeur a quitté la ligne et le sous-menu.
+    away: Option<f64>,
 }
 
 /// Délai avant qu'une autre ligne survolée ferme le sous-menu (secondes).
@@ -405,6 +411,28 @@ impl App {
             pick = self.account_card(ui, t, themed.as_ref(), &me, guild, &shown, avail);
         });
         let sub_rect = self.account_submenu(&ctx, &mut pick);
+        // Pointeur sorti de la ligne et du sous-menu (ailleurs sur la carte,
+        // dans la discussion, hors de la fenêtre) : le sous-menu se ferme
+        // après un court délai, comme dans Discord. Avant 0.1.17, seule une
+        // autre ligne de la carte le fermait.
+        if let (Some(sub), Some(r)) = (self.quick.sub.as_mut(), sub_rect) {
+            let (time, pos) = ctx.input(|i| (i.time, i.pointer.hover_pos()));
+            // Le passage entre la ligne et le sous-menu compte comme dedans.
+            let over = pos.is_some_and(|p| sub.anchor.contains(p) || r.expand(gap).contains(p));
+            if over {
+                sub.entered = true;
+                sub.away = None;
+            } else if sub.entered {
+                match sub.away {
+                    Some(since) if time - since >= SUB_LEAVE => self.quick.sub = None,
+                    Some(since) => ctx.request_repaint_after(std::time::Duration::from_secs_f64((SUB_LEAVE - (time - since)).max(0.0))),
+                    None => {
+                        sub.away = Some(time);
+                        ctx.request_repaint_after(std::time::Duration::from_secs_f64(SUB_LEAVE));
+                    }
+                }
+            }
+        }
         let inside = |p: egui::Pos2| area.response.rect.contains(p) || sub_rect.is_some_and(|r| r.contains(p));
         let outside = ctx.input(|i| i.pointer.any_click() && i.pointer.interact_pos().is_some_and(|p| !inside(p)));
         if outside && !self.quick.fresh && !popup {
@@ -598,7 +626,7 @@ impl App {
             self.quick.sub_dismissed = None;
         }
         match (wanted, self.quick.sub.as_mut()) {
-            (Some((kind, row)), _) => self.quick.sub = Some(Sub { kind, anchor: anchor(row), leaving: None }),
+            (Some((kind, row)), _) => self.quick.sub = Some(Sub { kind, anchor: anchor(row), leaving: None, entered: false, away: None }),
             // Une autre ligne survolée : le sous-menu se ferme si le pointeur y reste.
             (None, Some(sub)) if plain => match sub.leaving {
                 Some(since) if time - since >= SUB_LEAVE => self.quick.sub = None,
