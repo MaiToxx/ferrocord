@@ -144,14 +144,19 @@ impl Store {
         true
     }
 
-    /// Démarre un partage choisi dans le sélecteur (lot M3) ; un partage en
-    /// cours est remplacé.
+    /// Démarre un partage choisi dans le sélecteur (lot M3). Un partage en
+    /// cours dans le même salon change de source, de qualité ou de son sans
+    /// s'arrêter (F23) : le direct reste ouvert, rien ne part sur la passerelle.
     pub fn video_start_share(&mut self, source_id: &str, name: &str, quality: Quality, audio: bool) -> bool {
         let (Some(my), Some(me)) = (self.voice.me, self.me.as_ref().map(|m| m.id)) else { return false };
+        let key = stream_key(my.guild_id, my.channel_id, me);
+        if let Some(sh) = self.video.share.as_mut().filter(|sh| sh.key == key) {
+            (sh.source_id, sh.name, sh.quality, sh.audio) = (source_id.to_string(), name.to_string(), quality, audio);
+            return true;
+        }
         if self.video.share.is_some() {
             self.video_stop_share();
         }
-        let key = stream_key(my.guild_id, my.channel_id, me);
         self.video.share = Some(Share { source_id: source_id.to_string(), name: name.to_string(), quality, audio, key: key.clone() });
         self.stream.request(&key, true);
         self.push_command(Cmd::Video(VideoCmd::StartShare { source_id: source_id.to_string(), quality, audio, stream_key: key, guild_id: my.guild_id, channel_id: my.channel_id }));
@@ -578,6 +583,21 @@ mod tests {
         s.video_start_share("ecran-1", "Écran 1", q, false);
         s.apply(Event::Stream(StreamEvent::Delete { key: key.clone(), reason: EndReason::StreamEnded }));
         assert!(s.video.share.is_none());
+    }
+
+    /// Autre source pendant un partage : le direct reste, rien ne part sur la passerelle (F23).
+    #[test]
+    fn changing_source_keeps_the_stream_open() {
+        let mut s = in_call();
+        let q = Quality { width: 1280, height: 720, fps: 30 };
+        assert!(s.video_start_share("ecran-1", "Écran 1", q, true));
+        let key = stream_key(Some(G), VOC, ME);
+        video_cmds(&mut s);
+        assert!(s.video_start_share("fenetre-7", "Bloc-notes", Quality::SOURCE_60, false));
+        assert!(video_cmds(&mut s).is_empty(), "ni arrêt ni nouveau départ");
+        let sh = s.video.share.clone().unwrap();
+        assert_eq!((sh.source_id.as_str(), sh.name.as_str(), sh.quality, sh.audio, &sh.key), ("fenetre-7", "Bloc-notes", Quality::SOURCE_60, false, &key));
+        assert_eq!(s.stream.get(&key).map(|c| c.mine), Some(true));
     }
 
     #[test]

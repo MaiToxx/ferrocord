@@ -71,6 +71,9 @@ struct State {
     video: video::Link,
     /// Vidéo annoncée par `VoiceCtl::VideoState` : (largeur, hauteur, images/s).
     want_video: Option<(u32, u32, u32)>,
+    /// Une image n'a pas pu partir (connexion ou DAVE pas prêts) : rien ne
+    /// part plus avant une image clé, que les suivantes ne se décodent pas sans elle.
+    video_gap: bool,
 }
 
 enum End {
@@ -613,10 +616,23 @@ impl Ctx<'_> {
 
     async fn send_video(&mut self, f: &EncodedFrame) -> Step {
         if self.st.cipher.is_none() || self.st.want_video.is_none() {
+            self.st.video_gap = true;
             return Ok(());
         }
+        // Après une image perdue, la première à partir est une image clé : elle
+        // est demandée à l'encodeur, et les images intermédiaires sont jetées.
+        if self.st.video_gap && !f.keyframe {
+            return match self.ev.try_send(VoiceEvent::KeyframeRequested) {
+                Err(mpsc::error::TrySendError::Closed(_)) => Err(End::Stop(CloseReason::Requested)),
+                _ => Ok(()),
+            };
+        }
         // DAVE pas encore prêt : l'image ne part pas (jamais en clair).
-        let Some(data) = self.e2ee.encrypt_video(f.codec, &f.data) else { return Ok(()) };
+        let Some(data) = self.e2ee.encrypt_video(f.codec, &f.data) else {
+            self.st.video_gap = true;
+            return Ok(());
+        };
+        self.st.video_gap = false;
         let (pkts, sr) = self.st.video.send_frame(f.codec, f.ts90k, &data, std::time::Instant::now());
         for p in pkts {
             self.send_sealed(&p.header, &p.payload).await;

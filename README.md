@@ -112,6 +112,10 @@ Le code et les libellés de ce qui suit existent et sont couverts par les tests 
 - Liste des membres, statuts en ligne, statut personnalisé, indicateur « en train d'écrire »
 - Sélecteur de GIF et favoris, recherche de messages, boîte de réception
 - Paramètres du serveur et des salons, modération, plugins (`docs/plugins.md`)
+- Partage d'écran : changer de fenêtre ou d'écran sans arrêter le partage (« Changer de source »)
+- Fichiers glissés sur un salon ou un message privé de la liste : joints à cette conversation (avec Maj : envoyés tout de suite)
+- Raccourcis « Couper le micro » et « Couper le casque » utilisables depuis toute application (Paramètres > Voix et vidéo, coupé par défaut)
+- Notes de version proposées au premier lancement après une mise à jour
 - Catégories de contacts : des groupes que l'on crée pour ranger ses amis, sur la page Amis et dans la colonne des messages privés. Elles n'existent pas chez Discord et restent sur l'ordinateur (`local.toml`)
 
 ## Pas encore géré
@@ -119,8 +123,8 @@ Le code et les libellés de ce qui suit existent et sont couverts par les tests 
 L'inventaire complet et à jour est dans `docs/ecarts-restants.md`. L'essentiel :
 
 - Autocollants Lottie (leur nom est affiché à la place), animation des super réactions, polices et effets des noms
-- Partage d'écran : VP9 et AV1, changement de fenêtre sans arrêter le partage
-- Raccourcis globaux réglables (hors appui-pour-parler), correcteur orthographique, barre de mise en forme sur la sélection
+- Partage d'écran : VP9 et AV1
+- Raccourcis globaux autres que micro, casque et appui-pour-parler, correcteur orthographique, barre de mise en forme sur la sélection
 - Plusieurs pages d'administration d'un serveur (vérification des membres, guide du serveur, « voir en tant que rôle »)
 - Linux et macOS
 - Écarté volontairement : achats (Nitro, boosts, boutique), tout ce qui passe par un captcha (connexion par mot de passe, création de compte), quêtes, activités intégrées, overlay en jeu

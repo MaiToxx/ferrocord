@@ -35,6 +35,9 @@ pub(super) enum Role {
 pub(super) enum StreamMsg {
     /// Qualité voulue de l'image de l'auteur (op 15, 0 à 100).
     Quality(u8),
+    /// Mon partage change de source, de qualité ou de son : la connexion
+    /// reste, seules la capture et l'encodage repartent (F23).
+    Source { source_id: String, quality: Quality, audio: bool },
     Stop,
 }
 
@@ -95,9 +98,31 @@ async fn open_sound(s: &StreamStart, source_id: &str, net: &tmpsc::Sender<VoiceC
     tokio::task::spawn_blocking(job).await.ok()
 }
 
+/// Lance la capture et l'encodage de mon partage.
+fn start_sending(s: &StreamStart, source_id: &str, quality: Quality, codec: crate::video::Codec, tile: &Tile, net: &tmpsc::Sender<VoiceCtl>) -> Sending {
+    Sending::start(SendCfg {
+        backend: s.opts.video.clone(),
+        source: Some(source_id.to_string()),
+        quality,
+        screen: true,
+        codec,
+        tile: tile.clone(),
+        sink: s.sink.clone(),
+        net: net.clone(),
+        report: s.report.clone(),
+        fail: VideoUp::ShareFailed,
+    })
+}
+
 pub(super) async fn run(s: StreamStart, mut rx: tmpsc::UnboundedReceiver<StreamMsg>) {
     let key = s.out.key.clone();
     let tile = Tile::Stream(key.clone());
+    // Ce que je partage, si c'est mon direct ; change sans couper la connexion.
+    let mut share = match &s.role {
+        Role::Share { source_id, quality, audio } => Some((source_id.clone(), *quality, *audio)),
+        Role::Watch { .. } => None,
+    };
+    let mut ready = false;
     let dave = DaveSession::new(s.params.user_id, s.params.dave_group_id()).ok().map(|d| Arc::new(Mutex::new(d)));
     let crypto: Box<dyn FrameCrypto> = match &dave {
         Some(d) => Box::new(SharedDave(d.clone())),
@@ -113,21 +138,11 @@ pub(super) async fn run(s: StreamStart, mut rx: tmpsc::UnboundedReceiver<StreamM
             e = net_rx.recv() => match e {
                 Some(NetEvent::Ready { .. }) => {
                     s.out.event(StreamEvent::Connected { key: key.clone() });
-                    if let Role::Share { source_id, quality, audio } = &s.role
+                    ready = true;
+                    if let Some((source_id, quality, audio)) = &share
                         && sending.is_none()
                     {
-                        sending = Some(Sending::start(SendCfg {
-                            backend: s.opts.video.clone(),
-                            source: Some(source_id.clone()),
-                            quality: *quality,
-                            screen: true,
-                            codec: send_codec,
-                            tile: tile.clone(),
-                            sink: s.sink.clone(),
-                            net: net.clone(),
-                            report: s.report.clone(),
-                            fail: VideoUp::ShareFailed,
-                        }));
+                        sending = Some(start_sending(&s, source_id, *quality, send_codec, &tile, &net));
                         if *audio {
                             sound = open_sound(&s, source_id, &net).await;
                         }
@@ -177,6 +192,27 @@ pub(super) async fn run(s: StreamStart, mut rx: tmpsc::UnboundedReceiver<StreamM
                     drop(sending.take());
                     let _ = net.send(VoiceCtl::Disconnect).await;
                     break;
+                }
+                Some(StreamMsg::Source { source_id, quality, audio }) => {
+                    let Some(old) = share.replace((source_id.clone(), quality, audio)) else { continue };
+                    // Pas encore connecté : la nouvelle source partira à la connexion.
+                    if !ready {
+                        continue;
+                    }
+                    if old.0 != source_id || old.1 != quality {
+                        // L'ancienne capture s'arrête avant que la nouvelle s'ouvre ;
+                        // la première image de la nouvelle est une image clé.
+                        drop(sending.take());
+                        sending = Some(start_sending(&s, &source_id, quality, send_codec, &tile, &net));
+                    }
+                    if old.0 != source_id || old.2 != audio {
+                        if let Some(m) = sound.take() {
+                            close_media(m);
+                        }
+                        if audio {
+                            sound = open_sound(&s, &source_id, &net).await;
+                        }
+                    }
                 }
                 Some(StreamMsg::Quality(q)) => {
                     if let Role::Watch { owner } = s.role {

@@ -319,6 +319,10 @@ impl App {
                         if ui.add(egui::Button::new(RichText::new(vt::STOP.get(lang)).color(t.colors.on_accent)).fill(t.danger_fill())).clicked() {
                             act = Some(Act::StopShare);
                         }
+                        // Une autre fenêtre ou un autre écran, sans arrêter le partage.
+                        if picker && ui.button(vt::CHANGE_SOURCE.get(lang)).clicked() {
+                            act = Some(Act::Share);
+                        }
                         if mobile {
                             let size = egui::vec2(ui.available_width(), ui.spacing().interact_size.y);
                             ui.allocate_ui_with_layout(size, egui::Layout::left_to_right(egui::Align::Center), |ui| ui.add(label()));

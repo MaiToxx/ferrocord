@@ -16,6 +16,7 @@ pub mod t {
         CAMERA_OFF = "Éteindre la caméra", "Turn off camera";
         SHARE = "Partager l'écran", "Share your screen";
         STOP_SHARE = "Arrêter le partage", "Stop sharing";
+        CHANGE_SOURCE = "Changer de source", "Change source";
         STOP = "Arrêter", "Stop";
         LEAVE = "Quitter l'appel", "Leave call";
         JOIN = "Rejoindre le vocal", "Join voice";
