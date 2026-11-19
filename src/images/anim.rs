@@ -36,7 +36,7 @@ pub type Frames = Vec<(ColorImage, Duration)>;
 /// Les octets sont-ils ceux d'une image ou d'une animation lisible ici
 /// (format reconnu au contenu) ?
 pub fn readable(bytes: &[u8]) -> bool {
-    decode::sniff(bytes).is_some() || super::webm::is_webm(bytes)
+    decode::sniff(bytes).is_some() || super::webm::is_webm(bytes) || super::lottie::is_lottie(bytes)
 }
 
 /// L'image contient-elle plus d'une image (GIF, WebP ou APNG) ? Lit au plus
@@ -206,6 +206,10 @@ fn frames_iter(bytes: &[u8], max_side: u32, fit: Fit, max: usize) -> Result<Fram
     // Plaque animée : un WebM, décodé par Windows (voir `webm.rs`).
     if super::webm::is_webm(bytes) {
         return super::webm::frames(bytes, max_side, fit, max);
+    }
+    // Autocollant Lottie : dessiné à la taille demandée (voir `lottie`).
+    if super::lottie::is_lottie(bytes) {
+        return super::lottie::frames(bytes, fit, max);
     }
     let still = || -> Result<Frames, DecodeError> {
         let img = decode::decode(bytes, max_side)?;

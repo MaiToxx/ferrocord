@@ -64,6 +64,10 @@ pub fn decode(bytes: &[u8], max_side: u32) -> Result<DynamicImage, DecodeError> 
 }
 
 fn decode_unguarded(bytes: &[u8], max_side: u32) -> Result<DynamicImage, DecodeError> {
+    // Autocollant Lottie : sa première image, dessinée à la taille acceptée.
+    if super::lottie::is_lottie(bytes) {
+        return super::lottie::still(bytes, max_side);
+    }
     // Déclencheur des tests de paniques (un vrai décodeur n'en offre pas à la demande).
     #[cfg(test)]
     if bytes == PANIC_TRIGGER {

@@ -231,7 +231,7 @@ impl Source for Generated {
             ImageRef::BadgeIcon { hash } => ("badge", hash.to_string().bytes().fold(0u64, |h, b| h.wrapping_mul(31).wrapping_add(u64::from(b)))),
             ImageRef::Twemoji(u) => ("emoji", u64::from(u.index) * 8 + u64::from(u.tone)),
             ImageRef::CustomEmoji { id } => ("emoji", *id),
-            ImageRef::Sticker { id, .. } => ("autocollant", *id),
+            ImageRef::Sticker { id, .. } | ImageRef::LottieSticker { id } => ("autocollant", *id),
             ImageRef::RoleIcon { role_id, .. } => ("icone", *role_id),
             ImageRef::EventCover { event_id, .. } => ("couverture", *event_id),
             ImageRef::Decoration { asset } => ("decoration", name_seed(&asset.name())),

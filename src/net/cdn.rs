@@ -227,7 +227,7 @@ pub fn image_url(base: &str, r: &ImageRef, size: u32, format: Format) -> String 
         // Hors du CDN de Discord : `Cdn::url` les construit.
         ImageRef::Twemoji(_) => return String::new(),
         ImageRef::CustomEmoji { id } => format!("emojis/{id}"),
-        ImageRef::Sticker { id, .. } => format!("stickers/{id}"),
+        ImageRef::Sticker { id, .. } | ImageRef::LottieSticker { id } => format!("stickers/{id}"),
         // Documentation « Image Formatting » : Role Icon.
         ImageRef::RoleIcon { role_id, hash } => format!("role-icons/{role_id}/{hash}"),
         // Documentation « Image Formatting » : Guild Scheduled Event Cover.
@@ -376,6 +376,8 @@ impl Cdn {
             ImageRef::Twemoji(u) => format!("{TWEMOJI_BASE}/{}.png", u.file()),
             // Documentation « Image Formatting » : PNG et APNG en `.png`, GIF
             // servis par `media.discordapp.net`.
+            // Lottie : le JSON de l'animation, sans taille (il est vectoriel).
+            ImageRef::LottieSticker { id } => format!("{}/stickers/{id}.json", self.base.trim_end_matches('/')),
             ImageRef::Sticker { gif: false, .. } => image_url(&self.base, r, size, Format::Png),
             ImageRef::Sticker { gif: true, .. } if loopback => image_url(&self.base, r, size, Format::Gif),
             ImageRef::Sticker { gif: true, .. } => image_url("https://media.discordapp.net", r, size, Format::Gif),
@@ -400,7 +402,7 @@ impl Cdn {
                 Some(format!("{}/avatar-decoration-presets/{}.png?size={}&passthrough=true", self.base.trim_end_matches('/'), asset.name(), accepted_size(size, FINE_SIZES)))
             }
             ImageRef::CustomEmoji { .. } => Some(image_url(&self.base, r, size, Format::Gif)),
-            ImageRef::Sticker { .. } => Some(self.url(r, size)),
+            ImageRef::Sticker { .. } | ImageRef::LottieSticker { .. } => Some(self.url(r, size)),
             // Plaque animée : un WebM à taille fixe, à côté de l'image fixe
             // (docs.discord.food, « CDN Formatting », Nameplate : `asset.webm`).
             // Lu par `images::webm` ; jouée au survol de la ligne seulement.
@@ -532,6 +534,8 @@ mod tests {
         assert_eq!(cdn.url(&ImageRef::CustomEmoji { id: 42 }, 40), "https://cdn.discordapp.com/emojis/42.webp?size=64");
         assert_eq!(cdn.url(&ImageRef::Sticker { id: 7, gif: false }, 160), "https://cdn.discordapp.com/stickers/7.png?size=256");
         assert_eq!(cdn.url(&ImageRef::Sticker { id: 7, gif: true }, 160), "https://media.discordapp.net/stickers/7.gif?size=256");
+        assert_eq!(cdn.url(&ImageRef::LottieSticker { id: 7 }, 160), "https://cdn.discordapp.com/stickers/7.json");
+        assert_eq!(cdn.anim_url(&ImageRef::LottieSticker { id: 7 }, 160).as_deref(), Some("https://cdn.discordapp.com/stickers/7.json"));
         for bad in [
             "https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/72x72/../../x.png",
             "https://cdn.jsdelivr.net/gh/autre/depot@1/assets/72x72/1f525.png",

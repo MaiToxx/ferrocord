@@ -67,7 +67,7 @@ lancé pour cet audit.
 | Composants des bots, y compris la génération 2 (conteneur, section, galerie) | fait *(à confirmer pour la génération 2)* | `net/interactions.rs`, `ui/components.rs` |
 | **Sélecteur de GIF** (recherche, tendances, catégories, favoris) | **fait** | `ui/gif_picker.rs`, `net/gifs.rs` (lot G) |
 | GIF favoris (étoile sur un GIF, onglet Favoris) | **fait** | étoile et onglet Favoris (`state/gifs.rs`) ; un favori vidéo n'a pas d'aperçu |
-| Autocollants : sélecteur, envoi, affichage | partiel | PNG, APNG, GIF faits ; Lottie non rendu (image fixe ou libellé) |
+| Autocollants : sélecteur, envoi, affichage | fait | PNG, APNG, GIF ; Lottie dessiné par `images/lottie` (0.1.10) : formes, contours, dégradés, rognage, masques, caches, précompositions ; fusion de tracés, répéteurs, effets, texte et images ignorés |
 | Suggestions d'autocollants pendant la frappe | absent | — |
 | Emojis Unicode (Twemoji), personnalisés, animés | fait | `state/emoji/`, `ui/emoji.rs` |
 | Réactions : voir, ajouter, retirer, liste de qui a réagi | fait | `ui/reactions.rs` |

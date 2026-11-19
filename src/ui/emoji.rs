@@ -32,6 +32,8 @@ pub(super) enum Img {
     Animated(u64),
     /// `anim` : APNG ou GIF, joué selon `motion`.
     Sticker { id: u64, gif: bool, anim: bool },
+    /// Autocollant Lottie : animé au survol, première image au repos.
+    Lottie { id: u64 },
 }
 
 impl Img {
@@ -40,6 +42,7 @@ impl Img {
             Img::Unicode(u) => ImageRef::Twemoji(u),
             Img::Custom(id) | Img::Animated(id) => ImageRef::CustomEmoji { id },
             Img::Sticker { id, gif, .. } => ImageRef::Sticker { id, gif },
+            Img::Lottie { id } => ImageRef::LottieSticker { id },
         }
     }
 
@@ -93,7 +96,7 @@ pub(super) fn paint_faded(ui: &egui::Ui, rect: Rect, img: Img, alpha: f32) {
     }
     let painter = ui.painter();
     let idx = painter.add(egui::Shape::Noop);
-    let hover = matches!(img, Img::Animated(_) | Img::Sticker { anim: true, .. }) && super::motion::hovered(ui, rect);
+    let hover = matches!(img, Img::Animated(_) | Img::Sticker { anim: true, .. } | Img::Lottie { .. }) && super::motion::hovered(ui, rect);
     let p = Pending { layer: painter.layer_id(), clip: painter.clip_rect(), idx, rect, img, hover, alpha };
     ui.ctx().data_mut(|d| {
         let q = d.get_temp_mut_or_default::<Queue>(queue_id());
@@ -111,7 +114,7 @@ pub(super) fn flush(ctx: &egui::Context, images: &Images, t: &Tokens) {
         let image = match p.img {
             Img::Unicode(_) => images.get(p.img.image(), p.rect.width().max(p.rect.height())),
             Img::Animated(_) => images.get_within_moving(p.img.image(), p.rect.width(), p.rect.height(), m.emoji.now(p.hover)),
-            Img::Sticker { anim: true, .. } => images.get_within_moving(p.img.image(), p.rect.width(), p.rect.height(), m.stickers.now(p.hover)),
+            Img::Sticker { anim: true, .. } | Img::Lottie { .. } => images.get_within_moving(p.img.image(), p.rect.width(), p.rect.height(), m.stickers.now(p.hover)),
             _ => images.get_within(p.img.image(), p.rect.width(), p.rect.height()),
         };
         let shape = match image {

@@ -1349,6 +1349,7 @@ dependencies = [
  "tokio-tungstenite",
  "toml",
  "tray-icon",
+ "vello_cpu",
  "webpki-root-certs",
  "wgpu",
  "winapi-util",

@@ -81,6 +81,9 @@ pub enum ImageRef {
     CustomEmoji { id: u64 },
     /// Autocollant (`stickers/{id}`) ; `gif` : servi en GIF.
     Sticker { id: u64, gif: bool },
+    /// Autocollant Lottie : une animation vectorielle (`stickers/{id}.json`),
+    /// dessinée par `images::lottie`.
+    LottieSticker { id: u64 },
     /// Icône d'un rôle (`role-icons/{role_id}/{hash}`, lot A3).
     RoleIcon { role_id: u64, hash: ImageHash },
     /// Couverture d'un événement programmé (`guild-events/{event_id}/{hash}`, lot A7).
