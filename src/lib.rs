@@ -28,6 +28,7 @@ pub mod panics;
 // Journal de performance facultatif (FERROCORD_PERF=1, lot mesures).
 pub mod perf;
 // Fonctions propres à Ferrocord, activables dans Paramètres > Plugins (lot P0).
+pub mod deck;
 pub mod plugins;
 // Dossiers, bureau et point d'entrée selon le système (phase 7 : Android).
 pub mod platform;

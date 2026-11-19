@@ -1,0 +1,194 @@
+{
+	"$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+	"Name": "Ferrocord",
+	"Version": "1.0.0.0",
+	"Author": "Ferrocord",
+	"Description": "Pilote Ferrocord depuis le Stream Deck : micro, casque, appui-pour-parler, tableau de sons, caméra, partage d'écran, raccrocher, répondre ou refuser un appel. Les touches montrent l'état réel. Demande le plugin « Stream Deck » activé dans Ferrocord.",
+	"UUID": "io.github.maitoxx.ferrocord",
+	"Category": "Ferrocord",
+	"CategoryIcon": "imgs/plugin/category",
+	"Icon": "imgs/plugin/marketplace",
+	"URL": "https://github.com/MaiToxx/ferrocord",
+	"CodePath": "bin/plugin.js",
+	"SDKVersion": 3,
+	"Software": {
+		"MinimumVersion": "7.1"
+	},
+	"OS": [
+		{
+			"Platform": "windows",
+			"MinimumVersion": "10"
+		}
+	],
+	"Nodejs": {
+		"Version": "24"
+	},
+	"Actions": [
+		{
+			"DisableAutomaticStates": true,
+			"Name": "Micro",
+			"UUID": "io.github.maitoxx.ferrocord.mute",
+			"Icon": "imgs/actions/mute",
+			"Tooltip": "Coupe ou rétablit le micro. La touche montre son état.",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/keys/mute",
+					"ShowTitle": false
+				},
+				{
+					"Image": "imgs/keys/mute-on",
+					"ShowTitle": false
+				}
+			]
+		},
+		{
+			"DisableAutomaticStates": true,
+			"Name": "Casque",
+			"UUID": "io.github.maitoxx.ferrocord.deafen",
+			"Icon": "imgs/actions/deafen",
+			"Tooltip": "Coupe ou rétablit le son du casque (et le micro avec lui).",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/keys/deafen",
+					"ShowTitle": false
+				},
+				{
+					"Image": "imgs/keys/deafen-on",
+					"ShowTitle": false
+				}
+			]
+		},
+		{
+			"DisableAutomaticStates": true,
+			"Name": "Raccrocher",
+			"UUID": "io.github.maitoxx.ferrocord.leave",
+			"Icon": "imgs/actions/leave",
+			"Tooltip": "Quitte le salon vocal ou l'appel en cours.",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/keys/leave",
+					"ShowTitle": false
+				}
+			]
+		},
+		{
+			"DisableAutomaticStates": true,
+			"Name": "Caméra",
+			"UUID": "io.github.maitoxx.ferrocord.camera",
+			"Icon": "imgs/actions/camera",
+			"Tooltip": "Allume ou éteint la caméra pendant un appel.",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/keys/camera",
+					"ShowTitle": false
+				},
+				{
+					"Image": "imgs/keys/camera-on",
+					"ShowTitle": false
+				}
+			]
+		},
+		{
+			"DisableAutomaticStates": true,
+			"Name": "Partage d'écran",
+			"UUID": "io.github.maitoxx.ferrocord.share",
+			"Icon": "imgs/actions/share",
+			"Tooltip": "Arrête le partage d'écran, ou ouvre le choix de ce qui sera partagé.",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/keys/share",
+					"ShowTitle": false
+				},
+				{
+					"Image": "imgs/keys/share-on",
+					"ShowTitle": false
+				}
+			]
+		},
+		{
+			"DisableAutomaticStates": true,
+			"Name": "Appui-pour-parler",
+			"UUID": "io.github.maitoxx.ferrocord.talk",
+			"Icon": "imgs/actions/talk",
+			"Tooltip": "À maintenir pour parler : vaut la touche d'appui-pour-parler, ou ouvre un micro coupé le temps de l'appui.",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/keys/talk",
+					"ShowTitle": false
+				},
+				{
+					"Image": "imgs/keys/talk-on",
+					"ShowTitle": false
+				}
+			]
+		},
+		{
+			"PropertyInspectorPath": "ui/sound.html",
+			"UserTitleEnabled": false,
+			"Name": "Son",
+			"UUID": "io.github.maitoxx.ferrocord.sound",
+			"Icon": "imgs/actions/sound",
+			"Tooltip": "Joue un son du tableau de sons dans le salon vocal. Le son se choisit dans les réglages de la touche.",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/keys/sound",
+					"TitleAlignment": "bottom",
+					"FontSize": 9
+				}
+			]
+		},
+		{
+			"DisableAutomaticStates": true,
+			"Name": "Répondre",
+			"UUID": "io.github.maitoxx.ferrocord.answer",
+			"Icon": "imgs/actions/answer",
+			"Tooltip": "Répond à l'appel qui sonne.",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/keys/answer",
+					"ShowTitle": false
+				}
+			]
+		},
+		{
+			"DisableAutomaticStates": true,
+			"Name": "Refuser",
+			"UUID": "io.github.maitoxx.ferrocord.decline",
+			"Icon": "imgs/actions/decline",
+			"Tooltip": "Refuse l'appel qui sonne.",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/keys/decline",
+					"ShowTitle": false
+				}
+			]
+		}
+	]
+}
