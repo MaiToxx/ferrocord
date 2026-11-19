@@ -77,6 +77,26 @@ pub(super) struct BadgeTip {
     pub(super) tier: Option<String>,
     /// Durée, date, ou description du badge.
     pub(super) detail: String,
+    /// Lignes grises sous le détail : rang du palier, prochain palier et sa date.
+    pub(super) more: Vec<String>,
+}
+
+/// Mois d'abonnement de chaque palier de Nitro (liste publique des badges).
+const NITRO_LADDER: [u32; 8] = [1, 3, 6, 12, 24, 36, 60, 72];
+/// Mois de boost de chaque niveau du badge de boost (`guild_booster_lvl1` à `9`).
+const BOOST_LADDER: [u32; 9] = [1, 2, 3, 6, 9, 12, 15, 18, 24];
+
+/// Rang du palier (`rank`, dès 1) dans son échelle, puis le palier suivant et
+/// le jour où il sera atteint (`since` et les mois de l'échelle), s'il est à venir.
+fn ladder_lines(lang: Lang, rank: usize, ladder: &[u32], since: Option<i64>, now_ms: i64, name: impl Fn(usize) -> Option<String>) -> Vec<String> {
+    let mut out = vec![pf::tier_rank(lang, rank, ladder.len())];
+    let at = since.zip(ladder.get(rank)).and_then(|(since, months)| chrono::Utc.timestamp_millis_opt(since).single()?.checked_add_months(chrono::Months::new(*months))).map(|d| d.timestamp_millis());
+    if let Some(at) = at.filter(|at| *at > now_ms)
+        && let Some(next) = name(rank)
+    {
+        out.push(pf::next_tier(lang, next, time::long_date(lang, at)));
+    }
+    out
 }
 
 /// Badge d'ancienneté du compte ? Son identifiant n'est dans aucune source
@@ -113,27 +133,33 @@ fn premium_tier(months: u32) -> Option<Text> {
 /// Contenu de l'infobulle du badge `b` du profil `p` de `user_id`.
 pub(super) fn badge_tip(lang: Lang, b: &ProfileBadge, user_id: u64, p: Option<&Profile>, now_ms: i64) -> BadgeTip {
     let date = |ms: Option<i64>| ms.map(|ms| time::long_date(lang, ms)).filter(|s| !s.is_empty());
-    let plain = |tier: Option<String>| BadgeTip { category: None, tier, detail: b.description.clone() };
+    let plain = |tier: Option<String>| BadgeTip { category: None, tier, detail: b.description.clone(), more: Vec::new() };
     let id = b.id.as_str();
     if is_account_age(b) {
-        return BadgeTip { category: Some(b.description.clone()), tier: None, detail: tenure(lang, snowflake_ms(user_id), now_ms) };
+        return BadgeTip { category: Some(b.description.clone()), tier: None, detail: tenure(lang, snowflake_ms(user_id), now_ms), more: Vec::new() };
     }
     if let Some(months) = premium_months(id) {
         let tier = premium_tier(months).map(|t| t.get(lang).to_string());
-        return match date(p.and_then(|p| p.premium_since)) {
-            Some(detail) => BadgeTip { category: Some(pt::BADGE_SUBSCRIBER_SINCE.get(lang).to_string()), tier, detail },
-            None => plain(tier),
+        let since = p.and_then(|p| p.premium_since);
+        let name = |i: usize| NITRO_LADDER.get(i).and_then(|m| premium_tier(*m)).map(|t| t.get(lang).to_string());
+        let more = NITRO_LADDER.iter().position(|m| *m == months).map(|i| ladder_lines(lang, i + 1, &NITRO_LADDER, since, now_ms, name)).unwrap_or_default();
+        return match date(since) {
+            Some(detail) => BadgeTip { category: Some(pt::BADGE_SUBSCRIBER_SINCE.get(lang).to_string()), tier, detail, more },
+            None => BadgeTip { more, ..plain(tier) },
         };
     }
     if id == "premium"
         && let Some(detail) = date(p.and_then(|p| p.premium_since))
     {
-        return BadgeTip { category: Some(pt::BADGE_SUBSCRIBER_SINCE.get(lang).to_string()), tier: None, detail };
+        return BadgeTip { category: Some(pt::BADGE_SUBSCRIBER_SINCE.get(lang).to_string()), tier: None, detail, more: Vec::new() };
     }
     if id.starts_with("guild_booster_lvl")
         && let Some(detail) = date(p.and_then(|p| p.premium_guild_since))
     {
-        return BadgeTip { category: Some(pt::BADGE_BOOST_SINCE.get(lang).to_string()), tier: None, detail };
+        // Niveau du badge de boost : dans son identifiant.
+        let level = id.strip_prefix("guild_booster_lvl").and_then(|n| n.parse::<usize>().ok()).filter(|n| (1..=BOOST_LADDER.len()).contains(n));
+        let more = level.map(|n| ladder_lines(lang, n, &BOOST_LADDER, p.and_then(|p| p.premium_guild_since), now_ms, |i| Some(pf::boost_level(lang, i + 1)))).unwrap_or_default();
+        return BadgeTip { category: Some(pt::BADGE_BOOST_SINCE.get(lang).to_string()), tier: level.map(|n| pf::boost_level(lang, n)), detail, more };
     }
     plain(None)
 }
@@ -159,6 +185,9 @@ fn badge_tip_ui(ui: &mut egui::Ui, t: &Tokens, images: &Images, b: &ProfileBadge
             ui.label(RichText::new(tier.to_uppercase()).size(t.typography.title).family(crate::ui::fonts::demi()).strong().color(t.colors.text_strong));
         }
         ui.add(egui::Label::new(RichText::new(&tip.detail).color(t.colors.text)).wrap());
+        for line in &tip.more {
+            ui.add(egui::Label::new(RichText::new(line).small().color(t.colors.muted)).wrap());
+        }
     });
 }
 
@@ -754,7 +783,7 @@ mod tests {
         let tip = |b: &ProfileBadge, p: Option<&Profile>| badge_tip(Lang::Fr, b, user, p, now);
         // Ancienneté du compte : la description de Discord en catégorie, la durée calculée.
         let age = tip(&badge("account_age_8", "Ancienneté du compte"), Some(&p));
-        assert_eq!(age, BadgeTip { category: Some("Ancienneté du compte".into()), tier: None, detail: "8 ans, 8 mois".into() });
+        assert_eq!(age, BadgeTip { category: Some("Ancienneté du compte".into()), tier: None, detail: "8 ans, 8 mois".into(), more: Vec::new() });
         assert!(is_account_age(&badge("inconnu", " Account Age ")) && !is_account_age(&badge("premium_tenure_12_month_v2", "x")));
         // Nitro à paliers : le palier vient de l'identifiant, la date du profil.
         let nitro = tip(&badge("premium_tenure_24_month_v2", "Earned on 1 Feb 2022. 2 years: Diamond"), Some(&p));
@@ -763,16 +792,25 @@ mod tests {
         assert_eq!(badge_tip(Lang::En, &badge("premium_tenure_72_month", "x"), user, Some(&p), now).tier.as_deref(), Some("Opal"));
         // Sans date dans le profil : la description de Discord, palier gardé.
         let bare = tip(&badge("premium_tenure_1_month_v2", "Gagné le 1 janv. 2024"), None);
-        assert_eq!(bare, BadgeTip { category: None, tier: Some("Bronze".into()), detail: "Gagné le 1 janv. 2024".into() });
+        assert_eq!(bare, BadgeTip { category: None, tier: Some("Bronze".into()), detail: "Gagné le 1 janv. 2024".into(), more: vec!["Palier 1 sur 8".into()] });
+        // Rang dans l'échelle ; le palier suivant seulement s'il est à venir.
+        assert_eq!(nitro.more, ["Palier 5 sur 8"]);
+        let recent = Profile { premium_since: Some(ms(2025, 1, 1)), premium_guild_since: Some(ms(2026, 9, 1)), ..Default::default() };
+        let next = tip(&badge("premium_tenure_12_month_v2", "x"), Some(&recent));
+        assert_eq!(next.more, ["Palier 4 sur 8".to_string(), format!("Prochain palier\u{a0}: Diamant, le {}", time::long_date(Lang::Fr, ms(2027, 1, 1)))]);
+        let lvl = tip(&badge("guild_booster_lvl2", "x"), Some(&recent));
+        assert_eq!(lvl.tier.as_deref(), Some("Niveau 2"));
+        assert_eq!(lvl.more, ["Palier 2 sur 9".to_string(), format!("Prochain palier\u{a0}: Niveau 3, le {}", time::long_date(Lang::Fr, ms(2026, 12, 1)))]);
+        assert_eq!(tip(&badge("guild_booster_lvl9", "x"), Some(&p)).more, ["Palier 9 sur 9"]);
         assert_eq!(tip(&badge("premium_tenure_7_month", "d"), None).tier, None, "palier inconnu : pas de nom inventé");
         // Nitro simple et boost : la catégorie et la date.
         let sub = tip(&badge("premium", "Abonné depuis le 1 févr. 2020"), Some(&p));
         assert_eq!((sub.category.as_deref(), sub.tier.as_deref()), (Some("Abonné depuis"), None));
         let boost = tip(&badge("guild_booster_lvl3", "Booste depuis…"), Some(&p));
         assert_eq!((boost.category.as_deref(), boost.detail.as_str()), (Some("Boost de serveur depuis"), time::long_date(Lang::Fr, ms(2021, 6, 1)).as_str()));
-        assert_eq!(tip(&badge("guild_booster_lvl3", "Booste depuis…"), None), BadgeTip { category: None, tier: None, detail: "Booste depuis…".into() });
+        assert_eq!(tip(&badge("guild_booster_lvl3", "Booste depuis…"), None), BadgeTip { category: None, tier: None, detail: "Booste depuis…".into(), more: Vec::new() });
         // Tout autre badge : sa description, telle que Discord la donne.
-        assert_eq!(tip(&badge("hypesquad_house_2", "HypeSquad Brilliance"), Some(&p)), BadgeTip { category: None, tier: None, detail: "HypeSquad Brilliance".into() });
+        assert_eq!(tip(&badge("hypesquad_house_2", "HypeSquad Brilliance"), Some(&p)), BadgeTip { category: None, tier: None, detail: "HypeSquad Brilliance".into(), more: Vec::new() });
     }
 
     /// L'infobulle peint la catégorie, le palier en capitales et le détail.
@@ -782,7 +820,7 @@ mod tests {
         let images = Images::disabled(ctx.clone());
         let t = Tokens::default();
         let b = badge("premium_tenure_24_month_v2", "x");
-        let tip = BadgeTip { category: Some("Abonné depuis".into()), tier: Some("Diamant".into()), detail: "1er février 2020".into() };
+        let tip = BadgeTip { category: Some("Abonné depuis".into()), tier: Some("Diamant".into()), detail: "1er février 2020".into(), more: Vec::new() };
         let mut out = ctx.run_ui(egui::RawInput::default(), |ui| badge_tip_ui(ui, &t, &images, &b, &tip));
         out.textures_delta.clear();
         let mut texts = Vec::new();
