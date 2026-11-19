@@ -34,7 +34,7 @@ const K_QUALITY: &str = "qualite_partage";
 const K_SOUND: &str = "son_partage";
 
 /// Nom d'une qualité dans le fichier, dans l'ordre de [`Quality::PRESETS`].
-const QUALITY_NAMES: [&str; 4] = ["720p30", "1080p30", "1080p60", "source"];
+const QUALITY_NAMES: [&str; 5] = ["720p30", "1080p30", "1080p60", "source", "source60"];
 
 fn quality_name(q: Quality) -> &'static str {
     Quality::PRESETS.iter().position(|p| *p == q).map_or(QUALITY_NAMES[0], |i| QUALITY_NAMES[i])

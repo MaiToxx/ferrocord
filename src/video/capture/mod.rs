@@ -49,8 +49,10 @@ impl Quality {
     pub const FHD_30: Quality = Quality { width: 1920, height: 1080, fps: 30 };
     pub const FHD_60: Quality = Quality { width: 1920, height: 1080, fps: 60 };
     pub const SOURCE: Quality = Quality { width: 0, height: 0, fps: 30 };
+    /// Taille d'origine à 60 images par seconde (jeux, vidéo).
+    pub const SOURCE_60: Quality = Quality { width: 0, height: 0, fps: 60 };
     /// Choix du sélecteur de partage, dans l'ordre affiché.
-    pub const PRESETS: [Quality; 4] = [Quality::HD_30, Quality::FHD_30, Quality::FHD_60, Quality::SOURCE];
+    pub const PRESETS: [Quality; 5] = [Quality::HD_30, Quality::FHD_30, Quality::FHD_60, Quality::SOURCE, Quality::SOURCE_60];
 
     pub fn is_source(&self) -> bool {
         self.width == 0 || self.height == 0
@@ -396,7 +398,10 @@ mod tests {
     #[test]
     fn presets() {
         assert!(Quality::SOURCE.is_source() && !Quality::HD_30.is_source());
-        assert_eq!(Quality::PRESETS.len(), 4);
+        // « Source » existe aux deux cadences ; la taille ne dépend pas de la cadence.
+        assert!(Quality::SOURCE_60.is_source() && Quality::SOURCE_60.fps == 60 && Quality::SOURCE_60 != Quality::SOURCE);
+        assert_eq!(fit(1001, 777, Quality::SOURCE_60), (1000, 776));
+        assert_eq!(Quality::PRESETS.len(), 5);
         assert_eq!(Quality::default(), Quality::HD_30);
     }
 }

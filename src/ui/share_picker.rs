@@ -98,6 +98,7 @@ fn quality_label(lang: Lang, q: Quality) -> &'static str {
         Quality::HD_30 => st::Q_720_30.get(lang),
         Quality::FHD_30 => st::Q_1080_30.get(lang),
         Quality::FHD_60 => st::Q_1080_60.get(lang),
+        Quality::SOURCE_60 => st::Q_SOURCE_60.get(lang),
         _ => st::Q_SOURCE.get(lang),
     }
 }
@@ -109,6 +110,7 @@ fn quality_name(lang: Lang, q: Quality) -> &'static str {
         Quality::HD_30 => st::QN_HD.get(lang),
         Quality::FHD_30 => st::QN_FHD.get(lang),
         Quality::FHD_60 => st::QN_FHD_60.get(lang),
+        Quality::SOURCE_60 => st::QN_SOURCE_60.get(lang),
         _ => st::QN_SOURCE.get(lang),
     }
 }

@@ -38,7 +38,19 @@ fn vp8_aller_retour_psnr() {
         }
         assert_eq!(e.keyframe, e.data[0] & 1 == 0);
         assert_eq!(e.ts90k, (u64::from(t) * 33_333 * 9 / 100) as u32);
-        let d = dec.decode(&e).unwrap_or_else(|x| panic!("image {t} : {x:?}")).unwrap_or_else(|| panic!("image {t} : rien décodé"));
+        let got = dec.decode(&e).unwrap_or_else(|x| panic!("image {t} : {x:?}"));
+        if got.is_none() {
+            eprintln!("DIAG vp8 image {t} : rien ; {} octets, tete {:02x?}, cle {}", e.data.len(), &e.data[..e.data.len().min(10)], e.keyframe);
+            let mut suite = Vec::new();
+            for u in t + 1..t + 6 {
+                let e2 = one(enc.as_mut(), &pattern(320, 240, u), false);
+                let r = dec.decode(&e2);
+                suite.push(format!("{u}:{}o:{}", e2.data.len(), match &r { Ok(Some(f)) => format!("image pts {}", f.pts_us), Ok(None) => "rien".into(), Err(x) => format!("{x:?}") }));
+            }
+            let mut neuf = vp8_decoder().expect("décodeur");
+            panic!("image {t} : rien décodé ; suite {suite:?} ; décodeurs {:?} ; décodeur neuf sur cette image : {:?}", supported_decoders(), neuf.decode(&e).map(|f| f.is_some()));
+        }
+        let d = got.expect("image");
         assert_eq!((d.width, d.height), (320, 240));
         assert!(d.is_consistent());
         let q = psnr(&src, &d);
