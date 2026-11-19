@@ -9,6 +9,11 @@ pub mod t {
     use super::super::super::Text;
 
     texts! {
+        FMT_BOLD = "Gras", "Bold";
+        FMT_ITALIC = "Italique", "Italic";
+        FMT_STRIKE = "Barré", "Strikethrough";
+        FMT_CODE = "Code", "Code";
+        FMT_SPOILER = "Spoiler", "Spoiler";
         ACCEPT_REQUEST = "Accepter", "Accept";
         ACT_CREATE_GROUP = "Créer un groupe privé", "Create a group DM";
         PROFILE_HIDE = "Masquer le profil de l'utilisateur", "Hide User Profile";

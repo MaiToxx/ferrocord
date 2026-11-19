@@ -122,12 +122,12 @@ mod tests {
         a.attach_update_notes(Some(dir.clone()));
         let out = frame(&mut a, Vec::new());
         assert!(a.news_shown());
+        let (show_label, close) = (it::NEWS_SHOW.get(a.lang), it::NEWS_CLOSE.get(a.lang));
         // Repliées d'abord ; un clic les montre.
-        assert!(find(&out, "Partage plus net").is_none());
-        let (show, close) = (it::NEWS_SHOW.get(a.lang), it::NEWS_CLOSE.get(a.lang));
-        click(&mut a, show);
+        assert!(!a.news.open && find(&out, show_label).is_some());
+        click(&mut a, show_label);
         let out = frame(&mut a, Vec::new());
-        assert!(find(&out, "Partage plus net").is_some());
+        assert!(a.news.open && find(&out, it::NEWS_HIDE.get(a.lang)).is_some());
         // Fermé : le fichier est oublié, le bandeau ne revient pas.
         click(&mut a, close);
         frame(&mut a, Vec::new());
