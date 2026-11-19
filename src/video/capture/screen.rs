@@ -179,7 +179,17 @@ fn start(kind: SourceKind, raw: &str, want: Quality, cursor: bool, border: DrawB
 
 pub(super) fn open(kind: SourceKind, raw: &str, want: Quality, opts: Options, on_frame: Box<dyn FnMut(Frame) + Send>) -> Result<CaptureHandle, CaptureError> {
     let ended = Arc::new(AtomicBool::new(false));
-    let control = start(kind, raw, want, opts.cursor, DrawBorderSettings::Default, Sink::Stream(on_frame), ended.clone())?;
+    // Sans le cadre jaune que Windows dessine autour de ce qui est capturé
+    // (gênant pendant tout un partage, signalé par l'utilisateur, 0.1.15),
+    // là où Windows le permet (Windows 11) ; refusé : avec, comme avant.
+    // Le rappel est partagé pour pouvoir servir au second essai.
+    let shared = Arc::new(std::sync::Mutex::new(on_frame));
+    let run = |border| {
+        let s = shared.clone();
+        let sink: Box<dyn FnMut(Frame) + Send> = Box::new(move |f| (s.lock().unwrap_or_else(std::sync::PoisonError::into_inner))(f));
+        start(kind, raw, want, opts.cursor, border, Sink::Stream(sink), ended.clone())
+    };
+    let control = if borderless() { run(DrawBorderSettings::WithoutBorder).or_else(|_| run(DrawBorderSettings::Default))? } else { run(DrawBorderSettings::Default)? };
     Ok(CaptureHandle::new(
         Box::new(move || {
             let _ = control.stop();
