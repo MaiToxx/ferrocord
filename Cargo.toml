@@ -70,7 +70,8 @@ aws-lc-rs = { version = "1.19.0", default-features = false, features = ["aws-lc-
 # Écartées : audiopus (même libopus, API moins complète, plus maintenue) et les
 # Opus en Rust pur (encodeurs jeunes, sans FEC/DTX fiables).
 opus = "0.4.0"
-# Suppression de bruit de base : spectrale, écrite à la main (audio/dsp/denoise.rs).
+# Suppression de bruit : l'étage spectral écrit à la main a été retiré (0.1.13,
+# à la demande de l'utilisateur) ; reste RNNoise, en plugin.
 # nnnoiseless (RNNoise en Rust pur, +1,11 Mio mesurés au lot V7) avait été retirée
 # pour tenir le budget de taille ; ce budget levé, elle revient au lot E4 comme
 # plugin (coupé par défaut, audio/dsp/rnn.rs). Sans ses fonctionnalités par défaut

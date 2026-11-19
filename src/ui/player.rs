@@ -170,6 +170,15 @@ fn push(ctx: &egui::Context, c: Cmd) {
     ctx.request_repaint();
 }
 
+/// Lecture du fichier `attachment`, s'il est celui du lecteur : (en lecture,
+/// position en microsecondes). Sert à compter le temps réellement lu d'une
+/// vidéo de quête (`ui/quests.rs`).
+pub(super) fn progress(ctx: &egui::Context, attachment: u64) -> Option<(bool, u64)> {
+    let a = active(ctx).filter(|a| a.id == attachment)?;
+    let s = a.handle.as_ref()?.snapshot();
+    Some((s.phase == Phase::Playing, s.pos_us))
+}
+
 /// Pose une lecture toute faite (aperçu, tests) : `handle` figé, sans orchestrateur.
 pub fn preview(ctx: &egui::Context, attachment: u64, handle: Handle, video: bool, full: bool) {
     let a = Active { id: attachment, handle: Some(handle), tex: None, seen: 0, muted: false, volume: 1.0, full, video, gif: false, drag: None, drawn: ctx.cumulative_pass_nr() };

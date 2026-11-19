@@ -1748,16 +1748,29 @@ Reçu de la passerelle, sans requête : la progression
 (`VIRTUAL_CURRENCY_BALANCE_UPDATE`). Aucun point REST de solde n'est
 appelé : le solde n'est affiché que si Discord l'annonce.
 
+### Progression réelle (0.1.13, réglage « Déclarer ma progression des quêtes », coupé par défaut)
+
+Demandée par l'utilisateur le 19 novembre 2026 ; source relue ce jour-là
+(« Send Quest Heartbeat », « Update Quest Video Progress »).
+
+| Requête | Corps | Quand |
+|---|---|---|
+| `POST /quests/{id}/heartbeat` | `{ "application_id", "terminal" }` | quête acceptée, tâche « jouer » non finie, **et** une application de la tâche figure parmi les jeux que la détection voit tourner : un battement tout de suite, puis un par minute ; un dernier (`terminal: true`) quand le jeu s'arrête. Seulement avec l'identité « application de bureau » (Discord répond 401 aux autres) |
+| `POST /quests/{id}/video-progress` | `{ "timestamp" }` (secondes) | la vidéo de la quête est jouée par le lecteur de Ferrocord (fenêtre de la quête) : toutes les 10 s de lecture **réelle** (ni pause, ni saut en avant, ni lecteur fermé), et à la fin |
+
+`stream_key`, `executable_path` et `executable_fingerprint` ne sont pas
+envoyés. Un refus coupe la déclaration pour cette quête jusqu'au prochain
+lancement ; rien n'est retenté. La progression affichée reste celle que
+Discord renvoie.
+
 ### Ce que Ferrocord n'envoie jamais
 
-`POST /quests/{id}/heartbeat`, `POST /quests/{id}/video-progress`,
-`POST /quests/{id}/console/start` et tout ce qui déclarerait une
-progression. Ferrocord ne simule ni jeu, ni vidéo, ni processus : une
-quête acceptée porte « Commencer la quête » (ou la progression reçue), qui ouvre
-`https://discord.com/quests/{id}` ; la progression affichée est celle que
-Discord renvoie. Les récompenses qui demandent de choisir une console se
-réclament dans l'application officielle. Un test (`tests/e2e/nd.rs`)
-vérifie qu'aucune de ces requêtes ne part.
+`POST /quests/{id}/console/start`, et toute progression qui ne correspond
+pas à une activité réelle : Ferrocord ne simule ni jeu, ni vidéo, ni
+processus. Réglage coupé (défaut), aucune requête de progression ne part
+(`tests/e2e/nd.rs`) : la quête acceptée porte « Commencer la quête », qui
+ouvre `https://discord.com/quests/{id}`. Les récompenses qui demandent de
+choisir une console se réclament dans l'application officielle.
 
 Captcha demandé par une écriture : l'action s'arrête, la carte le dit, rien
 n'est retenté. Compte bot : aucune requête.
@@ -1831,6 +1844,8 @@ montrer le repli).
 
 ### À vérifier sur un vrai compte
 
+- battement et progression vidéo (0.1.13) : jamais essayés sur un vrai
+  compte ; forme de `tasks.*.applications` et `tasks.*.assets.video.url` ;
 - acceptation de ces requêtes sans en-têtes du client officiel (un refus
   est affiché, jamais contourné) ;
 - `location: 11` accepté pour accepter et réclamer ;

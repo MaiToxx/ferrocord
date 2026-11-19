@@ -127,7 +127,7 @@ L'inventaire complet et à jour est dans `docs/ecarts-restants.md`. L'essentiel 
 - Raccourcis globaux autres que micro, casque, appels et appui-pour-parler, correcteur orthographique
 - Plusieurs pages d'administration d'un serveur (vérification des membres, guide du serveur, « voir en tant que rôle »)
 - Linux et macOS
-- Écarté volontairement : achats (Nitro, boosts, boutique), tout ce qui passe par un captcha (connexion par mot de passe, création de compte), quêtes, activités intégrées, overlay en jeu
+- Écarté volontairement : achats (Nitro, boosts, boutique), tout ce qui passe par un captcha (connexion par mot de passe, création de compte), activités intégrées, overlay en jeu
 - Permissions sur les serveurs dont Discord n'envoie pas ton membre ou les rôles au démarrage : tout y reste affiché, et Discord répond « accès refusé » au besoin
 - Proxys : les variables `HTTP_PROXY`, `HTTPS_PROXY` et `ALL_PROXY` sont volontairement ignorées, pour qu'elles ne puissent pas détourner les requêtes qui portent ton jeton. Aucune prise en charge des proxys pour l'instant.
 

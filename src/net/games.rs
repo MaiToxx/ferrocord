@@ -361,9 +361,15 @@ fn identify(cfg: &ScanConfig, raw: &str) -> Option<(Option<u64>, String)> {
     if whole { index.find(&path) } else { index.find_file(file) }.map(|a| (Some(a.id), a.name.to_string()))
 }
 
-/// Relevés successifs des programmes en cours. Aucun processus n'est
-/// ouvert : seuls l'identifiant et le nom de fichier de l'instantané
-/// servent. Au repos (mêmes programmes qu'au relevé d'avant), un relevé
+/// Le nom de fichier `raw` est-il celui d'un jeu connu ou ajouté à la main ?
+fn candidate(cfg: &ScanConfig, raw: &str) -> bool {
+    let file = normalize(raw.trim());
+    cfg.manual.iter().any(|m| m.file() == file) || cfg.index.as_ref().is_some_and(|i| i.candidate(&file))
+}
+
+/// Relevés successifs des programmes en cours. Seuls les programmes dont le
+/// nom de fichier est celui d'un jeu connu sont ouverts, en lecture limitée,
+/// pour lire leur chemin ; les autres ne le sont jamais. Au repos (mêmes programmes qu'au relevé d'avant), un relevé
 /// n'alloue rien : chaque nom n'est décodé et recherché qu'une fois.
 #[derive(Default)]
 pub(super) struct Scanner {
@@ -374,6 +380,10 @@ pub(super) struct Scanner {
     focus: u64,
     now: i64,
     changed: bool,
+    /// Demander au système le chemin d'un programme dont le nom de fichier
+    /// est celui d'un jeu connu (le vrai relevé ; les essais donnent leurs
+    /// propres noms). Sans chemin (processus protégé), le nom seul sert.
+    paths: bool,
 }
 
 impl Scanner {
@@ -398,7 +408,12 @@ impl Scanner {
             }
             return;
         }
-        let game = identify(cfg, &String::from_utf16_lossy(name)).map(|(app_id, name)| self.track(app_id, name));
+        let file = String::from_utf16_lossy(name);
+        // Le chemin n'est demandé que pour un nom que la liste connaît : il
+        // vérifie les motifs à dossier et départage les noms partagés
+        // (`game.exe`), cause de jeux reconnus à tort (0.1.13).
+        let path = (self.paths && candidate(cfg, &file)).then(|| procs::details(pid)).flatten().map(|d| d.path);
+        let game = identify(cfg, path.as_deref().unwrap_or(&file)).map(|(app_id, name)| self.track(app_id, name));
         self.seen.insert(pid, Seen { name: hash, game, round });
     }
 
@@ -473,7 +488,7 @@ impl Scanner {
 ///
 /// [`SCAN_EVERY`]: crate::state::activity::SCAN_EVERY
 pub(super) async fn scan_task(mut rx: tokio::sync::watch::Receiver<ScanConfig>, out: Out, every: Duration) {
-    let mut scanner = Scanner::default();
+    let mut scanner = Scanner { paths: true, ..Default::default() };
     loop {
         let cfg = Arc::new(rx.borrow_and_update().clone());
         if cfg.idle() {

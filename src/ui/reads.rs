@@ -43,6 +43,16 @@ impl App {
         chosen
     }
 
+    /// Entrée « Tout marquer comme lu » des menus du rail (accueil, serveur,
+    /// dossier) : tous les serveurs et les conversations, d'un seul geste.
+    pub(super) fn mark_all_entry(&self, ui: &mut egui::Ui) -> bool {
+        let chosen = crate::ui::menu::item(ui, &self.theme, crate::i18n::table::nav::t::MARK_ALL_READ.get(self.lang), Some(crate::theme::icons::Icon::CheckAll), false).clicked();
+        if chosen {
+            ui.close();
+        }
+        chosen
+    }
+
     /// Entrée du menu contextuel d'un serveur du rail (menu ouvert par
     /// `rail.rs`) : `true` si « Marquer le serveur comme lu » est choisi.
     pub(super) fn guild_menu(&self, ui: &mut egui::Ui) -> bool {

@@ -296,8 +296,34 @@ impl GameIndex {
     }
 
     /// Jeu correspondant au chemin (normalisé) d'un programme.
+    ///
+    /// Plusieurs applications peuvent revendiquer le même fichier (`game.exe`,
+    /// `launcher.exe`…). Dans l'ordre : celle dont un motif à dossier
+    /// correspond au chemin (le plus précis) ; sinon, s'il n'y en a qu'une
+    /// au motif sans dossier, celle-là ; à plusieurs, celle dont le nom se
+    /// lit dans le chemin (`…/mon jeu/game.exe`), et aucune si rien ne les
+    /// départage : un jeu non reconnu vaut mieux qu'un jeu mal attribué
+    /// (0.1.13 ; avant, la première de la liste de Discord gagnait).
     pub fn find<'a>(&'a self, path: &'a str) -> Option<AppRef<'a>> {
-        self.claims(file_name(path)).find(|a| a.exes().any(|e| exe_matches(e, path)))
+        let hits = || self.claims(file_name(path)).filter(|a| a.exes().any(|e| exe_matches(e, path)));
+        if let Some(a) = hits().find(|a| a.exes().any(|e| e.contains('/') && exe_matches(e, path))) {
+            return Some(a);
+        }
+        let mut all = hits();
+        let first = all.next()?;
+        if all.next().is_none() {
+            return Some(first);
+        }
+        let squash = |s: &str| s.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect::<String>();
+        let dirs = squash(path.rsplit_once('/').map_or("", |(d, _)| d));
+        let mut named = hits().filter(|a| {
+            let n = squash(a.name);
+            n.len() >= 3 && dirs.contains(&n)
+        });
+        match (named.next(), named.next()) {
+            (Some(only), None) => Some(only),
+            _ => None,
+        }
     }
 
     /// Jeu correspondant au seul nom de fichier (minuscules) d'un programme :
@@ -837,6 +863,13 @@ mod tests {
         assert_eq!(idx.find("d:/x/tslgame.exe"), None, "chemin trop court pour « win64/ »");
         assert_eq!(idx.find("d:/x/bin/game.exe").map(|a| a.id), Some(2));
         assert_eq!(idx.find("d:/x/game.exe").map(|a| a.id), Some(3));
+        // Même fichier revendiqué sans dossier par plusieurs jeux : le nom lu
+        // dans le chemin les départage ; sinon aucun (jamais « le premier »).
+        let shared = GameIndex::new(vec![app(1, "Astral Run", &["game.exe"]), app(2, "Vallon", &["game.exe"]), app(3, "Fond", &["data/game.exe"])], 0);
+        assert_eq!(shared.find("d:/jeux/vallon/game.exe").map(|a| a.id), Some(2));
+        assert_eq!(shared.find("d:/steam/astral run/bin/game.exe").map(|a| a.id), Some(1));
+        assert_eq!(shared.find("d:/outils/divers/game.exe"), None);
+        assert_eq!(shared.find("d:/x/data/game.exe").map(|a| a.id), Some(3), "le motif à dossier l'emporte");
     }
 
     #[test]

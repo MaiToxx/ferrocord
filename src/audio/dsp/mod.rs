@@ -3,7 +3,6 @@
 //! Chaque étage se coupe ; rien n'alloue après [`VoiceChain::new`].
 
 pub mod agc;
-pub mod denoise;
 pub mod echo;
 pub mod eq;
 pub mod highpass;
@@ -78,7 +77,6 @@ pub struct VoiceChain {
     settings: DspSettings,
     high_pass: highpass::HighPass,
     echo: echo::EchoCanceller,
-    noise: Box<dyn Processor>,
     /// RNNoise : n'existe que plugin activé.
     rnn: Option<rnn::Rnn>,
     agc: agc::Agc,
@@ -86,7 +84,7 @@ pub struct VoiceChain {
 
 impl VoiceChain {
     pub fn new(settings: DspSettings) -> Self {
-        VoiceChain { settings, high_pass: highpass::HighPass::voice(), echo: echo::EchoCanceller::new(), noise: denoise::new_processor(), rnn: (settings.rnnoise > 0).then(rnn::Rnn::new), agc: agc::Agc::new() }
+        VoiceChain { settings, high_pass: highpass::HighPass::voice(), echo: echo::EchoCanceller::new(), rnn: (settings.rnnoise > 0).then(rnn::Rnn::new), agc: agc::Agc::new() }
     }
 
     pub fn settings(&self) -> DspSettings {
@@ -127,11 +125,13 @@ impl Processor for VoiceChain {
         if s.echo_cancellation {
             self.echo.process(mono, far_end);
         }
-        if s.noise_suppression {
-            match &mut self.rnn {
-                Some(rnn) => rnn.process(mono, s.rnnoise),
-                None => self.noise.process(mono, far_end),
-            }
+        // Suppression de bruit : RNNoise seulement (plugin). L'étage spectral
+        // d'origine a été retiré à la demande de l'utilisateur (0.1.13) : il
+        // abîmait la voix.
+        if s.noise_suppression
+            && let Some(rnn) = &mut self.rnn
+        {
+            rnn.process(mono, s.rnnoise);
         }
         if s.auto_gain {
             self.agc.process(mono);

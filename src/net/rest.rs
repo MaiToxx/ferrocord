@@ -158,6 +158,11 @@ impl Ctx {
     pub(super) fn is_bot(&self) -> bool {
         self.token.starts_with("Bot ")
     }
+
+    /// La connexion s'annonce comme l'application de bureau (`net::identity`).
+    pub(super) fn identity_is_desktop(&self) -> bool {
+        self.identity.is_desktop()
+    }
 }
 
 /// Corps d'un 429 : `retry_after` (secondes), `global`, et s'il s'agit d'un

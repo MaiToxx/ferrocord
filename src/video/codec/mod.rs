@@ -105,6 +105,13 @@ pub fn encoder(c: Codec, w: u32, h: u32, fps: u32, bps: u32) -> Option<Box<dyn E
     }
 }
 
+/// Encodeur de repli quand celui de [`encoder`] a lâché en cours d'envoi :
+/// H.264 logiciel (OpenH264), sans passer par la carte graphique. `None`
+/// pour les autres codecs (ils n'ont qu'un encodeur).
+pub fn fallback_encoder(c: Codec, w: u32, h: u32, fps: u32, bps: u32) -> Option<Box<dyn Encoder>> {
+    if c == Codec::H264 { software_encoder(w, h, fps, bps) } else { None }
+}
+
 /// Encodeur matériel par Media Foundation, s'il y en a un.
 fn hardware_encoder(w: u32, h: u32, fps: u32, bps: u32) -> Option<Box<dyn Encoder>> {
     #[cfg(windows)]
