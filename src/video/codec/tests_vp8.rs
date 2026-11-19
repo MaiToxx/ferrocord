@@ -27,7 +27,7 @@ fn one(enc: &mut dyn Encoder, f: &Frame, key: bool) -> EncodedFrame {
 #[test]
 fn vp8_aller_retour_psnr() {
     let Some((mut enc, mut dec)) = codecs(320, 240) else { return };
-    assert_eq!(supported_decoders(), [Codec::H264, Codec::Vp8]);
+    assert_eq!(supported_decoders()[..2], [Codec::H264, Codec::Vp8]);
     for t in 0..20 {
         let src = pattern(320, 240, t);
         let e = one(enc.as_mut(), &src, false);

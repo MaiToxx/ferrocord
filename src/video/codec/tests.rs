@@ -240,9 +240,12 @@ fn debit_reglable() {
 #[test]
 fn entrees_invalides_et_codecs_absents() {
     assert_eq!(decoder(Codec::Vp8).is_some(), supported_decoders().contains(&Codec::Vp8));
-    assert!(decoder(Codec::Vp9).is_none());
-    assert!(decoder(Codec::Av1).is_none());
+    // VP9 et AV1 : décodés quand Windows a l'extension, jamais encodés.
+    assert_eq!(decoder(Codec::Vp9).is_some(), supported_decoders().contains(&Codec::Vp9));
+    assert_eq!(decoder(Codec::Av1).is_some(), supported_decoders().contains(&Codec::Av1));
+    assert!(encoder(Codec::Vp9, 320, 240, 30, 1_000_000).is_none());
     assert!(encoder(Codec::Av1, 320, 240, 30, 1_000_000).is_none());
+    assert!(!supported_encoders().contains(&Codec::Vp9) && !supported_encoders().contains(&Codec::Av1));
     assert_eq!(supported_decoders()[0], Codec::H264);
     assert_eq!(supported_encoders()[0], Codec::H264);
     assert!(encoder(Codec::H264, 0, 240, 30, 1_000_000).is_none());

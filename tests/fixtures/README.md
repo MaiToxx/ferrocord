@@ -238,3 +238,4 @@ VOICE_STATE_UPDATE, VOICE_SERVER_UPDATE, salons de type 2 et 13) :
 |---|---|
 | `rest_channel_voice.json` | Salon vocal tel que `GET /channels/{id}` le renvoie : `bitrate`, `user_limit`, `rtc_region`, `video_quality_mode` (documentation officielle, Channel Object) |
 | `rest_voice_regions.json` | Réponse de `GET /voice/regions` : régions courantes, une déconseillée et des entrées de forme inattendue qui doivent être écartées seules |
+| `av1/frames.json` | Synthétique : huit images AV1 320×240 de la mire des tests, encodées par l'encodeur AV1 matériel de Windows (`ecrit_jeu_av1`), unités temporelles telles que sorties (image clé à la première et à la cinquième) |

@@ -106,7 +106,7 @@ Sur Android : jeton chiffré par une clé du Keystore d'Android (fichier dans le
 
 Le code et les libellés de ce qui suit existent et sont couverts par les tests hors ligne. « Fait » veut dire « branché » : ces fonctions n'ont pas été vérifiées une à une sur un vrai compte, et la liste de ce qui reste à essayer est au chapitre 5 de `docs/ecarts-restants.md`.
 
-- Vocal, appels, vidéo et partage d'écran (H.264 et VP8)
+- Vocal, appels, vidéo et partage d'écran (H.264 et VP8 ; VP9 et AV1 en réception, réglage expérimental coupé par défaut)
 - Réactions, réponses, modification de ses messages, envoi de fichiers, sondages
 - Fils et forums (liste, galerie, étiquettes, création de publication)
 - Liste des membres, statuts en ligne, statut personnalisé, indicateur « en train d'écrire »
@@ -123,8 +123,8 @@ Le code et les libellés de ce qui suit existent et sont couverts par les tests 
 L'inventaire complet et à jour est dans `docs/ecarts-restants.md`. L'essentiel :
 
 - Autocollants Lottie (leur nom est affiché à la place), animation des super réactions, polices et effets des noms
-- Partage d'écran : VP9 et AV1
-- Raccourcis globaux autres que micro, casque et appui-pour-parler, correcteur orthographique, barre de mise en forme sur la sélection
+- Partage d'écran : envoi en VP9 ou AV1 (ils sont seulement reçus)
+- Raccourcis globaux autres que micro, casque, appels et appui-pour-parler, correcteur orthographique
 - Plusieurs pages d'administration d'un serveur (vérification des membres, guide du serveur, « voir en tant que rôle »)
 - Linux et macOS
 - Écarté volontairement : achats (Nitro, boosts, boutique), tout ce qui passe par un captcha (connexion par mot de passe, création de compte), quêtes, activités intégrées, overlay en jeu

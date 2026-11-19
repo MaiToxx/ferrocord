@@ -43,6 +43,10 @@ pub struct AudioPrefs {
     /// « Couper le micro » et « Couper le casque » marchent hors de la fenêtre
     /// (raccourcis globaux de Windows, combinaisons de `keys.toml`).
     pub global_keys: bool,
+    /// Annonce aux appels que cet ordinateur décode aussi VP9 et AV1 (quand
+    /// Windows a les extensions). Coupé par défaut : pas encore éprouvé sur
+    /// de vrais appels, et H.264 marche partout.
+    pub extra_codecs: bool,
 }
 
 impl Default for AudioPrefs {
@@ -60,6 +64,7 @@ impl Default for AudioPrefs {
             echo_cancellation: true,
             auto_gain: true,
             global_keys: false,
+            extra_codecs: false,
         }
     }
 }
@@ -92,6 +97,7 @@ const K_NOISE: &str = "suppression_bruit";
 const K_ECHO: &str = "annulation_echo";
 const K_GAIN: &str = "gain_automatique";
 const K_GLOBAL: &str = "raccourcis_globaux";
+const K_EXTRA_CODECS: &str = "codecs_vp9_av1";
 const MODE_VOICE: &str = "voix";
 const MODE_PTT: &str = "appui";
 
@@ -127,7 +133,7 @@ impl AudioPrefs {
             self.input_volume, self.output_volume, self.auto_threshold, self.threshold_db
         );
         s += &format!("{K_RELEASE} = {}\n{K_NOISE} = {}\n{K_ECHO} = {}\n{K_GAIN} = {}\n", self.ptt_release_ms, self.noise_suppression, self.echo_cancellation, self.auto_gain);
-        s += &format!("{K_GLOBAL} = {}\n", self.global_keys);
+        s += &format!("{K_GLOBAL} = {}\n{K_EXTRA_CODECS} = {}\n", self.global_keys, self.extra_codecs);
         s
     }
 
@@ -156,6 +162,7 @@ impl AudioPrefs {
                 K_ECHO => p.echo_cancellation = v.as_bool().unwrap_or(p.echo_cancellation),
                 K_GAIN => p.auto_gain = v.as_bool().unwrap_or(p.auto_gain),
                 K_GLOBAL => p.global_keys = v.as_bool().unwrap_or(p.global_keys),
+                K_EXTRA_CODECS => p.extra_codecs = v.as_bool().unwrap_or(p.extra_codecs),
                 _ => {}
             }
         }
@@ -241,6 +248,7 @@ mod tests {
             echo_cancellation: true,
             auto_gain: false,
             global_keys: true,
+            extra_codecs: true,
         };
         assert_eq!(parse(&p.to_toml()), p);
         assert_eq!(parse(&AudioPrefs::default().to_toml()), AudioPrefs::default());

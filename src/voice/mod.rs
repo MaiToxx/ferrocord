@@ -28,7 +28,7 @@ mod stream;
 pub mod video;
 
 pub use media::{AudioBackend, AudioStreams, Devices};
-pub use video::{Capturing, VideoBackend, WindowsVideo};
+pub use video::{extra_codecs_available, set_extra_codecs, Capturing, VideoBackend, WindowsVideo};
 
 use crate::i18n::table::voice::t as vt;
 use crate::net::voice::{ConnKind, Secret, VoiceConfig, VoiceParams};

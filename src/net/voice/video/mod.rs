@@ -18,11 +18,13 @@
 //! - RTP vidéo : horloge à 90 kHz, marqueur sur le dernier paquet d'une
 //!   image ; NACK servis par RTX (numéro d'origine en tête de charge).
 
+pub mod av1;
 pub mod h264;
 pub mod recv;
 pub mod rtcp;
 pub mod send;
 pub mod vp8;
+pub mod vp9;
 
 use std::collections::HashMap;
 use std::time::Instant;
@@ -57,9 +59,14 @@ impl CodecOffer {
         CodecOffer { codec, payload_type, rtx_payload_type, encode, decode }
     }
 
-    /// Codecs que ce lot sait mettre en paquets.
+    /// Codecs mis en paquets ici à l'envoi. VP9 et AV1 ne sont que reçus.
     pub fn packetizable(self) -> bool {
         matches!(self.codec, Codec::H264 | Codec::Vp8)
+    }
+
+    /// Ce que l'offre annonce vraiment : (encode, décode).
+    pub fn usable(self) -> (bool, bool) {
+        (self.encode && self.packetizable(), self.decode)
     }
 }
 
@@ -70,12 +77,13 @@ pub fn default_offers() -> Vec<CodecOffer> {
 }
 
 /// Offre d'après ce que la machine sait encoder et décoder, H.264 d'abord
-/// (encodeur matériel, et le choix de Discord), puis VP8 ; seuls les codecs
-/// mis en paquets ici sont gardés.
+/// (encodeur matériel, et le choix de Discord), puis VP8, puis VP9 et AV1,
+/// en réception seulement.
 pub fn offers(encode: &[Codec], decode: &[Codec]) -> Vec<CodecOffer> {
-    [Codec::H264, Codec::Vp8]
+    [Codec::H264, Codec::Vp8, Codec::Vp9, Codec::Av1]
         .into_iter()
         .map(|c| CodecOffer::new(c, encode.contains(&c), decode.contains(&c)))
+        .map(|o| CodecOffer { encode: o.usable().0, ..o })
         .filter(|o| o.encode || o.decode)
         .collect()
 }
@@ -83,14 +91,14 @@ pub fn offers(encode: &[Codec], decode: &[Codec]) -> Vec<CodecOffer> {
 /// `codecs` de Select Protocol : Opus, puis la vidéo dans l'ordre de préférence.
 pub fn select_codecs(offers: &[CodecOffer]) -> Value {
     let mut list = vec![json!({"name": "opus", "type": "audio", "priority": 1000, "payload_type": rtp::PAYLOAD_TYPE})];
-    for (k, o) in offers.iter().filter(|o| o.packetizable()).enumerate() {
+    for (k, o) in offers.iter().filter(|o| o.usable() != (false, false)).enumerate() {
         list.push(json!({
             "name": o.codec.name(),
             "type": "video",
             "priority": 1000 * (k + 1),
             "payload_type": o.payload_type,
             "rtx_payload_type": o.rtx_payload_type,
-            "encode": o.encode,
+            "encode": o.usable().0,
             "decode": o.decode,
         }));
     }
@@ -167,7 +175,7 @@ impl Link {
 
     /// La connexion propose la vidéo (Identify `video`).
     pub fn enabled(&self) -> bool {
-        self.offers.iter().any(|o| o.packetizable())
+        self.offers.iter().any(|o| o.usable() != (false, false))
     }
 
     pub fn offers(&self) -> &[CodecOffer] {
@@ -287,7 +295,7 @@ impl Link {
     pub fn on_rtp(&mut self, m: RtpMeta, payload: &[u8], now: Instant) -> Option<Received> {
         let RtpMeta { ssrc, payload_type, seq, ts, marker } = m;
         let (codec, is_rtx) = self.codec_of(payload_type)?;
-        if !self.offer_for(codec).is_some_and(|o| o.decode && o.packetizable()) {
+        if !self.offer_for(codec).is_some_and(|o| o.decode) {
             return None;
         }
         let (media, p) = if is_rtx {

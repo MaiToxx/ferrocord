@@ -24,7 +24,7 @@ use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, Co
 use windows::Win32::System::Variant::VARIANT;
 use windows::core::{GUID, Interface};
 
-use super::{CodecError, Decoder, Encoder, h264::check_size, vp8};
+use super::{CodecError, Decoder, Encoder, av1, h264::check_size, vp8};
 use crate::video::{Codec, EncodedFrame, Frame, FrameData, convert, us_to_90k};
 
 #[path = "mf_reader.rs"]
@@ -150,6 +150,8 @@ pub(super) fn output_sample(mft: &IMFTransform) -> windows::core::Result<Option<
 /// Encodeur matériel. Asynchrone côté Windows ; vu d'ici synchrone : une
 /// image entre, et ce qui est sorti dans le délai d'une image est rendu.
 pub struct MfEncoder {
+    /// H.264 ; AV1 pour fabriquer les jeux d'essai.
+    codec: Codec,
     activate: IMFActivate,
     mft: IMFTransform,
     events: IMFMediaEventGenerator,
@@ -186,10 +188,14 @@ fn capped(bps: u32, w: u32, h: u32, fps: u32) -> u32 {
     bps.min(u32::try_from(cap).unwrap_or(u32::MAX)).max(1)
 }
 
-/// Transformées H.264 matérielles disponibles, de la plus recommandée à la moins.
-fn hardware_encoders() -> Vec<IMFActivate> {
+/// Transformées matérielles disponibles, de la plus recommandée à la moins.
+fn hardware_encoders(codec: Codec) -> Vec<IMFActivate> {
     let flags = MFT_ENUM_FLAG(MFT_ENUM_FLAG_HARDWARE.0 | MFT_ENUM_FLAG_SORTANDFILTER.0);
-    transforms(MFT_CATEGORY_VIDEO_ENCODER, flags, &MFVideoFormat_NV12, Some(&MFVideoFormat_H264))
+    transforms(MFT_CATEGORY_VIDEO_ENCODER, flags, &MFVideoFormat_NV12, Some(&hardware_format(codec)))
+}
+
+fn hardware_format(codec: Codec) -> GUID {
+    if codec == Codec::Av1 { MFVideoFormat_AV1 } else { MFVideoFormat_H264 }
 }
 
 /// Transformées logicielles synchrones (VP8) : les transformées matérielles
@@ -216,15 +222,25 @@ pub(super) fn transforms(category: GUID, flags: MFT_ENUM_FLAG, input: &GUID, out
 
 impl MfEncoder {
     pub fn new(w: u32, h: u32, fps: u32, bps: u32) -> Result<Self, CodecError> {
+        Self::with_codec(Codec::H264, w, h, fps, bps)
+    }
+
+    /// Encodeur AV1 matériel, s'il y en a un : pour les jeux d'essai.
+    #[cfg(test)]
+    pub fn av1(w: u32, h: u32, fps: u32, bps: u32) -> Result<Self, CodecError> {
+        Self::with_codec(Codec::Av1, w, h, fps, bps)
+    }
+
+    fn with_codec(codec: Codec, w: u32, h: u32, fps: u32, bps: u32) -> Result<Self, CodecError> {
         check_size(w, h)?;
         if !ready() {
             return Err(CodecError::Internal("Media Foundation indisponible sur ce fil".into()));
         }
         let (w, h, fps, asked) = (w & !1, h & !1, fps.clamp(1, 240), bps.max(1));
         let bps = capped(asked, w, h, fps);
-        let mut last = CodecError::Internal("aucun encodeur H.264 matériel".into());
-        for a in hardware_encoders() {
-            match Self::open(a, w, h, fps, bps) {
+        let mut last = CodecError::Internal("aucun encodeur matériel".into());
+        for a in hardware_encoders(codec) {
+            match Self::open(a, codec, w, h, fps, bps) {
                 Ok(mut e) => {
                     e.asked = asked;
                     return Ok(e);
@@ -235,7 +251,7 @@ impl MfEncoder {
         Err(last)
     }
 
-    fn open(activate: IMFActivate, w: u32, h: u32, fps: u32, bps: u32) -> Result<Self, CodecError> {
+    fn open(activate: IMFActivate, codec: Codec, w: u32, h: u32, fps: u32, bps: u32) -> Result<Self, CodecError> {
         // SAFETY: appels COM sur des objets valides, avec des arguments
         // possédés qui vivent pendant chaque appel.
         let built = unsafe {
@@ -258,13 +274,15 @@ impl MfEncoder {
                 // Images clés à la demande (perte, nouveau spectateur) plutôt que périodiques.
                 set_codec_value(a, &CODECAPI_AVEncMPVGOPSize, VARIANT::from(fps.saturating_mul(60)));
 
-                let out = video_type(&MFVideoFormat_H264)?;
+                let out = video_type(&hardware_format(codec))?;
                 out.SetUINT32(&MF_MT_AVG_BITRATE, bps)?;
                 out.SetUINT64(&MF_MT_FRAME_SIZE, pair(w, h))?;
                 out.SetUINT64(&MF_MT_FRAME_RATE, pair(fps, 1))?;
                 out.SetUINT64(&MF_MT_PIXEL_ASPECT_RATIO, pair(1, 1))?;
                 out.SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32)?;
-                out.SetUINT32(&MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Base.0 as u32)?;
+                if codec == Codec::H264 {
+                    out.SetUINT32(&MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Base.0 as u32)?;
+                }
                 mft.SetOutputType(0, &out, 0)?;
                 let inp = video_type(&MFVideoFormat_NV12)?;
                 inp.SetUINT64(&MF_MT_FRAME_SIZE, pair(w, h))?;
@@ -287,6 +305,7 @@ impl MfEncoder {
             }
         };
         Ok(Self {
+            codec,
             activate,
             mft,
             events,
@@ -337,12 +356,14 @@ impl MfEncoder {
                 }
                 Out::Sample(s) => {
                     sample_bytes(&s, &mut self.bytes).map_err(hr)?;
-                    strip_filler(&mut self.bytes);
+                    if self.codec == Codec::H264 {
+                        strip_filler(&mut self.bytes);
+                    }
                     // SAFETY: lectures d'attributs d'un échantillon valide.
                     let (key, t) = unsafe { (s.GetUINT32(&MFSampleExtension_CleanPoint).unwrap_or(0) != 0, s.GetSampleTime().unwrap_or(0)) };
                     if !self.bytes.is_empty() {
                         let pts_us = u64::try_from(t / HNS_PER_US).unwrap_or(0);
-                        self.ready.push(EncodedFrame { codec: Codec::H264, keyframe: key, ts90k: us_to_90k(pts_us), data: std::mem::take(&mut self.bytes) });
+                        self.ready.push(EncodedFrame { codec: self.codec, keyframe: key, ts90k: us_to_90k(pts_us), data: std::mem::take(&mut self.bytes) });
                     }
                     return Ok(());
                 }
@@ -359,7 +380,7 @@ impl Encoder for MfEncoder {
         check_size(f.width, f.height)?;
         if (f.width & !1, f.height & !1) != (self.width, self.height) {
             // Nouvelle taille : nouvelle transformée (la première image est une image clé).
-            *self = Self::new(f.width, f.height, self.fps, self.asked)?;
+            *self = Self::with_codec(self.codec, f.width, f.height, self.fps, self.asked)?;
         }
         let (w, h) = (f.width as usize, f.height as usize);
         let (y, u, v): (&[u8], &[u8], &[u8]) = match &f.data {
@@ -449,6 +470,8 @@ impl Drop for MfEncoder {
 /// Encodeur VP8 logiciel des « Extensions vidéo VP9 », synchrone, entrée
 /// IYUV (l'agencement I420 : aucune conversion pour la caméra).
 pub struct MfVp8Encoder {
+    /// VP8 ; VP9 pour fabriquer les jeux d'essai.
+    codec: Codec,
     activate: IMFActivate,
     mft: IMFTransform,
     api: Option<ICodecAPI>,
@@ -470,14 +493,24 @@ unsafe impl Send for MfVp8Encoder {}
 
 impl MfVp8Encoder {
     pub fn new(w: u32, h: u32, fps: u32, bps: u32) -> Result<Self, CodecError> {
+        Self::with_codec(Codec::Vp8, w, h, fps, bps)
+    }
+
+    /// Encodeur VP9 des mêmes extensions : pour les jeux d'essai.
+    #[cfg(test)]
+    pub fn vp9(w: u32, h: u32, fps: u32, bps: u32) -> Result<Self, CodecError> {
+        Self::with_codec(Codec::Vp9, w, h, fps, bps)
+    }
+
+    fn with_codec(codec: Codec, w: u32, h: u32, fps: u32, bps: u32) -> Result<Self, CodecError> {
         check_size(w, h)?;
         if !ready() {
             return Err(CodecError::Internal("Media Foundation indisponible sur ce fil".into()));
         }
         let (w, h, fps, bps) = (w & !1, h & !1, fps.clamp(1, 240), bps.max(1));
         let mut last = CodecError::Internal("aucun encodeur VP8 (Extensions vidéo VP9 absentes)".into());
-        for a in transforms(MFT_CATEGORY_VIDEO_ENCODER, SOFTWARE, &MFVideoFormat_IYUV, Some(&MFVideoFormat_VP80)) {
-            match Self::open(a, w, h, fps, bps) {
+        for a in transforms(MFT_CATEGORY_VIDEO_ENCODER, SOFTWARE, &MFVideoFormat_IYUV, Some(&vpx_format(codec))) {
+            match Self::open(a, codec, w, h, fps, bps) {
                 Ok(e) => return Ok(e),
                 Err(e) => last = e,
             }
@@ -485,7 +518,7 @@ impl MfVp8Encoder {
         Err(last)
     }
 
-    fn open(activate: IMFActivate, w: u32, h: u32, fps: u32, bps: u32) -> Result<Self, CodecError> {
+    fn open(activate: IMFActivate, codec: Codec, w: u32, h: u32, fps: u32, bps: u32) -> Result<Self, CodecError> {
         // SAFETY: appels COM sur des objets valides, avec des arguments
         // possédés qui vivent pendant chaque appel.
         let built = unsafe {
@@ -500,7 +533,7 @@ impl MfVp8Encoder {
                 // Images clés à la demande plutôt que périodiques, comme pour H.264.
                 set_codec_value(a, &CODECAPI_AVEncMPVGOPSize, VARIANT::from(fps.saturating_mul(60)));
 
-                let out = video_type(&MFVideoFormat_VP80)?;
+                let out = video_type(&vpx_format(codec))?;
                 out.SetUINT32(&MF_MT_AVG_BITRATE, bps)?;
                 out.SetUINT64(&MF_MT_FRAME_SIZE, pair(w, h))?;
                 out.SetUINT64(&MF_MT_FRAME_RATE, pair(fps, 1))?;
@@ -526,7 +559,7 @@ impl MfVp8Encoder {
                 return Err(hr(e));
             }
         };
-        Ok(Self { activate, mft, api, width: w, height: h, fps, bps, pending_bps: None, bytes: Vec::new(), y: Vec::new(), u: Vec::new(), v: Vec::new() })
+        Ok(Self { codec, activate, mft, api, width: w, height: h, fps, bps, pending_bps: None, bytes: Vec::new(), y: Vec::new(), u: Vec::new(), v: Vec::new() })
     }
 
     /// Tout ce que la transformée a de prêt.
@@ -544,9 +577,9 @@ impl MfVp8Encoder {
                 Out::Sample(s) => {
                     sample_bytes(&s, &mut self.bytes).map_err(hr)?;
                     if !self.bytes.is_empty() {
-                        // Bit P de l'en-tête VP8 : plus sûr que l'attribut de l'échantillon.
-                        let keyframe = self.bytes[0] & 1 == 0;
-                        out.push(EncodedFrame { codec: Codec::Vp8, keyframe, ts90k, data: std::mem::take(&mut self.bytes) });
+                        // En-tête de l'image : plus sûr que l'attribut de l'échantillon.
+                        let keyframe = if self.codec == Codec::Vp9 { vp8::vp9_keyframe_size(&self.bytes).is_some() } else { self.bytes[0] & 1 == 0 };
+                        out.push(EncodedFrame { codec: self.codec, keyframe, ts90k, data: std::mem::take(&mut self.bytes) });
                     }
                 }
             }
@@ -566,7 +599,7 @@ impl Encoder for MfVp8Encoder {
         rebuild |= force_keyframe && !rebuild && !set_codec_value(self.api.as_ref(), &CODECAPI_AVEncVideoForceKeyFrame, VARIANT::from(1u32));
         if rebuild {
             // Nouvelle taille, nouveau débit ou image clé : nouvelle transformée.
-            *self = Self::new(f.width, f.height, self.fps, rebuild_bps.unwrap_or(self.bps))?;
+            *self = Self::with_codec(self.codec, f.width, f.height, self.fps, rebuild_bps.unwrap_or(self.bps))?;
         }
         let (w, h) = (f.width as usize, f.height as usize);
         let (y, u, v): (&[u8], &[u8], &[u8]) = match &f.data {
@@ -657,15 +690,20 @@ struct Shape {
 // SAFETY: comme `MfEncoder` (créé dans le MTA, accès exclusif par `&mut self`).
 unsafe impl Send for MfDecoder {}
 
-/// Sous-type Media Foundation d'un flux VP8 ou VP9.
+/// Sous-type Media Foundation d'un flux VP8, VP9 ou AV1.
 fn vpx_format(codec: Codec) -> GUID {
-    if codec == Codec::Vp9 { MFVideoFormat_VP90 } else { MFVideoFormat_VP80 }
+    match codec {
+        Codec::Vp9 => MFVideoFormat_VP90,
+        Codec::Av1 => MFVideoFormat_AV1,
+        _ => MFVideoFormat_VP80,
+    }
 }
 
-/// VP9 décodable sur cette machine. Appelé sur un fil dans le MTA.
-#[cfg(test)]
-pub(super) fn vp9_support() -> bool {
-    ready() && !transforms(MFT_CATEGORY_VIDEO_DECODER, SOFTWARE, &MFVideoFormat_VP90, None).is_empty()
+/// VP9 et AV1 décodables sur cette machine (« Extensions vidéo VP9 » et
+/// « Extension vidéo AV1 »). Appelé sur un fil dans le MTA.
+pub(super) fn extra_support() -> (bool, bool) {
+    let has = |c| ready() && !transforms(MFT_CATEGORY_VIDEO_DECODER, SOFTWARE, &vpx_format(c), None).is_empty();
+    (has(Codec::Vp9), has(Codec::Av1))
 }
 
 /// Vrai si l'unité d'accès (Annex B) contient une tranche IDR.
@@ -725,16 +763,21 @@ impl MfDecoder {
         Self::vpx(Codec::Vp8)
     }
 
-    /// Décodeur VP9 des mêmes extensions (fichiers WebM, lot VID).
+    /// Décodeur VP9 des mêmes extensions.
     pub fn vp9() -> Result<Self, CodecError> {
         Self::vpx(Codec::Vp9)
+    }
+
+    /// Décodeur AV1 logiciel de l'« Extension vidéo AV1 », s'il est installé.
+    pub fn av1() -> Result<Self, CodecError> {
+        Self::vpx(Codec::Av1)
     }
 
     fn vpx(codec: Codec) -> Result<Self, CodecError> {
         if !ready() {
             return Err(CodecError::Internal("Media Foundation indisponible sur ce fil".into()));
         }
-        let mut last = CodecError::Internal("aucun décodeur VP8 ou VP9 (Extensions vidéo VP9 absentes)".into());
+        let mut last = CodecError::Internal("aucun décodeur de Windows pour ce codec (extension vidéo absente)".into());
         for a in transforms(MFT_CATEGORY_VIDEO_DECODER, SOFTWARE, &vpx_format(codec), None) {
             // SAFETY: activation d'un objet énuméré, valide ; en cas d'échec il est arrêté.
             match unsafe { a.ActivateObject::<IMFTransform>() } {
@@ -795,7 +838,9 @@ impl MfDecoder {
             for i in 0.. {
                 let Ok(t) = self.mft.GetOutputAvailableType(0, i) else { break };
                 let sub = t.GetGUID(&MF_MT_SUBTYPE)?;
-                if sub == MFVideoFormat_I420 || sub == MFVideoFormat_IYUV {
+                // AV1 : NV12 seulement. Mesuré : le décodeur propose IYUV, l'accepte,
+                // puis refuse de sortir la première image (0xc00d36b4).
+                if self.codec != Codec::Av1 && (sub == MFVideoFormat_I420 || sub == MFVideoFormat_IYUV) {
                     chosen = Some((t, false));
                     break;
                 }
@@ -906,12 +951,13 @@ impl Decoder for MfDecoder {
         let vp8_key = match self.codec {
             Codec::Vp8 => vp8::keyframe_size(&f.data),
             Codec::Vp9 => vp8::vp9_keyframe_size(&f.data),
-            _ => None,
+            Codec::Av1 => av1::sequence_size(&f.data),
+            Codec::H264 => None,
         };
         if self.need_key {
             let key = match self.codec {
-                Codec::Vp8 | Codec::Vp9 => vp8_key.is_some(),
-                _ => has_idr(&f.data),
+                Codec::Vp8 | Codec::Vp9 | Codec::Av1 => vp8_key.is_some(),
+                Codec::H264 => has_idr(&f.data),
             };
             if !key {
                 return Ok(None);
@@ -928,6 +974,14 @@ impl Decoder for MfDecoder {
         let mut data = std::borrow::Cow::Borrowed(&f.data);
         if self.codec == Codec::H264 && f.data.windows(4).any(|w| w[..3] == [0, 0, 1] && w[3] & 0x1f == 12) {
             strip_filler(data.to_mut());
+        }
+        if self.codec == Codec::Av1 {
+            // Image reçue du réseau : délimiteur temporel et tailles d'OBU remis.
+            let Some(unit) = av1::temporal_unit(&f.data) else {
+                self.need_key = true;
+                return Err(CodecError::Corrupt("OBU illisibles".into()));
+            };
+            data = std::borrow::Cow::Owned(unit);
         }
         let sample = new_sample(data.len(), i64::try_from(pts_us).unwrap_or(0) * HNS_PER_US, |d| d.copy_from_slice(&data)).map_err(hr)?;
         // SAFETY: échantillon valide pour le flux 0.
@@ -949,8 +1003,9 @@ impl Decoder for MfDecoder {
         // décodeur, jamais celui de l'interface), au plus `LATE_OUTPUT`.
         let picture = match self.codec {
             Codec::Vp8 => vp8::is_shown(&data),
-            // VP9 : une image cachée voyage avec celle qui la montre (super-image).
-            Codec::Vp9 => true,
+            // VP9 : une image cachée voyage avec celle qui la montre (super-image) ;
+            // AV1 : de même dans l'unité temporelle.
+            Codec::Vp9 | Codec::Av1 => true,
             _ => has_picture(&data),
         };
         if got.is_none() && picture {

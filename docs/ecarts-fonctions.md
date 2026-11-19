@@ -195,7 +195,7 @@ lancé pour cet audit.
 | Appels privés et de groupe, sonnerie | fait | `ui/call.rs` |
 | Réglages d'un **salon vocal** : débit, nombre maximal, région, qualité vidéo | **fait** | débit, limite, région, qualité vidéo (`net/admin/channels.rs`, `ui/channel_settings/overview.rs`, lot S) |
 | Inviter au salon vocal, afficher le nombre de personnes et la limite | **fait** | « Inviter » du menu d'un salon vocal (`ui/channel_settings/list.rs`) |
-| Codecs AV1, VP9 ; son d'un direct regardé hors appel | partiel | son d'un direct regardé hors appel fait (`voice/media.rs`) ; VP9 et AV1 non décodés |
+| Codecs AV1, VP9 ; son d'un direct regardé hors appel | partiel | son d'un direct regardé hors appel fait (`voice/media.rs`) ; VP9 et AV1 décodés (0.1.9, réglage coupé par défaut, non essayé sur un vrai appel), jamais envoyés |
 | Overlay en jeu | écarté | plan, chapitre 5 |
 
 ### 1.9 Sélecteur d'emojis, de GIF et d'autocollants

@@ -43,13 +43,16 @@ fn deliver(b: &mut Link, p: &RtpOut, now: Instant) -> Option<Received> {
 
 #[test]
 fn codecs_proposes() {
-    let offers = vec![CodecOffer::new(Codec::Av1, false, true), CodecOffer::new(Codec::H264, true, true), CodecOffer::new(Codec::Vp8, false, true)];
+    let offers = offers(&[Codec::H264, Codec::Vp9, Codec::Av1], &[Codec::H264, Codec::Vp8, Codec::Av1]);
     let c = select_codecs(&offers);
     assert_eq!(c[0], json!({"name": "opus", "type": "audio", "priority": 1000, "payload_type": 120}));
     assert_eq!(c[1], json!({"name": "H264", "type": "video", "priority": 1000, "payload_type": 103, "rtx_payload_type": 104, "encode": true, "decode": true}));
     assert_eq!(c[2]["name"], "VP8");
     assert_eq!(c[2]["priority"], 2000);
-    assert_eq!(c.as_array().map(Vec::len), Some(3), "AV1 sans paquétiseur : non proposé");
+    assert_eq!(c[2]["encode"], false);
+    // AV1 : reçu seulement, même si la machine sait l'encoder ; VP9 ni décodé ni envoyé : absent.
+    assert_eq!(c[3], json!({"name": "AV1", "type": "video", "priority": 3000, "payload_type": 101, "rtx_payload_type": 102, "encode": false, "decode": true}));
+    assert_eq!(c.as_array().map(Vec::len), Some(4));
     assert!(c.as_array().into_iter().flatten().all(|c| c["payload_type"] != 96 && c["rtx_payload_type"] != 96));
     assert_eq!(identify_streams(true)[0]["type"], "screen");
     assert!(!Link::new(Vec::new(), false).enabled());
@@ -198,4 +201,36 @@ fn offre_vp8_et_bascule_du_codec_d_envoi() {
     // Session Update : retour à H.264.
     a.on_session(&json!({"video_codec": "H264"}));
     assert_eq!(a.send_codec(), Some(Codec::H264));
+}
+
+#[test]
+fn vp9_et_av1_recus_sans_etre_envoyes() {
+    let mut b = Link::new(offers(&[Codec::H264, Codec::Av1], &[Codec::H264, Codec::Vp9, Codec::Av1]), false);
+    b.on_ready(&json!({"streams": []}), 20);
+    let op = json!({"user_id": A.to_string(), "audio_ssrc": 10, "video_ssrc": 100, "streams": [{"ssrc": 100, "rtx_ssrc": 101, "active": true}]});
+    assert_eq!(b.on_video_op(&op, B), Some((A, true)));
+    // La passerelle choisit AV1 : on ne sait pas l'envoyer, l'envoi reste en H.264.
+    b.on_session(&json!({"video_codec": "AV1"}));
+    assert_eq!(b.send_codec(), Some(Codec::H264));
+    let now = Instant::now();
+    let meta = |payload_type, seq| RtpMeta { ssrc: 100, payload_type, seq, ts: 9000, marker: true };
+    // Chaque récepteur se cale d'abord sur une fin d'image.
+    assert!(b.on_rtp(meta(107, 1), &[0x0c, 0], now).is_some_and(|r| r.frames.is_empty()));
+    let r = b.on_rtp(meta(107, 2), &[0x0c, 1, 2, 3], now).unwrap_or_else(|| panic!("VP9 accepté"));
+    assert_eq!(r.codec, Some(Codec::Vp9));
+    assert_eq!(r.frames, vec![Assembled { ts: 9000, keyframe: true, data: vec![1, 2, 3] }]);
+    // Le même flux passe en AV1 : nouveau récepteur, image clé au bit N.
+    assert!(b.on_rtp(meta(101, 3), &[0x10, 0x30, 0], now).is_some_and(|r| r.frames.is_empty()));
+    let r = b.on_rtp(meta(101, 4), &[0x18, 0x08, 0xaa], now).unwrap_or_else(|| panic!("AV1 accepté"));
+    assert_eq!(r.codec, Some(Codec::Av1));
+    assert_eq!(r.frames, vec![Assembled { ts: 9000, keyframe: true, data: vec![0x08, 0xaa] }]);
+    // Paquet abîmé : pas d'image, et une image clé est redemandée.
+    let r = b.on_rtp(meta(101, 5), &[0x80, 1], now).unwrap_or_else(|| panic!("AV1 accepté"));
+    assert!(r.frames.is_empty());
+    // Codec non annoncé en réception : paquet ignoré.
+    let mut c = Link::new(offers(&[Codec::H264], &[Codec::H264]), false);
+    c.on_ready(&json!({"streams": []}), 20);
+    assert_eq!(c.on_video_op(&op, B), Some((A, true)));
+    assert!(c.on_rtp(meta(107, 1), &[0x0c, 0], now).is_none());
+    assert!(c.on_rtp(meta(101, 1), &[0x18, 0x08, 0xaa], now).is_none());
 }
