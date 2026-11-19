@@ -261,6 +261,9 @@ impl App {
         if let Some(v) = toggle(ui, s2::INSTANT_TIPS.get(lang), s2::INSTANT_TIPS_TIP.get(lang), Some(p.instant_tooltips), true) {
             p.instant_tooltips = v;
         }
+        if let Some(v) = toggle(ui, s2::STICKER_HINTS.get(lang), s2::STICKER_HINTS_TIP.get(lang), Some(p.sticker_hints), true) {
+            p.sticker_hints = v;
+        }
         p.saturation = sat;
         if save || save_speed {
             self.local.touched = true;

@@ -1935,6 +1935,8 @@ enum Scene {
     Sondages,
     /// Emojis et autocollants (lot T4), sélecteur de la saisie ouvert.
     Emojis,
+    /// Suggestions d'autocollants au-dessus de la saisie pour le mot écrit (0.1.11).
+    SuggestionsAutocollants,
     /// Sélecteur de GIF (lot G) : tuiles des favoris, des tendances et des catégories.
     Gifs,
     /// Sélecteur de GIF : résultats de la recherche « chat ».
@@ -2383,7 +2385,7 @@ fn filled_store(view: View, scene: Option<Scene>) -> (Store, HashMap<u64, Vec<Me
     if matches!(scene, Some(Scene::ParametresEmojis | Scene::ParametresAutocollants | Scene::ParametresSons)) {
         expressions_store(&mut s);
     }
-    if matches!(scene, Some(Scene::Emojis | Scene::Gifs | Scene::GifsRecherche | Scene::GifsFavoris | Scene::SuperReaction)) {
+    if matches!(scene, Some(Scene::Emojis | Scene::SuggestionsAutocollants | Scene::Gifs | Scene::GifsRecherche | Scene::GifsFavoris | Scene::SuperReaction)) {
         emojis_store(&mut s);
         if scene == Some(Scene::SuperReaction) {
             // Profil chargé avec Nitro : la super réaction est proposée.
@@ -3028,8 +3030,8 @@ fn expressions_store(s: &mut Store) {
         g.premium_tier = 1;
     }
     let stickers = vec![
-        GuildSticker { id: 7_000_000_000_000_000_701, name: "Salut".into(), format: StickerFormat::Png, available: true },
-        GuildSticker { id: 7_000_000_000_000_000_702, name: "Danse".into(), format: StickerFormat::Gif, available: true },
+        GuildSticker { id: 7_000_000_000_000_000_701, name: "Salut".into(), format: StickerFormat::Png, available: true, tags: String::new() },
+        GuildSticker { id: 7_000_000_000_000_000_702, name: "Danse".into(), format: StickerFormat::Gif, available: true, tags: String::new() },
     ];
     s.apply(Event::Stickers(StickerEvent::Guild { guild_id: ALPHA, stickers }));
 }
@@ -3090,8 +3092,8 @@ fn emojis_store(s: &mut Store) {
         g.emojis.push(Emoji { id: 7_000_000_000_000_000_501, name: "ferris".into(), animated: false, available: true, roles: Vec::new() });
     }
     let stickers = vec![
-        GuildSticker { id: 7_000_000_000_000_000_601, name: "Coucou".into(), format: StickerFormat::Png, available: true },
-        GuildSticker { id: 7_000_000_000_000_000_602, name: "Danse".into(), format: StickerFormat::Lottie, available: true },
+        GuildSticker { id: 7_000_000_000_000_000_601, name: "Coucou".into(), format: StickerFormat::Png, available: true, tags: "danser".into() },
+        GuildSticker { id: 7_000_000_000_000_000_602, name: "Danse".into(), format: StickerFormat::Lottie, available: true, tags: String::new() },
     ];
     s.apply(Event::Stickers(StickerEvent::Guild { guild_id: ALPHA, stickers }));
     let texts = [
@@ -3953,6 +3955,7 @@ fn args() -> Result<Args, String> {
                     Some("forum") => Scene::Forum,
                     Some("galerie") => Scene::Galerie,
                     Some("emojis") => Scene::Emojis,
+                    Some("suggestions-autocollants") => Scene::SuggestionsAutocollants,
                     Some("gifs") => Scene::Gifs,
                     Some("gifs-recherche") => Scene::GifsRecherche,
                     Some("gifs-favoris") => Scene::GifsFavoris,
@@ -4526,6 +4529,10 @@ fn save_png(path: &PathBuf, img: &egui::ColorImage) -> Result<(), String> {
 
 fn main() -> eframe::Result {
     ferrocord::panics::install();
+    // L'aperçu ne lit ni n'écrit les réglages de l'utilisateur : tout va dans
+    // un dossier temporaire à lui (constaté : `installation.json` et
+    // `local.toml` de la vraie installation étaient réécrits à chaque lancement).
+    ferrocord::platform::use_private_dirs(std::env::temp_dir().join("ferrocord-apercu"));
     let args = match args() {
         Ok(a) => a,
         Err(e) => {
@@ -4814,6 +4821,10 @@ fn main() -> eframe::Result {
                 // `On` : « réduire les animations » activé.
                 p.motion = if args.scene == Some(Scene::Parures) { ferrocord::state::local::Motion::On } else { ferrocord::state::local::Motion::Off };
                 app.set_local_prefs(p);
+            }
+            if args.scene == Some(Scene::SuggestionsAutocollants) {
+                app.open(Some(ALPHA), GENERAL);
+                app.set_composer_text("dan");
             }
             if args.scene == Some(Scene::Emojis) {
                 app.open(Some(ALPHA), GENERAL);

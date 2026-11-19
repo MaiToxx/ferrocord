@@ -68,7 +68,21 @@ impl Store {
         let Some(g) = self.guild_of(channel) else { return Vec::new() };
         self.stickers.guild(g).iter().filter(|s| s.available).collect()
     }
+
+    /// Autocollants à proposer pendant la frappe de `word` dans `channel` :
+    /// ceux de [`Store::picker_stickers`] dont un mot du nom ou une étiquette
+    /// commence par `word` (sans casse ni accents), [`STICKER_HINTS`] au plus.
+    pub fn sticker_hints(&self, channel: u64, word: &str) -> Vec<&GuildSticker> {
+        let q = crate::state::nav::fold(word);
+        if q.is_empty() {
+            return Vec::new();
+        }
+        self.picker_stickers(channel).into_iter().filter(|s| s.words().any(|w| crate::state::nav::fold(w).starts_with(&q))).take(STICKER_HINTS).collect()
+    }
 }
+
+/// Autocollants proposés à la fois pendant la frappe.
+pub const STICKER_HINTS: usize = 6;
 
 #[cfg(test)]
 mod tests {
@@ -94,12 +108,24 @@ mod tests {
         // Profil pas encore lu : on ne sait pas s'il y a Nitro, rien n'est montré verrouillé.
         assert!(s.locked_emojis(100).is_empty());
         let stickers = vec![
-            GuildSticker { id: 5, name: "a".into(), format: StickerFormat::Png, available: true },
-            GuildSticker { id: 6, name: "b".into(), format: StickerFormat::Png, available: false },
+            GuildSticker { id: 5, name: "a".into(), format: StickerFormat::Png, available: true, tags: String::new() },
+            GuildSticker { id: 6, name: "b".into(), format: StickerFormat::Png, available: false, tags: String::new() },
         ];
         s.apply(Event::Stickers(StickerEvent::Guild { guild_id: 9, stickers }));
         assert_eq!(s.picker_stickers(100).iter().map(|s| s.id).collect::<Vec<_>>(), [5]);
         assert!(s.picker_stickers(12345).is_empty());
+        // Suggestions : début d'un mot du nom ou d'une étiquette, sans casse
+        // ni accents ; jamais un autocollant indisponible, six au plus.
+        let mut stickers: Vec<GuildSticker> = (10..20).map(|id| GuildSticker { id, name: format!("Chat n°{id}"), format: StickerFormat::Png, available: true, tags: String::new() }).collect();
+        stickers.push(GuildSticker { id: 30, name: "Fête d'été".into(), format: StickerFormat::Png, available: true, tags: "tada, bravo".into() });
+        stickers.push(GuildSticker { id: 31, name: "Été perdu".into(), format: StickerFormat::Png, available: false, tags: String::new() });
+        s.apply(Event::Stickers(StickerEvent::Guild { guild_id: 9, stickers }));
+        let hints = |s: &Store, w: &str| s.sticker_hints(100, w).iter().map(|s| s.id).collect::<Vec<_>>();
+        assert_eq!(hints(&s, "ETE"), [30]);
+        assert_eq!(hints(&s, "brav"), [30]);
+        assert_eq!(hints(&s, "avo"), [] as [u64; 0], "le début d'un mot, pas son milieu");
+        assert_eq!(hints(&s, "chat"), [10, 11, 12, 13, 14, 15]);
+        assert!(hints(&s, "").is_empty() && s.sticker_hints(12345, "chat").is_empty());
         s.apply(Event::GuildDelete(9));
         assert!(s.stickers.guild(9).is_empty());
     }

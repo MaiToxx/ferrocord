@@ -253,7 +253,7 @@ impl Worker {
             return;
         }
         self.registered = true;
-        let logo = dirs::config_dir().map(|d| d.join("ferrocord").join("ferrocord.png"));
+        let logo = crate::platform::config_dir().map(|d| d.join("ferrocord").join("ferrocord.png"));
         let logo = logo.filter(|p| write_png(p, icon::LOGO_SIDE, icon::rgba(icon::LOGO_SIDE, accent, None)).is_ok());
         if let Ok(key) = windows_registry::CURRENT_USER.create(format!(r"Software\Classes\AppUserModelId\{AUMID}")) {
             let _ = key.set_string("DisplayName", crate::state::notify::APP_NAME);

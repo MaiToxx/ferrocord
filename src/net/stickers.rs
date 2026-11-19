@@ -23,27 +23,35 @@ pub(super) struct RawSticker {
     format_type: Option<u64>,
     #[serde(default)]
     available: Option<bool>,
+    /// Mots de suggestion (`tags`) : le nom d'un emoji pour un autocollant
+    /// de serveur, une liste séparée par des virgules pour un autocollant
+    /// de Discord.
+    #[serde(default)]
+    tags: Option<String>,
 }
 
 /// Noms plus longs que celui permis par Discord (30) : coupés.
 const MAX_NAME: usize = 64;
+/// Étiquettes : 200 caractères au plus selon la documentation.
+const MAX_TAGS: usize = 200;
 
 impl RawSticker {
-    fn item(self) -> Option<(StickerItem, bool)> {
+    fn item(self) -> Option<(StickerItem, bool, String)> {
         let id = self.id?.parse().ok()?;
         let format = StickerFormat::from_type(self.format_type?)?;
         let name: String = self.name.unwrap_or_default().chars().take(MAX_NAME).collect();
-        Some((StickerItem { id, name, format }, self.available.unwrap_or(true)))
+        let tags: String = self.tags.unwrap_or_default().chars().take(MAX_TAGS).collect();
+        Some((StickerItem { id, name, format }, self.available.unwrap_or(true), tags))
     }
 }
 
 /// Autocollants lisibles d'un message (les illisibles sont ignorés).
 pub(super) fn items(list: Option<Vec<Item<RawSticker>>>) -> Vec<StickerItem> {
-    list.unwrap_or_default().into_iter().filter_map(|i| i.0?.item()).map(|(s, _)| s).collect()
+    list.unwrap_or_default().into_iter().filter_map(|i| i.0?.item()).map(|(s, _, _)| s).collect()
 }
 
 fn guild_list(list: Vec<Item<RawSticker>>) -> Vec<GuildSticker> {
-    let mut list: Vec<GuildSticker> = list.into_iter().filter_map(|i| i.0?.item()).map(|(s, available)| GuildSticker { id: s.id, name: s.name, format: s.format, available }).collect();
+    let mut list: Vec<GuildSticker> = list.into_iter().filter_map(|i| i.0?.item()).map(|(s, available, tags)| GuildSticker { id: s.id, name: s.name, format: s.format, available, tags }).collect();
     // Gardée toute la session : sans la réserve du tableau brut (lot « ram »).
     list.shrink_to_fit();
     list

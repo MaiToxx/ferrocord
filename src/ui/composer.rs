@@ -430,6 +430,10 @@ impl App {
         self.composer_context_menu(ui, id, &out.text_edit.response.response);
         // Barre de mise en forme au-dessus du texte sélectionné (F32).
         self.format_bar(ui, id, &out.text_edit.galley, out.text_edit.galley_pos, out.text_edit.cursor_range, t);
+        // Autocollants proposés pour le mot écrit (F17) ; la liste de
+        // l'autocomplétion, ouverte, garde la place.
+        let word = if out.is_open { None } else { super::sticker_hints::word(&self.input.draft.text).map(str::to_owned) };
+        self.sticker_hints(ui, id, out.text_edit.response.response.rect, cid, word, t);
         if let Some(acc) = &out.accepted
             && let Some(c) = &self.input.cache
             && let Some(i) = c.inserts.iter().position(|ins| acc.insert.strip_suffix(' ') == Some(ins.as_str()))
@@ -943,6 +947,53 @@ mod tests {
         h.frame(Vec::new());
         h.frame(vec![egui::Event::Text("d".into())]);
         assert!(h.sent().is_empty());
+    }
+
+    /// Suggestions d'autocollants (F17) : un mot seul qui commence le nom
+    /// d'un autocollant du serveur le propose ; un clic l'envoie et vide la
+    /// saisie ; la croix l'écarte pour ce mot ; le réglage coupe tout.
+    #[test]
+    fn sticker_is_suggested_for_the_typed_word_and_sent_on_click() {
+        use crate::state::emoji::{GuildSticker, StickerEvent, StickerFormat};
+        let mut h = Harness::new();
+        let stickers = vec![GuildSticker { id: 77, name: "Coucou".into(), format: StickerFormat::Png, available: true, tags: "wave".into() }];
+        h.app.store.apply(Event::Stickers(StickerEvent::Guild { guild_id: GUILD, stickers }));
+        let shown = |h: &Harness| super::super::sticker_hints::shown(&h.app.ctx);
+        let click = |h: &mut Harness, at: egui::Pos2| {
+            h.frame(vec![egui::Event::PointerMoved(at)]);
+            h.frame(vec![egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: true, modifiers: Default::default() }]);
+            h.frame(vec![egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: false, modifiers: Default::default() }]);
+            h.frame(Vec::new());
+        };
+        h.app.set_composer_text("bonjour cou");
+        h.frame(Vec::new());
+        h.frame(Vec::new());
+        assert!(shown(&h).is_none(), "deux mots : rien");
+        h.app.set_composer_text("wav");
+        h.frame(Vec::new());
+        h.frame(Vec::new());
+        assert!(shown(&h).is_some(), "étiquette");
+        // La croix (à droite) écarte la suggestion pour ce mot.
+        let r = shown(&h).unwrap();
+        click(&mut h, egui::pos2(r.right() - 18.0, r.center().y));
+        assert!(shown(&h).is_none());
+        assert_eq!(h.app.composer_text(), "wav");
+        // Réglage coupé : rien ; remis : la suggestion revient pour un autre mot.
+        h.app.local.prefs.sticker_hints = false;
+        h.app.set_composer_text("cou");
+        h.frame(Vec::new());
+        h.frame(Vec::new());
+        assert!(shown(&h).is_none());
+        h.app.local.prefs.sticker_hints = true;
+        h.frame(Vec::new());
+        h.frame(Vec::new());
+        let r = shown(&h).expect("suggestion pour « cou »");
+        h.app.store.take_commands();
+        click(&mut h, egui::pos2(r.left() + 30.0, r.center().y));
+        let sent = h.app.store.take_commands();
+        assert!(sent.iter().any(|c| matches!(c, Cmd::Social(crate::state::social::SocialCmd::Send { kind: crate::state::social::SendKind::Sticker { sticker_id: 77 }, .. }))), "{sent:?}");
+        assert_eq!(h.app.composer_text(), "");
+        assert!(shown(&h).is_none());
     }
 
     #[test]

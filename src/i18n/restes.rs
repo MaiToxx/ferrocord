@@ -14,6 +14,8 @@ pub mod t {
         FMT_STRIKE = "Barré", "Strikethrough";
         FMT_CODE = "Code", "Code";
         FMT_SPOILER = "Spoiler", "Spoiler";
+        STICKER_HINTS_CLOSE = "Fermer les suggestions d'autocollants", "Close sticker suggestions";
+        STICKER_HINT_SEND = "Envoyer l'autocollant {}", "Send the {} sticker";
         ACCEPT_REQUEST = "Accepter", "Accept";
         ACT_CREATE_GROUP = "Créer un groupe privé", "Create a group DM";
         PROFILE_HIDE = "Masquer le profil de l'utilisateur", "Hide User Profile";

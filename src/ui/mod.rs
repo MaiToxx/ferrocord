@@ -37,6 +37,7 @@ pub mod fonts;
 // Fenêtre de l'installation et de la désinstallation (lot distrib).
 #[cfg(windows)]
 pub mod setup;
+mod sticker_hints;
 mod stickers;
 mod friends;
 mod friends_active;

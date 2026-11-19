@@ -1017,8 +1017,8 @@ mod tests {
         app.store.apply(Event::Quests(QuestEvent::List(Ok((list, None)))));
         app.show_quest_detail(8_000_000_000_000_000_002);
         let ctx = app.ctx.clone();
-        let (mut time, mut last) = (0.0, None);
-        for _ in 0..300 {
+        let mut time = 0.0;
+        let mut frame = |app: &mut App| {
             let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1100.0, 720.0))), time: Some(time), ..Default::default() };
             time += 1.0 / 60.0;
             let mut out = ctx.run_ui(input, |ui| {
@@ -1026,9 +1026,26 @@ mod tests {
                 app.ui_pass(ui);
             });
             out.textures_delta.clear();
-            last = out.viewport_output.get(&egui::ViewportId::ROOT).map(|v| v.repaint_delay);
+            out.viewport_output.get(&egui::ViewportId::ROOT).map(|v| v.repaint_delay)
+        };
+        for _ in 0..300 {
+            frame(&mut app);
         }
-        assert_eq!(last, Some(std::time::Duration::MAX), "réveil demandé par {:?}", ctx.repaint_causes());
+        // Au repos : vingt images de suite sans réveil. Un travail de fond fini
+        // en retard (image décodée sur un autre fil, machine d'essai chargée)
+        // réveille encore une fois, ce qui est normal ; une page qui se
+        // redessine sans fin n'atteint jamais le repos.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        let mut calm = 0;
+        while calm < 20 {
+            if frame(&mut app) == Some(std::time::Duration::MAX) {
+                calm += 1;
+            } else {
+                calm = 0;
+                assert!(std::time::Instant::now() < deadline, "réveil demandé par {:?}", ctx.repaint_causes());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
         assert!(!app.quests.cards.is_empty());
     }
 

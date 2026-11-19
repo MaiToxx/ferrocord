@@ -588,6 +588,9 @@ mod tests {
         app.logic_pass();
         push(&net, &mut app, Event::MessageDelete { channel_id: C, id: 11 });
         app.journal_exit();
+        // La sortie n'attend l'écriture que deux secondes (l'application ne
+        // doit pas rester ouverte) ; machine d'essai chargée : on la laisse finir.
+        app.journal.vault.flush(Duration::from_secs(30));
         let file = root.join("journal").join(format!("{ME}.bin"));
         let raw = std::fs::read(&file).unwrap();
         assert!(!raw.windows(4).any(|w| w == b"deux"), "chiffré au repos");

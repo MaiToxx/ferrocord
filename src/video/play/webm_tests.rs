@@ -31,7 +31,7 @@ fn opus_packets(frames: u64) -> Vec<Packet> {
 /// Image grise unie dont la luminance suit `t`.
 fn gray(t: u64) -> Frame {
     let (w, h) = (W as usize, H as usize);
-    Frame { width: W, height: H, pts_us: t * 40_000, data: FrameData::I420 { y: vec![40 + (t * 8) as u8; w * h], u: vec![128; w * h / 4], v: vec![128; w * h / 4] } }
+    Frame { width: W, height: H, pts_us: t * 40_000, data: FrameData::I420 { y: vec![(40 + t * 8).min(250) as u8; w * h], u: vec![128; w * h / 4], v: vec![128; w * h / 4] } }
 }
 
 /// Images VP8 à 25 i/s, une image clé toutes les 10 ; `None` sans le codec de Windows.
@@ -119,8 +119,11 @@ fn vp8_et_opus_images_dans_l_ordre_et_saut_a_l_image_cle() {
 
 #[test]
 fn lecture_complete_par_le_lecteur() {
-    let Some(video) = vp8_packets(10) else { return };
-    let data = webm(Some(("V_VP8", W, H)), None, &video, 400.0, false);
+    // Trente images (1,2 s) : le lecteur suit l'horloge réelle et saute les
+    // images en retard ; sur dix images, une machine d'essai chargée n'en
+    // montrait parfois qu'une.
+    let Some(video) = vp8_packets(30) else { return };
+    let data = webm(Some(("V_VP8", W, H)), None, &video, 1200.0, false);
     let h = Handle::loading(Arc::new(|| {}));
     h.start(move || open(data, None).map_err(|e| format!("{e:?}")));
     let t0 = Instant::now();

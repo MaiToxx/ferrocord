@@ -90,6 +90,9 @@ pub struct LocalPrefs {
     pub role_colors: bool,
     /// Texte des boutons à icône affiché dès le survol, sans délai.
     pub instant_tooltips: bool,
+    /// Autocollants du serveur proposés au-dessus de la saisie quand le mot
+    /// écrit correspond à l'un d'eux.
+    pub sticker_hints: bool,
     pub streamer: Streamer,
     /// Journal local de débogage (`ferrocord.log`).
     pub debug_log: bool,
@@ -128,7 +131,7 @@ pub struct LocalPrefs {
 
 impl Default for LocalPrefs {
     fn default() -> Self {
-        LocalPrefs { motion: Motion::System, intensity: Intensity::Full, saturation: 100, scroll_speed: 100, underline_links: false, role_colors: true, instant_tooltips: false, streamer: Streamer::default(), debug_log: false, voice: Default::default(), audio: Default::default(), video: Default::default(), update_manifest: String::new(), games: Vec::new(), recent_games: Vec::new(), mobile: Default::default(), plugins: Default::default(), identity: Default::default(), look: Default::default(), keywords: Default::default(), friend_groups: Default::default(), windows: Default::default() }
+        LocalPrefs { motion: Motion::System, intensity: Intensity::Full, saturation: 100, scroll_speed: 100, underline_links: false, role_colors: true, instant_tooltips: false, sticker_hints: true, streamer: Streamer::default(), debug_log: false, voice: Default::default(), audio: Default::default(), video: Default::default(), update_manifest: String::new(), games: Vec::new(), recent_games: Vec::new(), mobile: Default::default(), plugins: Default::default(), identity: Default::default(), look: Default::default(), keywords: Default::default(), friend_groups: Default::default(), windows: Default::default() }
     }
 }
 
@@ -170,6 +173,7 @@ pub const SCROLL_MAX: u16 = 300;
 const K_UNDERLINE: &str = "souligner_liens";
 const K_ROLES: &str = "couleur_roles";
 const K_TOOLTIPS: &str = "infobulles_immediates";
+const K_STICKER_HINTS: &str = "suggestions_autocollants";
 const K_DEBUG: &str = "journal";
 const K_OFFLINE: &str = "historique_hors_ligne";
 const S_STREAMER: &str = "streamer";
@@ -193,7 +197,7 @@ impl LocalPrefs {
         format!(
             "# Réglages de cet ordinateur (Ferrocord) : ils ne partent pas chez Discord.\n\
              {K_MOTION} = \"{}\"\n{K_INTENSITY} = \"{}\"
-{K_SATURATION} = {}\n{K_SCROLL} = {}\n{K_UNDERLINE} = {}\n{K_ROLES} = {}\n{K_TOOLTIPS} = {}\n{K_DEBUG} = {}\n\n\
+{K_SATURATION} = {}\n{K_SCROLL} = {}\n{K_UNDERLINE} = {}\n{K_ROLES} = {}\n{K_TOOLTIPS} = {}\n{K_STICKER_HINTS} = {}\n{K_DEBUG} = {}\n\n\
              [{S_STREAMER}]\n{K_ON} = {}\n{K_PERSONAL} = {}\n{K_INVITES} = {}\n{K_SOUNDS} = {}\n{K_TOASTS} = {}\n",
             self.motion.key(),
             self.intensity.key(),
@@ -202,6 +206,7 @@ impl LocalPrefs {
             self.underline_links,
             self.role_colors,
             self.instant_tooltips,
+            self.sticker_hints,
             self.debug_log,
             s.on,
             s.hide_personal,
@@ -290,6 +295,7 @@ impl LocalPrefs {
                 K_UNDERLINE => flag(v, &mut p.underline_links),
                 K_ROLES => flag(v, &mut p.role_colors),
                 K_TOOLTIPS => flag(v, &mut p.instant_tooltips),
+                K_STICKER_HINTS => flag(v, &mut p.sticker_hints),
                 K_DEBUG => flag(v, &mut p.debug_log),
                 K_OFFLINE => {
                     if let Some(on) = v.as_bool() {
@@ -452,7 +458,7 @@ mod tests {
 
     #[test]
     fn file_round_trip_and_damaged_values() {
-        let mut p = LocalPrefs { motion: Motion::On, intensity: Intensity::Subtle, saturation: 40, scroll_speed: 250, underline_links: true, role_colors: false, instant_tooltips: true, debug_log: true, update_manifest: "https://exemple.invalid/m\"a\\j.json".into(), ..Default::default() };
+        let mut p = LocalPrefs { motion: Motion::On, intensity: Intensity::Subtle, saturation: 40, scroll_speed: 250, underline_links: true, role_colors: false, instant_tooltips: true, sticker_hints: false, debug_log: true, update_manifest: "https://exemple.invalid/m\"a\\j.json".into(), ..Default::default() };
         p.streamer.on = true;
         p.streamer.mute_sounds = false;
         assert_eq!(LocalPrefs::parse(&p.to_toml()), Ok(p));
