@@ -194,6 +194,61 @@ pub(super) fn mobile_only(p: &Presence) -> bool {
     on_mobile(p) && off(p.client.desktop) && off(p.client.web)
 }
 
+/// Plateformes d'où la personne est connectée, dans l'ordre ordinateur,
+/// navigateur, mobile (`client_status` ; aucune si elle est hors ligne).
+pub(super) fn platforms(p: &Presence) -> [bool; 3] {
+    let on = |s: Option<Status>| p.status != Status::Offline && s.is_some_and(|s| s != Status::Offline);
+    [on(p.client.desktop), on(p.client.web), on(p.client.mobile)]
+}
+
+/// Largeur des icônes de [`paint_platforms`] (0 sans plateforme).
+pub(super) fn platforms_width(t: &Tokens, on: [bool; 3], side: f32) -> f32 {
+    let n = on.iter().filter(|b| **b).count() as f32;
+    if n == 0.0 { 0.0 } else { n * side + (n - 1.0) * t.spacing.item_y }
+}
+
+/// Globe (présence depuis un navigateur) dans `rect`, de couleur `color`.
+fn paint_globe(p: &egui::Painter, rect: Rect, color: Color32) {
+    let r = rect.height() * 0.44;
+    let stroke = Stroke::new((rect.height() * 0.09).max(1.0), color);
+    let c = rect.center();
+    p.circle_stroke(c, r, stroke);
+    p.add(egui::Shape::ellipse_stroke(c, egui::vec2(r * 0.45, r), stroke));
+    p.line_segment([egui::pos2(c.x - r, c.y), egui::pos2(c.x + r, c.y)], stroke);
+}
+
+/// Icônes des plateformes `on` (écran : ordinateur, globe : navigateur,
+/// téléphone : mobile), de côté `side`, à partir de `left` et centrées sur
+/// `y` ; leurs noms au survol.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn paint_platforms(ui: &egui::Ui, t: &Tokens, lang: Lang, on: [bool; 3], left: f32, y: f32, side: f32, color: Color32, id: egui::Id) {
+    let w = platforms_width(t, on, side);
+    if w == 0.0 {
+        return;
+    }
+    let all = Rect::from_min_size(egui::pos2(left, y - side / 2.0), egui::vec2(w, side));
+    if !ui.is_rect_visible(all) {
+        return;
+    }
+    let mut x = left;
+    let mut names = Vec::new();
+    let texts = [crate::i18n::t::PLATFORM_DESKTOP, crate::i18n::t::PLATFORM_WEB, crate::i18n::t::PLATFORM_MOBILE];
+    for (i, text) in texts.into_iter().enumerate() {
+        if !on[i] {
+            continue;
+        }
+        let r = crate::ui::util::pixel_square(ui, egui::pos2(x, all.top()), side);
+        match i {
+            0 => icons::paint(Icon::Screen, ui.painter(), r, color),
+            1 => paint_globe(ui.painter(), r, color),
+            _ => paint_phone(ui.painter(), r, color, None),
+        }
+        names.push(text.get(lang));
+        x += side + t.spacing.item_y;
+    }
+    ui.interact(all, id, Sense::hover()).on_hover_text(names.join(", "));
+}
+
 /// Pastille de statut « mobile » sur l'avatar `avatar` : un téléphone de la
 /// couleur du statut, cerclé de `ring` (le fond à cet endroit).
 pub(super) fn paint_mobile_status(p: &egui::Painter, t: &Tokens, avatar: Rect, status: Status, ring: Color32) {
@@ -748,6 +803,12 @@ mod tests {
         let both = ClientStatus { mobile: Some(Status::Online), desktop: Some(Status::Online), ..Default::default() };
         assert!(on_mobile(&p(Status::Online, both)) && !mobile_only(&p(Status::Online, both)));
         assert!(!on_mobile(&p(Status::Offline, mobile)) && !on_mobile(&p(Status::Online, ClientStatus::default())));
+        // Plateformes : ordinateur, navigateur, mobile ; aucune hors ligne.
+        assert_eq!(platforms(&p(Status::Online, both)), [true, false, true]);
+        assert_eq!(platforms(&p(Status::Dnd, mobile)), [false, false, true]);
+        let web = ClientStatus { web: Some(Status::Idle), desktop: Some(Status::Offline), ..Default::default() };
+        assert_eq!(platforms(&p(Status::Idle, web)), [false, true, false]);
+        assert_eq!(platforms(&p(Status::Offline, both)), [false; 3]);
     }
 
     /// Bulle : rien pour un statut vide ; trois lignes au plus, dans la largeur donnée.

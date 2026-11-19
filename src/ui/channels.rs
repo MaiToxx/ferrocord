@@ -747,6 +747,20 @@ impl App {
         if tools > 0 && (hovered || selected) {
             right -= super::channel_settings::list::row_tools_width(t, tools);
         }
+        // MP à deux : plateformes d'où le correspondant est connecté (ordinateur,
+        // navigateur, mobile), en fin de ligne (demande de l'utilisateur, 0.1.19).
+        if dm_row {
+            let on = {
+                let mut people = self.store.people.lock();
+                people.dm_peer(id).and_then(|u| people.presence(u).map(super::profile_parts::platforms)).unwrap_or_default()
+            };
+            let side = Tokens::icon_side(t.typography.small);
+            let w = super::profile_parts::platforms_width(t, on, side);
+            if w > 0.0 && right - w > text_left + t.spacing.item_x * 4.0 {
+                super::profile_parts::paint_platforms(ui, t, self.lang, on, right - w, rect.center().y, side, icon_color, ui.scope_id().with(("plateformes", id)));
+                right -= w + t.spacing.item_x;
+            }
+        }
         let text_rect = egui::Rect::from_min_max(egui::pos2(text_left, rect.top()), egui::pos2(right.max(text_left), rect.bottom()));
         // Emojis du nom en image (lot T4).
         // Ligne ouverte ou non lue : demi-gras.

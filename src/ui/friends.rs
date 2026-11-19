@@ -1004,6 +1004,16 @@ impl App {
             chip.paint(ui, &self.images, t, egui::Rect::from_min_size(at, size), t.colors.bg3);
             after_name += size.x + t.spacing.item_x;
         }
+        // Plateformes d'où l'ami est connecté, après son nom.
+        if who.status.is_some() {
+            let on = self.store.people.lock().presence(who.id).map(super::profile_parts::platforms).unwrap_or_default();
+            let side = Tokens::icon_side(second_size);
+            let w = super::profile_parts::platforms_width(t, on, side);
+            if w > 0.0 && after_name + w <= text_right {
+                super::profile_parts::paint_platforms(ui, t, self.lang, on, after_name, top + name.size().y / 2.0, side, t.colors.muted, ui.scope_id().with(("plateformes", who.id)));
+                after_name += w + t.spacing.item_x;
+            }
+        }
         if hovered && !who.username.is_empty() && who.username != who.name && text_right - after_name > t.spacing.item_x * 4.0 {
             let user = WidgetText::from(RichText::new(who.username).size(second_size).color(t.colors.muted)).into_galley(ui, Some(TextWrapMode::Truncate), text_right - after_name, TextStyle::Body);
             let y = top + name.size().y - user.size().y - (name.size().y - user.size().y) / 4.0;
