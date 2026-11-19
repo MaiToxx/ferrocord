@@ -48,6 +48,8 @@ pub mod t {
         ROLE_COLORS_TIP = "Liste des membres et mentions de rôle. Décoché\u{a0}: dans la couleur du texte.", "Member list and role mentions. Unchecked: in the text color.";
         INSTANT_TIPS = "Texte des boutons sans attendre", "Show button text immediately";
         INSTANT_TIPS_TIP = "Le texte d'un bouton à icône (infobulle) s'affiche dès le survol, sans délai.", "An icon button's text (tooltip) shows as soon as it's hovered, without delay.";
+        STICKER_HINTS = "Suggérer des autocollants pendant la frappe", "Suggest stickers while typing";
+        STICKER_HINTS_TIP = "Quand le message ne contient qu'un mot qui correspond à un autocollant du serveur, il est proposé au-dessus de la saisie.", "When the message is a single word matching one of the server's stickers, it is offered above the text box.";
 
         STREAMER_ON = "Activer le mode streamer", "Enable streamer mode";
         STREAMER_ON_TIP = "Masque ce qui ne doit pas apparaître à l'écran pendant une diffusion.", "Hides what shouldn't appear on screen while streaming.";

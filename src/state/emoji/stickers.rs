@@ -44,9 +44,18 @@ pub struct GuildSticker {
     pub format: StickerFormat,
     /// `false` : perdu avec les boosts, inutilisable.
     pub available: bool,
+    /// Mots de suggestion donnés par Discord (`tags`), tels que reçus.
+    pub tags: String,
 }
 
 impl GuildSticker {
+    /// Mots du nom et des étiquettes : ce que la suggestion pendant la
+    /// frappe compare au mot écrit.
+    pub fn words(&self) -> impl Iterator<Item = &str> {
+        let sep = |c: char| !c.is_alphanumeric();
+        self.name.split(sep).chain(self.tags.split(sep)).filter(|w| !w.is_empty())
+    }
+
     pub fn item(&self) -> StickerItem {
         StickerItem { id: self.id, name: self.name.clone(), format: self.format }
     }

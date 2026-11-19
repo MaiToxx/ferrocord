@@ -65,9 +65,23 @@ use crate::net::Wake;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+/// Racine de remplacement des dossiers de réglages et de cache, pour un
+/// outil qui ne doit pas toucher aux données de l'utilisateur (l'aperçu).
+static PRIVATE_ROOT: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+/// Range réglages et cache sous `root` pour toute la vie du processus, au
+/// lieu des dossiers du système. À appeler avant toute lecture ; le premier
+/// appel gagne.
+pub fn use_private_dirs(root: PathBuf) {
+    let _ = PRIVATE_ROOT.set(root);
+}
+
 /// Dossier des réglages (`<dossier>/ferrocord/…`) : celui du système sur
 /// ordinateur, le stockage privé de l'application sur Android.
 pub fn config_dir() -> Option<PathBuf> {
+    if let Some(root) = PRIVATE_ROOT.get() {
+        return Some(root.join("reglages"));
+    }
     #[cfg(target_os = "android")]
     return android::files_dir();
     #[cfg(not(target_os = "android"))]
@@ -77,6 +91,9 @@ pub fn config_dir() -> Option<PathBuf> {
 /// Dossier du cache (images, mesures) : celui du système, ou le cache privé
 /// de l'application sur Android (que le système peut vider).
 pub fn cache_dir() -> Option<PathBuf> {
+    if let Some(root) = PRIVATE_ROOT.get() {
+        return Some(root.join("cache"));
+    }
     #[cfg(target_os = "android")]
     return android::cache_dir();
     #[cfg(not(target_os = "android"))]
