@@ -27,6 +27,9 @@ eframe = { version = "0.37.0", default-features = false, features = ["glow", "de
 # (lot « glyphes »). Rien à télécharger : epaint et vello_cpu sont déjà là (eframe) ; seule
 # la partie texte de vello_cpu (glifo) s'ajoute à la compilation.
 epaint = { version = "0.37.0", default-features = false, features = ["color_fonts"] }
+# Dessin vectoriel des autocollants Lottie (src/images/lottie) : le moteur que
+# epaint utilise déjà pour les glyphes en couleur, nommé ici. Aucune nouvelle crate.
+vello_cpu = { version = "0.2.0", default-features = false, features = ["std", "u8_pipeline"] }
 # Décompression du flux de la passerelle (zlib-stream). Déjà présente dans
 # l'exécutable (PNG, via image), avec le moteur Rust pur miniz_oxide.
 flate2 = "1.1.11"

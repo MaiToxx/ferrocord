@@ -10,7 +10,7 @@ pub enum StickerFormat {
     Png,
     /// PNG animé : la première image est affichée.
     Apng,
-    /// Animation vectorielle : pas de décodeur, le nom est affiché.
+    /// Animation vectorielle (JSON), dessinée par `images::lottie`.
     Lottie,
     Gif,
 }
@@ -26,10 +26,6 @@ impl StickerFormat {
         })
     }
 
-    /// Une image peut être affichée (tout sauf Lottie).
-    pub fn has_image(self) -> bool {
-        self != StickerFormat::Lottie
-    }
 }
 
 /// Autocollant d'un message.

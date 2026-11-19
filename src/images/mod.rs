@@ -32,6 +32,7 @@
 pub mod anim;
 pub mod decode;
 pub mod disk;
+mod lottie;
 mod webm;
 mod worker;
 

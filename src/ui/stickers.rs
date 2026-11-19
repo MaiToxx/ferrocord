@@ -1,15 +1,16 @@
-//! Autocollants d'un message, sous son texte (lot T4) : PNG, APNG (première
-//! image) et GIF (première image) en image ; Lottie (animation vectorielle,
-//! sans décodeur) : son nom dans un cadre. Même place à la mesure et au dessin.
+//! Autocollants d'un message, sous son texte (lot T4) : PNG, APNG, GIF et
+//! Lottie (animation vectorielle, dessinée par `images::lottie`), animés
+//! sous le pointeur, première image au repos. Même place à la mesure et au
+//! dessin.
 
 use super::emoji;
-use crate::i18n::{table::emoji::t as et, Lang};
+use crate::i18n::Lang;
 use crate::state::emoji::StickerItem;
 use crate::state::model::Message;
 use crate::theme::Tokens;
 use eframe::egui::{self, Rect, Sense};
 
-/// Dessine l'autocollant `s` dans `rect` (image, ou nom pour un Lottie).
+/// Dessine l'autocollant `s` dans `rect` (son image ; à défaut son nom).
 pub(super) fn paint(ui: &egui::Ui, t: &Tokens, rect: Rect, s: &StickerItem) {
     if !ui.is_rect_visible(rect) {
         return;
@@ -33,12 +34,11 @@ pub(super) fn stickers_ui(ui: &mut egui::Ui, t: &Tokens, lang: Lang, m: &Message
 }
 
 /// Autocollants `list` (ceux d'un message, ou de l'instantané d'un message transféré).
-pub(super) fn stickers_list(ui: &mut egui::Ui, t: &Tokens, lang: Lang, list: &[StickerItem]) {
+pub(super) fn stickers_list(ui: &mut egui::Ui, t: &Tokens, _lang: Lang, list: &[StickerItem]) {
     for s in list {
         let side = t.markdown.sticker;
         let (rect, resp) = ui.allocate_exact_size(egui::vec2(side, side), Sense::hover());
         paint(ui, t, rect, s);
-        let tip = if s.format.has_image() { s.name.clone() } else { format!("{} — {}", s.name, et::ANIMATED_STICKER.get(lang)) };
-        resp.on_hover_text(tip);
+        resp.on_hover_text(s.name.clone());
     }
 }

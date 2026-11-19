@@ -862,7 +862,10 @@ pub(super) fn insertion(e: &Emoji) -> (String, Option<(String, String)>) {
 
 /// Format d'autocollant affichable en image.
 pub(super) fn sticker_img(s: &StickerItem) -> Option<Img> {
-    s.format.has_image().then_some(Img::Sticker { id: s.id, gif: s.format == StickerFormat::Gif, anim: matches!(s.format, StickerFormat::Gif | StickerFormat::Apng) })
+    Some(match s.format {
+        StickerFormat::Lottie => Img::Lottie { id: s.id },
+        f => Img::Sticker { id: s.id, gif: f == StickerFormat::Gif, anim: matches!(f, StickerFormat::Gif | StickerFormat::Apng) },
+    })
 }
 
 #[cfg(test)]

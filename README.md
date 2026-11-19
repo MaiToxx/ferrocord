@@ -122,7 +122,7 @@ Le code et les libellés de ce qui suit existent et sont couverts par les tests 
 
 L'inventaire complet et à jour est dans `docs/ecarts-restants.md`. L'essentiel :
 
-- Autocollants Lottie (leur nom est affiché à la place), animation des super réactions, polices et effets des noms
+- Animation des super réactions, polices et effets des noms
 - Partage d'écran : envoi en VP9 ou AV1 (ils sont seulement reçus)
 - Raccourcis globaux autres que micro, casque, appels et appui-pour-parler, correcteur orthographique
 - Plusieurs pages d'administration d'un serveur (vérification des membres, guide du serveur, « voir en tant que rôle »)
