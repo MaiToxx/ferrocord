@@ -18,6 +18,7 @@ use super::words;
 use crate::i18n::{f, t as tx, time, Lang};
 use crate::state::markdown::{parse_message, Doc};
 use crate::state::model::{snowflake_ms, Message};
+use crate::state::relations::{RelKind, RelationsCmd};
 use crate::state::store::{ChanState, Rev};
 use crate::state::{Problem, Status, UnsentState};
 use crate::theme::{icons, icons::Icon, Clock, Tokens};
@@ -1036,6 +1037,22 @@ impl App {
         if retry.1 && !self.store.load_newer(cid) {
             self.store.return_to_present(cid);
         }
+        // Boutons du début d'une conversation à deux (F24).
+        if let (Some(act), Some(peer)) = (start.act.take(), &start.peer) {
+            let user_id = peer.id;
+            match act {
+                StartAct::Add => {
+                    if let Some(username) = peer.username.clone() {
+                        self.store.relations_write(RelationsCmd::AddFriend { username, note: None });
+                    }
+                }
+                StartAct::Accept => self.store.relations_write(RelationsCmd::Accept { user_id }),
+                StartAct::Cancel | StartAct::Unblock => self.store.relations_write(RelationsCmd::Remove { user_id }),
+                StartAct::Remove => super::profile_full::ask_relation(ui.ctx(), user_id, &start.name, false),
+                StartAct::Block => super::profile_full::ask_relation(ui.ctx(), user_id, &start.name, true),
+                StartAct::Profile(at) => super::profile::open_here(ui.ctx(), user_id, &start.name, at),
+            }
+        }
         if older && self.store.load_older(cid)
             && let Some(view) = self.list.views.get_mut(&cid)
         {
@@ -1172,15 +1189,90 @@ struct Start {
     name: String,
     /// Conversation privée : son avatar (celui du correspondant ou du groupe).
     dm: Option<crate::state::model::Avatar>,
+    /// Conversation à deux : le correspondant, pour les boutons du début (F24).
+    peer: Option<Peer>,
+    /// Bouton du début cliqué à cette image (le dessin n'a pas accès à l'application).
+    act: std::cell::Cell<Option<StartAct>>,
+}
+
+/// Le correspondant d'une conversation à deux, vu du début de la conversation.
+struct Peer {
+    id: u64,
+    kind: Option<RelKind>,
+    /// Nom d'utilisateur, si une demande d'ami par nom est possible (ni robot, ni ancien nom à quatre chiffres).
+    username: Option<String>,
+    /// Nombre de serveurs en commun, si le profil a déjà été reçu.
+    mutual: Option<usize>,
+}
+
+/// Bouton du début d'une conversation à deux.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum StartAct {
+    Add,
+    Accept,
+    Cancel,
+    Remove,
+    Block,
+    Unblock,
+    /// Carte de profil, ancrée au bouton.
+    Profile(egui::Rect),
 }
 
 impl Start {
     fn of(store: &crate::state::Store, cid: u64) -> Start {
+        let act = std::cell::Cell::new(None);
         match store.dms.iter().find(|d| d.id == cid) {
-            Some(d) => Start { name: d.name.clone(), dm: Some(d.avatar) },
-            None => Start { name: store.channel_name(cid).unwrap_or_default().to_string(), dm: None },
+            Some(d) => {
+                let id = store.relations.dm_info(cid).filter(|i| !i.group && !store.is_official_dm(cid)).and_then(|i| i.recipients.first().copied());
+                let peer = id.map(|id| {
+                    let people = store.people.lock();
+                    Peer {
+                        id,
+                        kind: store.relations.relation(id).map(|r| r.kind),
+                        username: people.user(id).filter(|u| u.discriminator.is_none() && !u.bot).map(|u| u.username.clone()),
+                        mutual: people.profiles().best(id, None).and_then(|s| s.profile()).and_then(|p| p.mutual_guilds.as_ref().map(Vec::len)),
+                    }
+                });
+                Start { name: d.name.clone(), dm: Some(d.avatar), peer, act }
+            }
+            None => Start { name: store.channel_name(cid).unwrap_or_default().to_string(), dm: None, peer: None, act },
         }
     }
+}
+
+/// Boutons du début d'une conversation à deux : serveurs en commun (s'ils
+/// sont connus), relation (ajouter, accepter, annuler, retirer), blocage.
+/// `live` faux : mesure seule, aucun clic rendu.
+fn start_buttons(ui: &mut egui::Ui, t: &Tokens, lang: Lang, peer: &Peer, live: bool) -> Option<StartAct> {
+    use crate::i18n::table::profile::{p as pp, t as pt};
+    use crate::ui::widgets::{button, Kind};
+    let mut act = None;
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing = egui::vec2(t.spacing.item_x, t.spacing.item_y);
+        if let Some(n) = peer.mutual.filter(|n| *n > 0) {
+            let link = button(ui, t, Kind::Link, &pp::servers(lang, n as u64));
+            if link.clicked() {
+                act = Some(StartAct::Profile(link.rect));
+            }
+        }
+        let relation = match peer.kind {
+            Some(RelKind::Friend) => Some((Kind::Secondary, pt::MENU_REMOVE, StartAct::Remove)),
+            Some(RelKind::Incoming) => Some((Kind::Primary, pt::MENU_ACCEPT, StartAct::Accept)),
+            Some(RelKind::Outgoing) => Some((Kind::Secondary, pt::MENU_CANCEL, StartAct::Cancel)),
+            Some(RelKind::Blocked) => None,
+            _ => peer.username.is_some().then_some((Kind::Primary, pt::MENU_ADD_FRIEND, StartAct::Add)),
+        };
+        if let Some((kind, text, a)) = relation
+            && button(ui, t, kind, text.get(lang)).clicked()
+        {
+            act = Some(a);
+        }
+        let (text, a) = if peer.kind == Some(RelKind::Blocked) { (pt::MENU_UNBLOCK, StartAct::Unblock) } else { (pt::MENU_BLOCK, StartAct::Block) };
+        if button(ui, t, Kind::Secondary, text.get(lang)).clicked() {
+            act = Some(a);
+        }
+    });
+    act.filter(|_| live)
 }
 
 /// Début d'un salon (disque « # », « Bienvenue dans #salon ! ») ou d'une
@@ -1209,6 +1301,12 @@ fn start_ui(ui: &mut egui::Ui, t: &Tokens, lang: Lang, images: Option<&crate::im
         };
         ui.add(egui::Label::new(RichText::new(heading).font(title).strong().color(t.colors.text_strong)).wrap());
         ui.add(egui::Label::new(RichText::new(line).color(t.colors.muted)).wrap());
+        if let Some(peer) = &start.peer {
+            ui.add_space(t.spacing.item_y);
+            if let Some(a) = start_buttons(ui, t, lang, peer, images.is_some()) {
+                start.act.set(Some(a));
+            }
+        }
         ui.add_space(t.spacing.message_gap);
     });
 }

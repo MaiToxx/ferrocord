@@ -79,7 +79,10 @@ impl App {
             && ui.button(label.get(lang)).clicked()
         {
             match &status {
-                Some(Status::Available(m)) => self.install.backend.download(m.clone()),
+                Some(Status::Available(m)) => {
+                    self.news_keep(m);
+                    self.install.backend.download(m.clone());
+                }
                 Some(Status::Ready(_)) => {
                     crate::install::request_restart();
                     self.quit_app();

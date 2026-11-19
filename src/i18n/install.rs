@@ -28,6 +28,10 @@ pub mod t {
         CHECK_NOW = "Rechercher maintenant", "Check now";
         DOWNLOAD = "Télécharger et vérifier", "Download and verify";
         RESTART = "Redémarrer pour mettre à jour", "Restart to update";
+        NEWS_SHOW = "Voir les nouveautés", "What's new";
+        NEWS_HIDE = "Masquer les nouveautés", "Hide what's new";
+        NEWS_PAGE = "Page de la version", "Release page";
+        NEWS_CLOSE = "Fermer", "Close";
         READY_TIP = "Elle s'installe au prochain lancement. Si elle ne démarre pas, la version actuelle revient d'elle-même.", "It installs on next launch. If it fails to start, the current version comes back by itself.";
         SOURCE = "Source", "Source";
         SOURCE_TIP = "Adresse du manifeste signé\u{a0}: celle de local.toml, sinon celle intégrée à cet exécutable.", "Address of the signed manifest: the one in local.toml, otherwise the one built into this executable.";
@@ -53,6 +57,7 @@ pub mod f {
     use super::super::super::{fill::fill, Lang};
 
     templates! {
+        updated(version) = "Ferrocord est passé à la version {version}.", "Ferrocord was updated to version {version}.";
         available(version) = "Version {version} disponible.", "Version {version} is available.";
         downloading(percent) = "Téléchargement… {percent}\u{a0}%", "Downloading… {percent}%";
         ready(version) = "Version {version} téléchargée et vérifiée.", "Version {version} downloaded and verified.";

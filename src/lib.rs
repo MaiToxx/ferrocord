@@ -366,6 +366,8 @@ pub fn run() -> eframe::Result {
             app.attach_trusted_links(machine::default_dir().map(|d| d.join("domaines-de-confiance.txt")));
             // Rapport de plantage local (lot E5) : proposé au lancement suivant.
             app.attach_crash_reports(crash::default_dir());
+            // Notes de version, proposées au premier lancement après une mise à jour.
+            app.attach_update_notes(machine::default_dir());
             // Historique hors ligne (lot H) : chiffré, et seulement là où DPAPI existe.
             if offline::AVAILABLE {
                 let offline_ctx = cc.egui_ctx.clone();

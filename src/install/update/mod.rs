@@ -10,6 +10,7 @@
 
 pub mod fetch;
 pub mod manifest;
+pub mod news;
 pub mod source;
 pub mod swap;
 
