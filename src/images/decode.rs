@@ -56,6 +56,44 @@ pub fn sniff(bytes: &[u8]) -> Option<ImageFormat> {
     }
 }
 
+/// Côté du rendu d'un dessin vectoriel, au plus.
+const SVG_SIDE: u32 = 512;
+
+/// Dessin vectoriel SVG (illustrations des badges) ? Reconnu au contenu.
+pub fn is_svg(bytes: &[u8]) -> bool {
+    let head = String::from_utf8_lossy(&bytes[..bytes.len().min(1024)]);
+    let head = head.trim_start_matches('\u{feff}').trim_start();
+    head.starts_with("<svg") || (head.starts_with("<?xml") && head.contains("<svg"))
+}
+
+/// Dessin vectoriel rendu dans un carré de `max_side` au plus ([`SVG_SIDE`]
+/// au plus). Rien n'est lu hors du fichier : ni image liée, ni police, ni texte.
+fn svg(bytes: &[u8], max_side: u32) -> Result<DynamicImage, DecodeError> {
+    use resvg::{tiny_skia, usvg};
+    let opt = usvg::Options { resources_dir: None, image_href_resolver: usvg::ImageHrefResolver { resolve_data: Box::new(|_, _, _| None), resolve_string: Box::new(|_, _| None) }, ..Default::default() };
+    let tree = usvg::Tree::from_data(bytes, &opt).map_err(|e| DecodeError::Corrupt(e.to_string()))?;
+    let size = tree.size();
+    let longest = size.width().max(size.height());
+    if !longest.is_finite() || longest <= 0.0 {
+        return Err(DecodeError::Corrupt("dessin sans taille".into()));
+    }
+    let scale = max_side.clamp(1, SVG_SIDE) as f32 / longest;
+    let (w, h) = (((size.width() * scale).round() as u32).max(1), ((size.height() * scale).round() as u32).max(1));
+    let mut pix = tiny_skia::Pixmap::new(w, h).ok_or(DecodeError::TooLarge { width: w, height: h })?;
+    resvg::render(&tree, tiny_skia::Transform::from_scale(scale, scale), &mut pix.as_mut());
+    // Le rendu est en alpha prémultiplié ; `image` attend l'alpha droit.
+    let mut data = pix.take();
+    for px in data.as_chunks_mut::<4>().0 {
+        let a = u32::from(px[3]);
+        if a > 0 && a < 255 {
+            for c in &mut px[..3] {
+                *c = ((u32::from(*c) * 255 + a / 2) / a).min(255) as u8;
+            }
+        }
+    }
+    image::RgbaImage::from_raw(w, h, data).map(DynamicImage::ImageRgba8).ok_or_else(|| DecodeError::Corrupt("rendu illisible".into()))
+}
+
 /// Image source décodée (première image seulement pour un GIF ou un WebP
 /// animé), dont aucun côté ne dépasse `max_side` (ramené à [`MAX_SIDE`]).
 /// Une panique du décodeur devient [`DecodeError::Corrupt`].
@@ -74,6 +112,9 @@ fn decode_unguarded(bytes: &[u8], max_side: u32) -> Result<DynamicImage, DecodeE
         panic!("décodeur de test");
     }
     let max_side = max_side.clamp(1, MAX_SIDE);
+    if is_svg(bytes) {
+        return svg(bytes, max_side);
+    }
     let format = sniff(bytes).ok_or(DecodeError::Unsupported)?;
     let mut reader = ImageReader::new(Cursor::new(bytes));
     reader.set_format(format);
@@ -315,5 +356,17 @@ mod tests {
         assert!(matches!(decode(PANIC_TRIGGER, MAX_SIDE), Err(DecodeError::Corrupt(_))));
         let png = encode(&sample(8, 8), ImageFormat::Png);
         assert!(decode(&png, MAX_SIDE).is_ok(), "le fil décode encore après");
+    }
+
+    /// Dessin vectoriel : reconnu au contenu, rendu à la taille demandée, alpha droit.
+    #[test]
+    fn svg_is_rendered_at_the_requested_side() {
+        let doc = br##"<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 20" width="10" height="20"><rect width="10" height="10" fill="#ff0000"/><image href="file:///C:/secret.png" width="10" height="10"/><text y="15">x</text></svg>"##;
+        assert!(is_svg(doc) && is_svg(b"  <svg/>") && !is_svg(b"<html><svg") && !is_svg(b""));
+        let img = decode(doc, 64).unwrap_or_else(|e| panic!("{e}")).to_rgba8();
+        assert_eq!((img.width(), img.height()), (32, 64));
+        assert_eq!(img.get_pixel(16, 8).0, [255, 0, 0, 255]);
+        assert_eq!(img.get_pixel(16, 56).0[3], 0, "ni texte ni image liée");
+        assert!(decode(b"<svg", 64).is_err());
     }
 }

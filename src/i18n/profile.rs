@@ -50,6 +50,9 @@ pub mod t {
         BIO_MORE = "Afficher la bio complète", "View Full Bio";
         BIO_LESS = "Réduire la bio", "Collapse bio";
         BADGES_MORE = "Afficher tous les badges", "Show all badges";
+        BADGES = "Badges", "Badges";
+        BADGES_UNLOCKABLE = "Peut être déverrouillé", "Can be unlocked";
+        BADGE_PROGRESS = "Progression", "Progress";
         GAME_COLLECTION = "Collection de jeux", "Game Collection";
         ROLES = "Rôles", "Roles";
         BADGE_ACCOUNT_AGE = "Ancienneté du compte", "Account Age";
@@ -94,6 +97,7 @@ pub mod f {
         tier_rank(n, of) = "Palier {n} sur {of}", "Tier {n} of {of}";
         next_tier(name, date) = "Prochain palier\u{a0}: {name}, le {date}", "Next tier: {name}, on {date}";
         boost_level(n) = "Niveau {n}", "Level {n}";
+        unlocked(date) = "Déverrouillé le {date}", "Unlocked on {date}";
         connection(service, name) = "{service}\u{a0}: {name}", "{service}: {name}";
     }
 }

@@ -23,7 +23,8 @@ use crate::i18n::{time, Lang, Text};
 use crate::images::{self, Image, Images};
 use crate::state::model::{snowflake_ms, Avatar, ImageRef};
 use crate::state::people::{Activity, Presence, Status};
-use crate::state::profiles::{Connection, Profile, ProfileBadge};
+use crate::state::model::ContentHash;
+use crate::state::profiles::{Connection, DirBadge, Profile, ProfileBadge};
 use crate::state::relations::RelKind;
 use crate::theme::icons::{self, Icon};
 use crate::theme::Tokens;
@@ -162,6 +163,76 @@ pub(super) fn badge_tip(lang: Lang, b: &ProfileBadge, user_id: u64, p: Option<&P
         return BadgeTip { category: Some(pt::BADGE_BOOST_SINCE.get(lang).to_string()), tier: level.map(|n| pf::boost_level(lang, n)), detail, more };
     }
     plain(None)
+}
+
+/// Badge du répertoire qui correspond au badge `b` du profil. Les deux
+/// listes n'ont pas de clé commune : identifiants relevés dans le client
+/// (19/11/2026) pour les badges à paliers, sinon le même nom.
+fn dir_matches(d: &DirBadge, b: &ProfileBadge) -> bool {
+    let id = b.id.as_str();
+    let known = if id.starts_with("premium") {
+        Some(1)
+    } else if id.starts_with("guild_booster") {
+        Some(12)
+    } else {
+        match id {
+            "legacy_username" => Some(13),
+            "account_age" => Some(18),
+            "streaming" => Some(19),
+            "game_time" => Some(20),
+            "game_variety" => Some(21),
+            _ => None,
+        }
+    };
+    match known {
+        Some(k) => d.id == k,
+        None => !d.name.is_empty() && d.name == b.description,
+    }
+}
+
+/// Fenêtre des badges ouverte : (utilisateur, badge choisi).
+fn badge_window_id() -> Id {
+    Id::unique("ferrocord.profils.fenêtre-badges")
+}
+
+/// Illustration `art` d'un badge du répertoire dans un carré de côté
+/// `side` ; illisible : la petite icône `fallback` à sa place.
+fn dir_art(ui: &mut egui::Ui, images: &Images, art: Option<(ContentHash, bool)>, fallback: Option<ContentHash>, side: f32) -> Rect {
+    let (rect, _) = ui.allocate_exact_size(egui::Vec2::splat(side), Sense::hover());
+    let shown = match art.map(|(hash, svg)| images.get(ImageRef::BadgeArt { hash, svg }, side)) {
+        Some(Image::Failed) | None => fallback.map(|hash| images.get(ImageRef::BadgeArt { hash, svg: false }, side)),
+        other => other,
+    };
+    if let Some(Image::Ready(tex)) = shown {
+        ui.painter().add(images::textured(rect, egui::CornerRadius::ZERO, tex));
+    }
+    rect
+}
+
+/// Nom du badge en gris quand le titre est celui du palier, puis le titre
+/// en gras et en capitales.
+fn dir_title(ui: &mut egui::Ui, t: &Tokens, d: &DirBadge) {
+    let title = d.title();
+    if title != d.name {
+        ui.label(RichText::new(&d.name).color(t.colors.muted));
+    }
+    ui.add(egui::Label::new(RichText::new(title.to_uppercase()).size(t.typography.title).family(crate::ui::fonts::demi()).strong().color(t.colors.text_strong)).wrap());
+}
+
+/// Infobulle d'un badge du répertoire : image du palier atteint, nom du
+/// badge, palier, puis ce que Discord en dit (« 5 jeux joués »).
+fn dir_tip_ui(ui: &mut egui::Ui, t: &Tokens, images: &Images, d: &DirBadge) {
+    let side = t.layout.profile_avatar;
+    ui.set_max_width(side * 2.5);
+    ui.vertical_centered(|ui| {
+        ui.spacing_mut().item_spacing.y = t.spacing.item_y / 2.0;
+        dir_art(ui, images, d.best_art(), d.small_icon(), side);
+        ui.add_space(t.spacing.item_y);
+        dir_title(ui, t, d);
+        if !d.info.is_empty() {
+            ui.add(egui::Label::new(RichText::new(&d.info).color(t.colors.text)).wrap());
+        }
+    });
 }
 
 /// Infobulle d'un badge : grande image, catégorie en gris, palier en gras et
@@ -633,12 +704,160 @@ impl App {
         }
     }
 
+    /// Fenêtre des badges d'une personne (clic sur un badge de sa carte) :
+    /// à gauche ses badges puis ceux qu'elle peut encore obtenir, à droite le
+    /// badge choisi, son avancement et ses paliers.
+    pub(super) fn badge_window(&self, ctx: &egui::Context) {
+        let Some((user_id, picked)) = ctx.data(|d| d.get_temp::<(u64, u64)>(badge_window_id())) else { return };
+        let list: Vec<DirBadge> = self.store.people.lock().profiles().directory(user_id).iter().filter(|d| !d.hidden).cloned().collect();
+        if list.is_empty() {
+            ctx.data_mut(|d| d.remove_temp::<(u64, u64)>(badge_window_id()));
+            return;
+        }
+        let t = self.theme.clone();
+        let lang = self.lang;
+        let mut pick = picked;
+        let cell = (t.layout.profile_avatar * 0.5).round();
+        let gap = t.spacing.item_y;
+        let left = 4.0 * cell + 3.0 * gap;
+        let width = (ctx.content_rect().width() - 4.0 * t.spacing.card_pad).clamp(left * 1.5, left * 3.6);
+        let out = crate::ui::widgets::sheet(ctx, &t, badge_window_id().with("fenêtre"), width, pt::BADGES.get(lang), crate::i18n::t::CLOSE_TIP.get(lang), |ui| {
+            ui.horizontal_top(|ui| {
+                ui.allocate_ui_with_layout(egui::vec2(left, 0.0), egui::Layout::top_down(egui::Align::Min), |ui| {
+                    ui.set_width(left);
+                    self.badge_grid(ui, &t, &list, true, cell, &mut pick);
+                    if list.iter().any(|d| !d.owned) {
+                        ui.add_space(t.spacing.item_x);
+                        heading(ui, &t, pt::BADGES_UNLOCKABLE.get(lang));
+                        ui.add_space(gap);
+                        self.badge_grid(ui, &t, &list, false, cell, &mut pick);
+                    }
+                });
+                ui.add_space(t.spacing.card_pad);
+                ui.vertical(|ui| {
+                    if let Some(d) = list.iter().find(|d| d.id == pick).or(list.first()) {
+                        self.badge_detail(ui, &t, d);
+                    }
+                });
+            });
+        });
+        if out.closed {
+            ctx.data_mut(|d| d.remove_temp::<(u64, u64)>(badge_window_id()));
+        } else if pick != picked {
+            ctx.data_mut(|d| d.insert_temp(badge_window_id(), (user_id, pick)));
+        }
+    }
+
+    /// Cases des badges obtenus (`owned`) ou à obtenir ; un clic choisit le badge.
+    fn badge_grid(&self, ui: &mut egui::Ui, t: &Tokens, list: &[DirBadge], owned: bool, cell: f32, pick: &mut u64) {
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = egui::Vec2::splat(t.spacing.item_y);
+            for d in list.iter().filter(|d| d.owned == owned) {
+                let (rect, resp) = ui.allocate_exact_size(egui::Vec2::splat(cell), Sense::click());
+                let on = d.id == *pick;
+                let fill = if on || resp.hovered() || resp.has_focus() { t.colors.selected } else { tint(t) };
+                ui.painter().rect(rect, t.r_row(), fill, Stroke::new(t.shapes.border.max(1.0), if on { t.colors.accent } else { t.hairline(false) }), egui::StrokeKind::Inside);
+                let inner = rect.shrink((cell * 0.2).round());
+                if let Some(hash) = d.small_icon()
+                    && let Image::Ready(tex) = self.images.get(ImageRef::BadgeArt { hash, svg: false }, inner.width())
+                {
+                    ui.painter().add(images::textured(inner, egui::CornerRadius::ZERO, tex));
+                }
+                resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, on, &d.name));
+                if resp.on_hover_text(&d.name).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                    *pick = d.id;
+                }
+            }
+        });
+    }
+
+    /// Détail d'un badge : image, nom et palier, ce que Discord en dit et la
+    /// date d'obtention, puis l'avancement, la description et les paliers.
+    fn badge_detail(&self, ui: &mut egui::Ui, t: &Tokens, d: &DirBadge) {
+        let lang = self.lang;
+        ui.vertical_centered(|ui| {
+            ui.spacing_mut().item_spacing.y = t.spacing.item_y / 2.0;
+            dir_art(ui, &self.images, d.best_art(), d.small_icon(), (t.layout.profile_avatar * 1.4).round());
+            ui.add_space(t.spacing.item_y);
+            dir_title(ui, t, d);
+            let mut line = d.info.clone();
+            if d.owned
+                && let Some(ms) = d.unlocked_at()
+            {
+                let unlocked = pf::unlocked(lang, time::long_date(lang, ms));
+                line = if line.is_empty() { unlocked } else { format!("{line} • {unlocked}") };
+            }
+            if !line.is_empty() {
+                ui.add(egui::Label::new(RichText::new(line).small().color(t.colors.muted)).wrap());
+            }
+        });
+        if d.progress.is_none() && d.description.is_empty() && d.tiers.is_empty() {
+            return;
+        }
+        ui.add_space(t.spacing.item_x);
+        egui::Frame::new().fill(tint(t)).corner_radius(t.r_row()).inner_margin(t.spacing.item_x).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.spacing_mut().item_spacing.y = t.spacing.item_y;
+            if let Some(p) = d.progress.as_ref().filter(|_| d.next.is_some()) {
+                heading(ui, t, pt::BADGE_PROGRESS.get(lang));
+                if !p.helper.is_empty() {
+                    ui.label(RichText::new(&p.helper).color(t.colors.text));
+                }
+                let (bar, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), (t.spacing.item_y * 0.75).max(4.0)), Sense::hover());
+                let done = ((p.current - p.floor) as f32 / (p.threshold - p.floor).max(1) as f32).clamp(0.0, 1.0);
+                let r = bar.height() / 2.0;
+                ui.painter().rect_filled(bar, r, t.colors.bg3);
+                ui.painter().rect_filled(Rect::from_min_size(bar.min, egui::vec2(bar.width() * done, bar.height())), r, t.colors.accent);
+                ui.add_space(t.spacing.item_y);
+            }
+            if !d.description.is_empty() {
+                ui.add(egui::Label::new(RichText::new(&d.description).color(t.colors.text)).wrap());
+            }
+            if d.tiers.is_empty() {
+                return;
+            }
+            ui.add_space(t.spacing.item_y);
+            let icon = (t.layout.profile_avatar * 0.45).round();
+            let col = icon * 2.4;
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(t.spacing.item_y, t.spacing.item_x);
+                for tier in &d.tiers {
+                    ui.allocate_ui_with_layout(egui::vec2(col, 0.0), egui::Layout::top_down(egui::Align::Center), |ui| {
+                        ui.set_width(col);
+                        ui.spacing_mut().item_spacing.y = 0.0;
+                        dir_art(ui, &self.images, None, tier.icon, icon);
+                        // Palier pas encore atteint : textes estompés.
+                        let (name, sub) = if tier.owned { (t.colors.text_strong, t.colors.muted) } else { (t.colors.muted, t.colors.faint) };
+                        if !tier.name.is_empty() {
+                            ui.add(egui::Label::new(RichText::new(&tier.name).small().family(crate::ui::fonts::demi()).strong().color(name)).wrap());
+                        }
+                        if !tier.milestone.is_empty() {
+                            ui.add(egui::Label::new(RichText::new(&tier.milestone).small().color(sub)).wrap());
+                        }
+                    });
+                }
+            });
+        });
+    }
+
     /// Infobulle détaillée d'un badge, et son lien au clic.
     fn badge_hover(&self, ui: &egui::Ui, t: &Tokens, user_id: u64, s: &Shown, b: &ProfileBadge, resp: egui::Response) -> egui::Response {
-        let resp = resp.on_hover_ui(|ui| {
-            let tip = badge_tip(self.lang, b, user_id, s.profile.as_ref(), self.store.now());
-            badge_tip_ui(ui, t, &self.images, b, &tip);
+        // Badge connu du répertoire : son palier dans l'infobulle, la fenêtre des badges au clic.
+        let dir = if resp.hovered() || resp.clicked() { self.store.people.lock().profiles().directory(user_id).iter().find(|d| dir_matches(d, b)).cloned() } else { None };
+        let resp = resp.on_hover_ui(|ui| match &dir {
+            Some(d) => dir_tip_ui(ui, t, &self.images, d),
+            None => {
+                let tip = badge_tip(self.lang, b, user_id, s.profile.as_ref(), self.store.now());
+                badge_tip_ui(ui, t, &self.images, b, &tip);
+            }
         });
+        if let Some(d) = &dir {
+            let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+            if resp.clicked() {
+                ui.data_mut(|x| x.insert_temp(badge_window_id(), (user_id, d.id)));
+            }
+            return resp;
+        }
         match &b.link {
             Some(link) => {
                 let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);

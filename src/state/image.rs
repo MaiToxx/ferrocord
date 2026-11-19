@@ -51,6 +51,40 @@ impl fmt::Display for ImageHash {
     }
 }
 
+/// Empreinte d'un fichier de `assets/content` du CDN (64 chiffres
+/// hexadécimaux) : images des badges à paliers. Comme [`ImageHash`], toute
+/// autre forme est refusée à la lecture.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ContentHash([u8; 32]);
+
+impl ContentHash {
+    pub fn parse(s: &str) -> Option<Self> {
+        if s.len() != 64 || !s.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
+            return None;
+        }
+        let mut bytes = [0u8; 32];
+        for (i, b) in bytes.iter_mut().enumerate() {
+            *b = u8::from_str_radix(&s[2 * i..2 * i + 2], 16).ok()?;
+        }
+        Some(ContentHash(bytes))
+    }
+
+    /// Empreinte d'une adresse `https://cdn.discordapp.com/assets/content/<empreinte>.<ext>`
+    /// (seule forme acceptée : l'adresse reçue n'est jamais reprise telle quelle).
+    pub fn of_url(url: &str, ext: &str) -> Option<Self> {
+        Self::parse(url.strip_prefix("https://cdn.discordapp.com/assets/content/")?.strip_suffix(ext)?.strip_suffix('.')?)
+    }
+}
+
+impl fmt::Display for ContentHash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for b in self.0 {
+            write!(f, "{b:02x}")?;
+        }
+        Ok(())
+    }
+}
+
 /// Image du CDN de Discord, désignée par ce qu'elle représente. Sert aussi
 /// de clé aux caches d'images. Les lots suivants (pièces jointes, emojis)
 /// y ajouteront leurs variantes.
@@ -99,6 +133,10 @@ pub enum ImageRef {
     /// Icône ou couverture d'une application (`app-icons/{application_id}/{hash}`,
     /// documentation « Image Formatting » : Application Icon, Application Cover).
     AppIcon { app_id: u64, hash: ImageHash },
+    /// Image d'un badge du répertoire ou d'un de ses paliers
+    /// (`assets/content/{empreinte}.png`, taille fixe) ; `svg` : dessin
+    /// vectoriel (`.svg`), rendu par `images::decode`.
+    BadgeArt { hash: ContentHash, svg: bool },
 }
 
 /// Nombre d'avatars par défaut de Discord.

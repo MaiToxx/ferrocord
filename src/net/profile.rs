@@ -18,7 +18,7 @@ use super::raw::{de_lenient, de_loose_id, Item, RawGuildMember, RawUser};
 use super::rest::{api, ApiError, Ctx};
 use crate::state::model::ImageHash;
 use crate::state::people::PeopleHub;
-use crate::state::profiles::{clip_to, Connection, MutualGuild, NoteWrite, Profile, ProfileBadge, ProfileCmd, ProfileState, ProfileText, MAX_BIO, MAX_LIST, MAX_NOTE, MAX_SHORT};
+use crate::state::profiles::{BadgeProgress, BadgeTier, DirBadge, clip_to, Connection, MutualGuild, NoteWrite, Profile, ProfileBadge, ProfileCmd, ProfileState, ProfileText, MAX_BIO, MAX_LIST, MAX_NOTE, MAX_SHORT};
 use serde::Deserialize;
 use serde_json::json;
 use std::{sync::Arc, time::Duration};
@@ -287,6 +287,79 @@ pub(super) fn store(hub: &PeopleHub, user_id: u64, guild_id: Option<u64>, body: 
 
 type UserLine = (u64, Option<crate::state::people::UserInfo>);
 
+/// Badges du répertoire gardés, et paliers par badge.
+const MAX_DIR: usize = 64;
+const MAX_TIERS: usize = 24;
+
+/// Réponse de `GET /users/{id}/badges` : `{ "badges": [...] }`. Lecture
+/// souple : un champ absent ou d'une autre forme est laissé vide, un badge
+/// sans identifiant ni nom est ignoré.
+pub(super) fn read_directory(body: &str) -> Vec<DirBadge> {
+    use serde_json::Value;
+    let Ok(v) = serde_json::from_str::<Value>(body) else { return Vec::new() };
+    let text = |v: &Value, k: &str, max: usize| v.get(k).and_then(Value::as_str).map(|s| clip_to(s.trim(), max)).unwrap_or_default();
+    let file = |v: &Value, k: &str, ext: &str| v.get(k).and_then(Value::as_str).and_then(|u| crate::state::model::ContentHash::of_url(u, ext));
+    let png = |v: &Value, k: &str| file(v, k, "png");
+    // Grande illustration : le dessin vectoriel d'abord (net à toute taille), sinon le PNG.
+    let art = |v: &Value| file(v, "complex_icon_static_url", "svg").map(|h| (h, true)).or_else(|| png(v, "complex_icon_animated_url").map(|h| (h, false)));
+    let flag = |v: &Value, k: &str| v.get(k).and_then(Value::as_bool).unwrap_or(false);
+    let date = |v: &Value| v.as_str().and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok()).map(|d| d.timestamp_millis());
+    let key = |v: &Value, k: &str| Some(text(v, k, MAX_SHORT)).filter(|s| !s.is_empty());
+    let num = |v: &Value, k: &str| v.get(k).and_then(Value::as_i64);
+    let list = |v: &Value, k: &str| v.get(k).and_then(Value::as_array).cloned().unwrap_or_default();
+    list(&v, "badges")
+        .iter()
+        .take(MAX_DIR)
+        .filter_map(|b| {
+            let name = text(b, "name", MAX_SHORT);
+            let id = b.get("badge_id").and_then(Value::as_u64).filter(|_| !name.is_empty())?;
+            let tiers = list(b, "tiers")
+                .iter()
+                .take(MAX_TIERS)
+                .filter_map(|t| {
+                    Some(BadgeTier {
+                        key: key(t, "key")?,
+                        name: text(t, "name", MAX_SHORT),
+                        milestone: text(t, "milestone_text", MAX_SHORT),
+                        owned: flag(t, "owned"),
+                        icon: png(t, "simple_icon_raster_url"),
+                        art: art(t),
+                    })
+                })
+                .collect();
+            let progress = list(b, "progress").first().and_then(|p| Some(BadgeProgress { current: num(p, "current")?, floor: num(p, "floor").unwrap_or(0), threshold: num(p, "threshold")?, helper: text(p, "progress_helper_text", MAX_SHORT) }));
+            let tier_at = b.get("tier_obtained_at").and_then(Value::as_object).map(|o| o.iter().take(MAX_TIERS).filter_map(|(k, v)| Some((clip_to(k, MAX_SHORT), date(v)?))).collect()).unwrap_or_default();
+            Some(DirBadge {
+                id,
+                name,
+                description: text(b, "description", MAX_BIO),
+                info: text(b, "info_label", MAX_SHORT),
+                icon: png(b, "simple_icon_raster_url"),
+                art: art(b),
+                owned: flag(b, "owned"),
+                hidden: flag(b, "hidden"),
+                obtained_at: b.get("obtained_at").and_then(date),
+                current: key(b, "current_tier"),
+                next: key(b, "next_tier"),
+                tier_at,
+                tiers,
+                progress,
+            })
+        })
+        .collect()
+}
+
+/// Répertoire des badges, demandé après le profil (`@me` pour mon compte,
+/// comme le client). Un refus est muet : la carte garde ses badges simples.
+async fn fetch_directory(ctx: &Ctx, user_id: u64) {
+    let who = if ctx.is_me(user_id) { "@me".to_string() } else { user_id.to_string() };
+    let url = format!("{}/users/{who}/badges", ctx.api_root);
+    if let Ok(body) = api(ctx, route("GET /users/{}/badges"), reqwest::Method::GET, &url, None, MAX_WAIT, std::future::pending()).await {
+        ctx.out.people.lock().profiles_mut().set_directory(user_id, read_directory(&body));
+        ctx.out.poke();
+    }
+}
+
 /// Get User Note : `note` (256 caractères au plus) ; `None` si illisible.
 pub(super) fn note_of(body: &str) -> Option<String> {
     #[derive(Deserialize)]
@@ -352,6 +425,7 @@ async fn fetch(ctx: Arc<Ctx>, user_id: u64, guild_id: Option<u64>) {
         Ok(body) => {
             if store(&ctx.out.people, user_id, guild_id, &body) {
                 ctx.out.poke();
+                fetch_directory(&ctx, user_id).await;
             } else {
                 set(ProfileState::Unavailable);
             }
@@ -494,6 +568,42 @@ mod tests {
         let prof = p.profiles().profile(ALICE, None).and_then(ProfileState::profile).cloned().unwrap_or_else(|| panic!("profil"));
         assert_eq!(prof, Profile::default());
         assert!(prof.guild.is_none());
+    }
+
+    /// Répertoire des badges : formes relevées dans le client (valeurs fictives).
+    #[test]
+    fn badge_directory_is_read_leniently() {
+        let h = |c: char| c.to_string().repeat(64);
+        let url = |c: char, ext: &str| format!("https://cdn.discordapp.com/assets/content/{}.{ext}", h(c));
+        let body = serde_json::json!({ "badges": [
+            { "badge_id": 21, "name": "Variété de jeux", "description": "Joue à davantage de jeux.", "info_label": "5 jeux joués", "rarity": 1,
+              "simple_icon_url": url('a', "svg"), "simple_icon_raster_url": url('b', "png"), "complex_icon_static_url": url('c', "svg"),
+              "is_earnable": true, "owned": true, "hidden": false, "obtained_at": "2026-07-29T19:00:06.339514+00:00",
+              "current_tier": "dabbler", "next_tier": "enthusiast", "tier_obtained_at": { "dabbler": "2026-11-15T18:36:15.028961+00:00", "sampler": "x" },
+              "tiers": [
+                { "key": "sampler", "name": "Goûteur(se)", "simple_icon_raster_url": url('d', "png"), "owned": true, "milestone_text": "2 jeux" },
+                { "key": "dabbler", "name": "Amateur(trice)", "simple_icon_raster_url": url('e', "png"), "complex_icon_animated_url": url('f', "png"), "owned": true, "milestone_text": "5 jeux" },
+                { "name": "sans clé" },
+                { "key": "enthusiast", "owned": false, "milestone_text": "10 jeux", "simple_icon_raster_url": "https://exemple.invalid/x.png" }
+              ],
+              "progress": [{ "progress_type": 1, "current": 5, "floor": 5, "threshold": 10, "unit": "games", "window": null, "progress_helper_text": "5 jeux de plus" }] },
+            { "badge_id": 14, "name": "Quêtes", "info_label": "248 quêtes terminées", "owned": true },
+            { "name": "sans identifiant" }, 7
+        ]})
+        .to_string();
+        let list = read_directory(&body);
+        assert_eq!(list.len(), 2);
+        let g = &list[0];
+        assert_eq!((g.id, g.name.as_str(), g.info.as_str(), g.owned, g.hidden), (21, "Variété de jeux", "5 jeux joués", true, false));
+        assert_eq!((g.title(), g.tiers.len(), g.tier_at.len()), ("Amateur(trice)", 3, 1));
+        assert_eq!(g.best_art().map(|(a, svg)| (a.to_string(), svg)), Some((h('f'), false)), "palier atteint : son PNG, faute de dessin");
+        assert_eq!(g.art.map(|(a, svg)| (a.to_string(), svg)), Some((h('c'), true)), "badge : le dessin vectoriel d'abord");
+        assert_eq!(g.small_icon().map(|a| a.to_string()), Some(h('e')));
+        assert_eq!(g.tiers[2].icon, None, "adresse d'un autre hôte refusée");
+        assert_eq!(g.progress, Some(BadgeProgress { current: 5, floor: 5, threshold: 10, helper: "5 jeux de plus".into() }));
+        assert!(g.unlocked_at().is_some_and(|ms| ms > g.obtained_at.unwrap_or(i64::MAX)));
+        assert_eq!((list[1].title(), list[1].tier().is_none(), list[1].best_art()), ("Quêtes", true, None));
+        assert!(read_directory("pas du json").is_empty() && read_directory("{}").is_empty());
     }
 
     #[test]

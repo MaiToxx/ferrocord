@@ -3,7 +3,7 @@
 
 use super::notice::SystemKind;
 use super::perms::Permissions;
-pub use super::image::{default_avatar_index, Avatar, ImageHash, ImageRef, DEFAULT_AVATARS};
+pub use super::image::{default_avatar_index, Avatar, ContentHash, ImageHash, ImageRef, DEFAULT_AVATARS};
 pub use super::media::{Attachment, Embed, EmbedAuthor, EmbedField, EmbedFooter, EmbedKind, EmbedMedia, EmbedProvider, EmbedSlot, MediaKind, SafetyNotice};
 use std::collections::HashMap;
 

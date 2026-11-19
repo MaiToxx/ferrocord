@@ -71,6 +71,85 @@ pub struct ProfileBadge {
     pub link: Option<String>,
 }
 
+/// Palier d'un badge du répertoire.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BadgeTier {
+    pub key: String,
+    /// Nom du palier (« Amateur(trice) ») ; vide quand Discord n'en donne pas.
+    pub name: String,
+    /// Seuil en mots (« 5 jeux », « 3 mois »).
+    pub milestone: String,
+    pub owned: bool,
+    /// Petite icône (PNG).
+    pub icon: Option<super::model::ContentHash>,
+    /// Grande illustration, si Discord en sert une ; vrai : dessin vectoriel (SVG).
+    pub art: Option<(super::model::ContentHash, bool)>,
+}
+
+/// Avancement vers le palier suivant.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BadgeProgress {
+    pub current: i64,
+    pub floor: i64,
+    pub threshold: i64,
+    /// « 5 jeux de plus ».
+    pub helper: String,
+}
+
+/// Badge du répertoire d'un utilisateur (`GET /users/{id}/badges`, relevé
+/// du client web le 19/11/2026 ; aucune documentation publique) : nom,
+/// palier atteint, paliers, avancement. Textes déjà traduits par Discord.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DirBadge {
+    pub id: u64,
+    pub name: String,
+    pub description: String,
+    /// « 5 jeux joués », « Abonné depuis 25/05/2026 ».
+    pub info: String,
+    pub icon: Option<super::model::ContentHash>,
+    pub art: Option<(super::model::ContentHash, bool)>,
+    pub owned: bool,
+    pub hidden: bool,
+    pub obtained_at: Option<i64>,
+    /// Clé du palier atteint, puis du suivant.
+    pub current: Option<String>,
+    pub next: Option<String>,
+    /// Date d'obtention de chaque palier (clé, ms Unix).
+    pub tier_at: Vec<(String, i64)>,
+    pub tiers: Vec<BadgeTier>,
+    pub progress: Option<BadgeProgress>,
+}
+
+impl DirBadge {
+    /// Palier atteint.
+    pub fn tier(&self) -> Option<&BadgeTier> {
+        let key = self.current.as_deref()?;
+        self.tiers.iter().find(|t| t.key == key)
+    }
+
+    /// Titre à afficher : le nom du palier atteint, sinon celui du badge.
+    pub fn title(&self) -> &str {
+        self.tier().map(|t| t.name.as_str()).filter(|n| !n.is_empty()).unwrap_or(&self.name)
+    }
+
+    /// Grande image : celle du palier atteint, sinon celle du badge, sinon les petites icônes.
+    pub fn best_art(&self) -> Option<(super::model::ContentHash, bool)> {
+        let tier = self.tier();
+        tier.and_then(|t| t.art).or(self.art).or(self.small_icon().map(|h| (h, false)))
+    }
+
+    /// Petite icône : celle du palier atteint, sinon celle du badge.
+    pub fn small_icon(&self) -> Option<super::model::ContentHash> {
+        self.tier().and_then(|t| t.icon).or(self.icon)
+    }
+
+    /// Date du palier atteint, sinon celle du badge.
+    pub fn unlocked_at(&self) -> Option<i64> {
+        let at = self.current.as_deref().and_then(|k| self.tier_at.iter().find(|(key, _)| key == k)).map(|(_, ms)| *ms);
+        at.or(self.obtained_at)
+    }
+}
+
 /// Compte lié public (`connected_accounts`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Connection {
@@ -252,15 +331,20 @@ pub enum ProfileCmd {
     SetNote { user_id: u64, note: String },
 }
 
+/// Répertoires de badges gardés.
+pub const MAX_DIRECTORIES: usize = 100;
+
 /// Profils et notes, rangés dans `People`.
 pub struct ProfileTables {
     profiles: Lru<(u64, Option<u64>), Entry>,
     notes: Lru<u64, Note>,
+    /// Répertoire des badges par utilisateur, reçu après son profil.
+    directories: Lru<u64, Vec<DirBadge>>,
 }
 
 impl Default for ProfileTables {
     fn default() -> Self {
-        ProfileTables { profiles: Lru::new(MAX_PROFILES), notes: Lru::new(MAX_NOTES) }
+        ProfileTables { profiles: Lru::new(MAX_PROFILES), notes: Lru::new(MAX_NOTES), directories: Lru::new(MAX_DIRECTORIES) }
     }
 }
 
@@ -402,6 +486,19 @@ impl ProfileTables {
     pub fn clear(&mut self) {
         self.profiles.clear();
         self.notes.clear();
+        self.directories.clear();
+    }
+
+    /// Répertoire des badges de `user_id` (vide tant qu'il n'est pas reçu).
+    pub fn directory(&self, user_id: u64) -> &[DirBadge] {
+        self.directories.get(&user_id).map(Vec::as_slice).unwrap_or_default()
+    }
+
+    pub fn set_directory(&mut self, user_id: u64, list: Vec<DirBadge>) {
+        match self.directories.get_mut(&user_id) {
+            Some(l) => *l = list,
+            None => self.directories.insert(user_id, list, |_| false),
+        }
     }
 
     /// (profils, notes) gardés.
