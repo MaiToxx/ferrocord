@@ -25,6 +25,9 @@ pub mod t {
         STOP_WATCHING = "Arrêter de regarder", "Stop watching";
         POP_OUT = "Détacher dans une fenêtre", "Pop out";
         FULLSCREEN = "Plein écran (F11)", "Full screen (F11)";
+        STREAM_VOLUME = "Volume du direct", "Stream volume";
+        STREAM_MUTE = "Couper le son du direct", "Mute the stream";
+        STREAM_UNMUTE = "Rétablir le son du direct", "Unmute the stream";
         EXIT_FULLSCREEN = "Quitter le plein écran (Échap)", "Exit full screen (Esc)";
         ON_TOP = "Toujours au-dessus", "Always on top";
         CONNECTING = "Connexion au direct…", "Connecting to the stream…";

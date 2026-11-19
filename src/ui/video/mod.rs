@@ -122,7 +122,13 @@ impl App {
             Tile::Camera(_) => None,
         };
         let person = matches!(i.kind, TileKind::Person { .. });
+        // Le son d'un direct que je regarde a ses propres réglages.
+        let sound = matches!(i.kind, TileKind::Stream { watching: true, mine: false }).then(|| {
+            let key = i.user_id | crate::voice::STREAM_AUDIO;
+            (key, self.voice_user_prefs(key))
+        });
         TileView {
+            sound,
             who: name.clone(),
             name: if person { name } else { vf::screen_of(self.lang, name) },
             avatar,
@@ -279,7 +285,11 @@ impl App {
                 }
                 TileAct::Watch(k) => {
                     self.store.video_watch(&k);
+                    // Les volumes de directs retenus sont redits au moteur audio.
+                    self.voice_send_stream_prefs();
                 }
+                TileAct::Volume { user, volume, done } => self.voice_acts(vec![crate::ui::voice::VoiceAct::Volume { user, volume, done }]),
+                TileAct::LocalMute(user, muted) => self.voice_acts(vec![crate::ui::voice::VoiceAct::LocalMute(user, muted)]),
                 TileAct::StopWatching(k) => self.store.video_stop_watching(&k),
             }
         }

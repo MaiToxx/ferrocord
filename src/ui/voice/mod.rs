@@ -222,6 +222,16 @@ impl App {
         }
     }
 
+    /// Volumes et muets retenus pour le son des directs (clés au bit
+    /// `STREAM_AUDIO`) : le moteur audio les garde pour l'appel en cours et
+    /// les suivants.
+    pub(super) fn voice_send_stream_prefs(&mut self) {
+        let kept: Vec<(u64, UserVoice)> = self.local.prefs.voice.users.range(crate::voice::STREAM_AUDIO..).map(|(k, v)| (*k, *v)).collect();
+        for (k, v) in kept {
+            self.store.voice_user(k, v);
+        }
+    }
+
     pub(super) fn voice_acts(&mut self, acts: Vec<VoiceAct>) {
         for a in acts {
             match a {

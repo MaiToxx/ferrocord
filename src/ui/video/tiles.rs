@@ -36,6 +36,10 @@ pub(super) struct TileView {
     pub paused: bool,
     /// Direct regardé dont la connexion n'est pas encore établie.
     pub connecting: bool,
+    /// Son d'un direct regardé (pas le mien) : sa clé dans les réglages par
+    /// personne (identifiant de son auteur et bit `STREAM_AUDIO`), son volume
+    /// et son muet. Réglé à part de la voix de la personne.
+    pub sound: Option<(u64, crate::state::voice::UserVoice)>,
 }
 
 impl TileView {
@@ -53,6 +57,10 @@ pub(super) enum TileAct {
     PopOut(Tile),
     Watch(String),
     StopWatching(String),
+    /// Volume du son d'un direct (pour cent) ; `done` : curseur relâché.
+    Volume { user: u64, volume: u16, done: bool },
+    /// Son d'un direct coupé pour moi.
+    LocalMute(u64, bool),
 }
 
 /// Textures des tuiles affichées et tuiles dessinées à cette image.
@@ -288,6 +296,65 @@ pub(super) fn tile_ui(ui: &mut egui::Ui, rect: Rect, v: &TileView, focused: bool
         {
             act = Some(TileAct::StopWatching(key.clone()));
         }
+    }
+    // Son du direct, au survol, en bas à droite : haut-parleur (couper) et curseur.
+    if let Some((user, p)) = v.sound
+        && hovered
+        && rect.width() > icon * 16.0
+    {
+        let h = (t.typography.body + pad * 2.0).min(rect.height() / 3.0);
+        let bar = Rect::from_min_max(pos2(rect.right() - pad - icon * 9.0, rect.bottom() - pad - h), pos2(rect.right() - pad, rect.bottom() - pad));
+        ui.painter().rect_filled(bar, t.r_row(), t.media_veil());
+        let speaker = Rect::from_min_size(bar.min, Vec2::splat(h));
+        let tip = if p.muted { vt::STREAM_UNMUTE } else { vt::STREAM_MUTE }.get(lang);
+        let r = ui.interact(speaker, id.with("son"), Sense::click()).on_hover_text(tip);
+        vicons::paint(VIcon::Speaker, ui.painter(), speaker.shrink(h * 0.2), if p.muted { t.on_media_danger() } else { t.on_media() });
+        if r.clicked() {
+            act = Some(TileAct::LocalMute(user, !p.muted));
+        }
+        let mut over = ui.new_child(egui::UiBuilder::new().id_salt(id.with("volume")).max_rect(Rect::from_min_max(pos2(speaker.right() + pad / 2.0, bar.top()), bar.max - vec2(pad, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
+        over.spacing_mut().slider_width = over.available_width();
+        let mut volume = p.volume;
+        let r = over.add(egui::Slider::new(&mut volume, 0..=200).show_value(false)).on_hover_text(format!("{} : {volume} %", vt::STREAM_VOLUME.get(lang)));
+        if r.changed() || r.drag_stopped() {
+            act = Some(TileAct::Volume { user, volume, done: !r.dragged() });
+        }
+    }
+    // Clic droit : les mêmes gestes, nommés.
+    if v.has_video() || v.sound.is_some() {
+        let mut picked = None;
+        resp.context_menu(|ui| {
+            if let Some((user, p)) = v.sound {
+                ui.label(egui::RichText::new(vt::STREAM_VOLUME.get(lang)).small().color(t.colors.muted));
+                let mut volume = p.volume;
+                let r = ui.add(egui::Slider::new(&mut volume, 0..=200).custom_formatter(|v, _| format!("{v:.0} %")));
+                if r.changed() || r.drag_stopped() {
+                    picked = Some(TileAct::Volume { user, volume, done: !r.dragged() });
+                }
+                let mut muted = p.muted;
+                if crate::ui::menu::check(ui, t, vt::STREAM_MUTE.get(lang), &mut muted) {
+                    picked = Some(TileAct::LocalMute(user, muted));
+                }
+                crate::ui::menu::separator(ui, t);
+            }
+            if v.has_video() {
+                if crate::ui::menu::item(ui, t, vt::FULLSCREEN.get(lang), Some(crate::theme::icons::Icon::Fullscreen), false).clicked() {
+                    picked = Some(TileAct::Fullscreen(v.tile.clone()));
+                    ui.close();
+                }
+                if crate::ui::menu::item(ui, t, vt::POP_OUT.get(lang), None, false).clicked() {
+                    picked = Some(TileAct::PopOut(v.tile.clone()));
+                    ui.close();
+                }
+            }
+            if let (TileKind::Stream { watching: true, mine: false }, Tile::Stream(key)) = (v.kind, &v.tile)
+                && crate::ui::menu::item(ui, t, vt::STOP_WATCHING.get(lang), Some(crate::theme::icons::Icon::ScreenOff), true).clicked()
+            {
+                picked = Some(TileAct::StopWatching(key.clone()));
+                ui.close();
+            }
+        });
+        act = picked.or(act);
     }
     if act.is_none() {
         if resp.double_clicked() && v.has_video() {
