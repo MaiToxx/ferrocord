@@ -49,7 +49,7 @@ Un jeton donne un accès complet à ton compte : ne le partage jamais et ne le c
 
 ## Installer, démarrer avec Windows, liens, mises à jour
 
-**Installer** (pour ton compte Windows, sans droits d'administrateur) : l'exécutable s'installe lui-même. Lancé hors de son dossier d'installation (un téléchargement, par exemple), il propose une fois « Installer » ou « Lancer sans installer » ; jamais depuis un dossier de compilation (`target\…`). Depuis les sources :
+**Installer** (pour ton compte Windows, sans droits d'administrateur) : l'exécutable s'installe lui-même. Lancé hors de son dossier d'installation (un téléchargement, par exemple), il propose « Installer » ou « Lancer sans installer », une fois par exécutable téléchargé (« Installer Ferrocord » reste dans Paramètres > Ferrocord) ; jamais depuis un dossier de compilation (`target\…`). Depuis les sources :
 
 ```powershell
 cargo build --release

@@ -128,10 +128,23 @@ pub fn dev_build(exe: &Path) -> bool {
     in_target || cargo_layout
 }
 
+/// Nom sous lequel un exécutable est retenu dans le mémo de la proposition.
+pub fn offer_key(exe: &Path) -> String {
+    exe.to_string_lossy().to_lowercase()
+}
+
+/// Exécutable lancé hors de son dossier d'installation et hors d'un dossier
+/// de compilation : il peut s'installer (bouton des paramètres).
+pub fn installable(exe: &Path, places: &Places) -> bool {
+    !dev_build(exe) && !same_path(exe, &places.target())
+}
+
 /// Faut-il proposer l'installation à ce lancement ? Seulement pour un
 /// lancement ordinaire (ni lien, ni démarrage réduit), d'un exécutable qui
 /// n'est ni installé ni dans un dossier de compilation, et une seule fois
-/// (`seen` : la proposition a déjà été montrée).
+/// par exécutable (`seen` : la proposition a déjà été montrée pour celui-ci).
+/// Un autre exécutable téléchargé la fait revenir : une seule fois pour
+/// tout l'ordinateur, elle ne revenait jamais après une fenêtre fermée par mégarde.
 pub fn should_offer(exe: &Path, places: &Places, command: Command, plain_launch: bool, seen: bool) -> bool {
     command == Command::Run && plain_launch && !seen && !dev_build(exe) && !same_path(exe, &places.target())
 }
@@ -353,12 +366,14 @@ pub fn at_startup(raw: &[String], plain_launch: bool) -> Next {
             }
             let Some(memo_path) = super::memo::default_path() else { return Next::Continue };
             let mut memo = super::memo::read(&memo_path);
-            if memo.proposition_vue {
+            let key = offer_key(&exe);
+            if memo.proposition_chemin.as_deref() == Some(key.as_str()) {
                 return Next::Continue;
             }
             // Retenu avant d'afficher : si l'écriture échoue, on ne propose
             // pas (la question reviendrait à chaque lancement).
             memo.proposition_vue = true;
+            memo.proposition_chemin = Some(key);
             if super::memo::write(&memo_path, &memo).is_err() {
                 return Next::Continue;
             }
@@ -370,6 +385,26 @@ pub fn at_startup(raw: &[String], plain_launch: bool) -> Next {
             }
             Next::Exit(0)
         }
+    }
+}
+
+/// Installe l'exécutable en cours pour l'utilisateur (bouton « Installer »
+/// des paramètres) ; rend l'exécutable installé, à relancer.
+#[cfg(windows)]
+pub fn install_running() -> io::Result<PathBuf> {
+    use super::hive::UserHive;
+    use super::shortcut::WindowsShell;
+    let places = Places::system().ok_or_else(|| io::Error::other("dossiers de l'utilisateur introuvables"))?;
+    let exe = std::env::current_exe()?;
+    install(&mut UserHive, &mut WindowsShell, &places, &exe, env!("CARGO_PKG_VERSION"), Options::default())
+}
+
+/// L'exécutable en cours peut-il s'installer ? (ni installé, ni de compilation)
+#[cfg(windows)]
+pub fn running_installable() -> bool {
+    match (Places::system(), std::env::current_exe()) {
+        (Some(places), Ok(exe)) => installable(&exe, &places),
+        _ => false,
     }
 }
 
@@ -410,6 +445,17 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.root);
         }
+    }
+
+    /// La proposition est retenue par exécutable : un autre téléchargement la fait revenir.
+    #[test]
+    fn offer_is_remembered_per_executable() {
+        let p = Profile::new("par-exe");
+        assert_eq!(offer_key(Path::new(r"C:\Users\A\Downloads\Ferrocord-1.0.0-x64.exe")), r"c:\users\a\downloads\ferrocord-1.0.0-x64.exe");
+        assert_ne!(offer_key(Path::new(r"C:\dl\Ferrocord-1.0.0-x64.exe")), offer_key(Path::new(r"C:\dl\Ferrocord-1.0.1-x64.exe")));
+        assert!(installable(&p.download, &p.places));
+        assert!(!installable(&p.places.target(), &p.places), "déjà installé");
+        assert!(!installable(Path::new(r"C:\src\ferrocord\target\release\ferrocord.exe"), &p.places), "compilation");
     }
 
     #[test]

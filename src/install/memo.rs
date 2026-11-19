@@ -11,9 +11,15 @@ pub const FILE: &str = "installation.json";
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Memo {
-    /// La fenêtre « Installer Ferrocord » a déjà été montrée : plus jamais.
+    /// La fenêtre « Installer Ferrocord » a déjà été montrée. Gardé pour les
+    /// fichiers écrits avant `proposition_chemin` ; ne décide plus de rien.
     #[serde(default)]
     pub proposition_vue: bool,
+    /// Exécutable (chemin en minuscules) pour lequel la fenêtre « Installer
+    /// Ferrocord » a été montrée : elle ne revient pas pour lui, mais revient
+    /// pour un autre exécutable téléchargé (une nouvelle version, par exemple).
+    #[serde(default)]
+    pub proposition_chemin: Option<String>,
     /// `None` : jamais réglé (activé dès qu'une adresse est configurée).
     #[serde(default)]
     pub verifier_auto: Option<bool>,
@@ -56,7 +62,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let path = dir.join("sous").join(FILE);
         assert_eq!(read(&path), Memo::default());
-        let m = Memo { proposition_vue: true, verifier_auto: Some(false), derniere_verification: 42 };
+        let m = Memo { proposition_vue: true, proposition_chemin: Some(r"c:\telechargements\ferrocord.exe".into()), verifier_auto: Some(false), derniere_verification: 42 };
         write(&path, &m).unwrap();
         assert_eq!(read(&path), m);
         std::fs::write(&path, b"{").unwrap();

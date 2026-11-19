@@ -95,6 +95,23 @@ pub fn request_restart() {
     RESTART.store(true, Ordering::SeqCst);
 }
 
+/// Exécutable à lancer à la place de celui-ci au redémarrage demandé
+/// (celui qui vient d'être installé depuis les paramètres).
+static RESTART_AS: std::sync::Mutex<Option<std::path::PathBuf>> = std::sync::Mutex::new(None);
+
+/// Redémarrage demandé vers un autre exécutable.
+pub fn request_restart_as(exe: std::path::PathBuf) {
+    if let Ok(mut to) = RESTART_AS.lock() {
+        *to = Some(exe);
+    }
+    request_restart();
+}
+
+/// Exécutable à relancer, s'il n'est pas celui en cours.
+pub fn restart_target() -> Option<std::path::PathBuf> {
+    RESTART_AS.lock().ok().and_then(|to| to.clone())
+}
+
 pub fn restart_requested() -> bool {
     RESTART.load(Ordering::SeqCst)
 }

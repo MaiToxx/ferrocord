@@ -183,9 +183,9 @@ impl Worker {
     /// Écriture impossible : le réglage vaut pour ce lancement seulement.
     fn save_memo(&self) {
         if let Some(p) = &self.memo_path {
-            // Le fichier est relu : `proposition_vue` y est écrit par ailleurs.
+            // Le fichier est relu : la proposition d'installation y est écrite par ailleurs.
             let kept = memo::read(p);
-            let _ = memo::write(p, &Memo { proposition_vue: kept.proposition_vue, ..self.memo.clone() });
+            let _ = memo::write(p, &Memo { proposition_vue: kept.proposition_vue, proposition_chemin: kept.proposition_chemin, ..self.memo.clone() });
         }
     }
 

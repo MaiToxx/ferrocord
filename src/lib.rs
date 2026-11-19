@@ -423,7 +423,7 @@ pub fn run() -> eframe::Result {
     }
     // « Redémarrer pour installer » : la nouvelle instance attend que celle-ci libère le canal.
     if install::restart_requested()
-        && let Ok(exe) = std::env::current_exe()
+        && let Some(exe) = install::restart_target().or_else(|| std::env::current_exe().ok())
     {
         relaunch(&exe, &install::single::Args::default(), true);
     }
