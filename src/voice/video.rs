@@ -158,13 +158,21 @@ fn level_size(w: u32, h: u32, level: usize) -> (u32, u32) {
 /// 0,05 pour une caméra, borné.
 pub fn bitrate(width: u32, height: u32, fps: u32, screen: bool) -> u32 {
     let px = u64::from(width) * u64::from(height) * u64::from(fps.max(1));
-    // Partage au-delà de 30 images/s : le plafond monte à ce qui est annoncé à
-    // Discord (`max_bitrate`), sinon chaque image aurait moitié moins de bits.
-    let (num, max) = match (screen, fps > 30) {
-        (true, true) => (8, 8_000_000),
-        (true, false) => (8, 6_000_000),
-        (false, _) => (5, 2_500_000),
+    // Partage au-delà de 30 images/s : le plafond monte, sinon chaque image
+    // aurait moitié moins de bits. Il monte aussi avec la définition : à
+    // 8 Mb/s, un partage en 4K n'avait qu'un quart des bits par pixel d'un
+    // partage en 1080p et sortait très pixélisé (constaté par l'utilisateur,
+    // 0.1.25). Jamais au-delà de ce qui est annoncé à Discord (`max_bitrate`).
+    let area = u64::from(width) * u64::from(height);
+    let screen_max = match (area > 2560 * 1440, area > 1920 * 1080, fps > 30) {
+        (true, _, true) => 18_000_000,
+        (true, _, false) => 14_000_000,
+        (false, true, true) => 12_000_000,
+        (false, true, false) => 10_000_000,
+        (false, false, true) => 8_000_000,
+        (false, false, false) => 6_000_000,
     };
+    let (num, max) = if screen { (8, screen_max) } else { (5, 2_500_000) };
     (px * num / 100).clamp(150_000, max) as u32
 }
 
@@ -605,8 +613,12 @@ mod tests {
         assert_eq!(level_size(640, 480, first_level(Quality::FHD_30)), (640, 480), "jamais agrandie");
         assert_eq!(bitrate(1920, 1080, 30, true), 4_976_640);
         assert_eq!(bitrate(1280, 720, 30, false), 1_382_400);
-        assert_eq!(bitrate(3840, 2160, 60, true), 8_000_000);
-        assert_eq!(bitrate(3840, 2160, 30, true), 6_000_000);
+        // Le plafond d'un partage monte avec la définition et la cadence.
+        assert_eq!(bitrate(1920, 1080, 60, true), 8_000_000);
+        assert_eq!(bitrate(2560, 1440, 30, true), 8_847_360);
+        assert_eq!(bitrate(2560, 1440, 60, true), 12_000_000);
+        assert_eq!(bitrate(3840, 2160, 30, true), 14_000_000);
+        assert_eq!(bitrate(3840, 2160, 60, true), 18_000_000);
         assert_eq!(bitrate(1920, 1080, 60, false), 2_500_000);
         assert_eq!(bitrate(16, 16, 1, false), 150_000);
         assert_eq!(source_of("window:12").map(|s| s.kind), Some(SourceKind::Window));

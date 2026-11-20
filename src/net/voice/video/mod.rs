@@ -112,9 +112,10 @@ pub fn identify_streams(screen: bool) -> Value {
     json!([{"type": if screen { "screen" } else { "video" }, "rid": "100", "quality": 100}])
 }
 
-/// Débit maximal annoncé : environ 0,1 bit par pixel, borné.
+/// Débit maximal annoncé : environ 0,1 bit par pixel, borné (au-dessus de
+/// ce que vise l'encodeur, jusqu'à 18 Mb/s pour un partage en 4K).
 fn max_bitrate(width: u32, height: u32, fps: u32) -> u64 {
-    (u64::from(width) * u64::from(height) * u64::from(fps.max(1)) / 10).clamp(300_000, 8_000_000)
+    (u64::from(width) * u64::from(height) * u64::from(fps.max(1)) / 10).clamp(300_000, 20_000_000)
 }
 
 /// En-tête d'un paquet RTP reçu.
