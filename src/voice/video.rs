@@ -281,7 +281,21 @@ struct Enc {
     fallback: bool,
     /// Images données de suite à l'encodeur sans qu'il rende rien.
     dry: u32,
+    /// Pannes de suite de l'encodeur ordinaire, avant le repli.
+    errors: u32,
 }
+
+/// Pannes de suite de l'encodeur ordinaire avant le repli logiciel : à la
+/// première, il est rouvert (une panne passagère de la carte graphique ne
+/// condamne plus tout le partage à l'encodeur logiciel, cinq à dix fois
+/// plus lent).
+const HARD_ERRORS: u32 = 2;
+
+/// Palier le plus grand tenu par l'encodeur logiciel : 1280×720. Mesuré
+/// sur la machine de l'utilisateur (0.1.24) : 44 ms par image en 1080p,
+/// 61 ms en 1440p, soit 16 à 22 images par seconde, contre 6 à 11 ms pour
+/// l'encodeur de la carte graphique.
+const SOFT_LEVEL: usize = 3;
 
 /// Images sans sortie avant de tenir l'encodeur ordinaire pour muet : il
 /// s'ouvre et accepte les images mais ne rend rien, et ceux qui regardent
@@ -325,7 +339,7 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
         }
     };
     let fps = cfg.quality.fps.clamp(1, 60);
-    let mut enc = Enc { codec: cfg.codec, level: first_level(cfg.quality), size: (0, 0), enc: None, fallback: false, dry: 0 };
+    let mut enc = Enc { codec: cfg.codec, level: first_level(cfg.quality), size: (0, 0), enc: None, fallback: false, dry: 0, errors: 0 };
     let mut scaler = crate::video::convert::Scaler::new();
     let mut announced = None;
     loop {
@@ -338,7 +352,7 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
                 }
                 if let Some(f) = s.frame.take() {
                     if let Some(c) = s.codec.take().filter(|c| *c != enc.codec) {
-                        enc = Enc { codec: c, level: first_level(cfg.quality), size: (0, 0), enc: None, fallback: false, dry: 0 };
+                        enc = Enc { codec: c, level: first_level(cfg.quality), size: (0, 0), enc: None, fallback: false, dry: 0, errors: 0 };
                     }
                     break (f, std::mem::take(&mut s.keyframe));
                 }
@@ -386,9 +400,13 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
         match e.encode(&img, key) {
             Ok(list) => {
                 enc.dry = if list.is_empty() { enc.dry + 1 } else { 0 };
+                if !list.is_empty() {
+                    enc.errors = 0;
+                }
                 if enc.dry >= DRY_FRAMES && !enc.fallback && cfg.backend.fallback_encoder(enc.codec, size.0, size.1, fps, 1).is_some() {
                     enc.enc = None;
                     enc.fallback = true;
+                    enc.level = enc.level.max(SOFT_LEVEL);
                     enc.dry = 0;
                     lock(&mail.slot).keyframe = true;
                     continue;
@@ -408,10 +426,21 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
                 // Première panne à l'envoi (constaté : « Media Foundation :
                 // 0x8000ffff » de l'encodeur de la carte graphique, qui
                 // s'ouvrait pourtant) : même définition, encodeur logiciel.
-                if !enc.fallback && cfg.backend.fallback_encoder(enc.codec, size.0, size.1, fps, 1).is_some() {
-                    enc.fallback = true;
-                    lock(&mail.slot).keyframe = true;
-                    continue;
+                if !enc.fallback {
+                    enc.errors += 1;
+                    // Première panne : l'encodeur ordinaire est rouvert tel quel.
+                    if enc.errors < HARD_ERRORS {
+                        lock(&mail.slot).keyframe = true;
+                        continue;
+                    }
+                    if cfg.backend.fallback_encoder(enc.codec, size.0, size.1, fps, 1).is_some() {
+                        enc.fallback = true;
+                        // L'encodeur logiciel ne tient pas la cadence au-delà de 720p :
+                        // image réduite (et annoncée) plutôt que saccadée.
+                        enc.level = enc.level.max(SOFT_LEVEL);
+                        lock(&mail.slot).keyframe = true;
+                        continue;
+                    }
                 }
                 // L'encodeur lâche à cette définition : palier suivant au prochain tour.
                 match (enc.level + 1..LEVELS.len()).find(|l| level_size(img.width, img.height, *l) != size) {
