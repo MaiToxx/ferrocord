@@ -46,6 +46,9 @@ async fn camera_and_my_stream_use_op4_18_and_19() {
     s.client.flush();
     let p = s.conn.recv_op(18).await;
     assert_eq!(p["d"], json!({ "type": "guild", "guild_id": VOCAL.to_string(), "channel_id": SALON.to_string(), "preferred_region": null }));
+    // Aussitôt annoncé « en cours » (op 22), comme le client.
+    let p = s.conn.recv_op(22).await;
+    assert_eq!(p["d"], json!({ "stream_key": stream_key(Some(VOCAL), SALON, ME), "paused": false }));
 
     // Discord répond : création, puis serveur du direct (jeton ajouté ici).
     let mine = stream_key(Some(VOCAL), SALON, ME);
