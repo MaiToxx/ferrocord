@@ -37,10 +37,14 @@ const SPEAKING_MICROPHONE: u64 = 1;
 const SPEAKING_SOUNDSHARE: u64 = 2;
 /// Extension RTP des paquets vidéo, préambule en clair (profil `0xBEDE`,
 /// un mot) puis l'élément chiffré avec la charge : délai de lecture
-/// (identifiant 6 sur UDP), minimum et maximum à zéro. Discord l'attend sur
-/// les paquets vidéo (docs.discord.food, « Native RTP Header Extensions »).
+/// (identifiant 6 sur UDP), de 0 à 400 ms (deux champs de 12 bits, en
+/// centièmes de seconde). Discord l'attend sur les paquets vidéo
+/// (docs.discord.food, « Native RTP Header Extensions »). Un maximum à
+/// zéro interdisait tout tampon à ceux qui regardent : chaque image
+/// s'affichait à son arrivée, et la moindre irrégularité du réseau ou de
+/// l'envoi se voyait en saccades (constaté par l'utilisateur, 0.1.24).
 const VIDEO_EXT_PREAMBLE: [u8; 4] = [0xBE, 0xDE, 0, 1];
-const VIDEO_EXT_PLAYOUT: [u8; 4] = [0x62, 0, 0, 0];
+const VIDEO_EXT_PLAYOUT: [u8; 4] = [0x62, 0x00, 0x00, 0x28];
 /// Octets d'une image vidéo envoyés d'un trait ; au-delà, l'envoi suit
 /// [`video::Link::pace_rate`].
 const PACE_BURST: usize = 48_000;

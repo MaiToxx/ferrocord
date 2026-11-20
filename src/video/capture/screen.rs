@@ -112,7 +112,23 @@ struct Handler {
     ended: Arc<AtomicBool>,
     period: Duration,
     start: Instant,
-    last: Option<Instant>,
+    /// Instant où la prochaine image est due.
+    due: Option<Instant>,
+}
+
+/// Faut-il garder l'image arrivée à `now` ? Rend alors la nouvelle échéance.
+/// L'échéance avance d'une période exacte à chaque image gardée : sur un
+/// écran plus rapide que la cadence voulue (144 Hz pour 60 images/s), la
+/// moyenne tombe juste, là où « assez loin de la précédente » n'en gardait
+/// qu'une sur trois (48 images/s, irrégulières).
+fn keep(due: Option<Instant>, now: Instant, period: Duration) -> Option<Instant> {
+    match due {
+        None => Some(now + period),
+        Some(d) if now + period / 8 < d => None,
+        // Très en retard (écran resté immobile) : on repart de maintenant.
+        Some(d) if now > d + period => Some(now + period),
+        Some(d) => Some(d + period),
+    }
 }
 
 impl GraphicsCaptureApiHandler for Handler {
@@ -122,18 +138,14 @@ impl GraphicsCaptureApiHandler for Handler {
     fn new(ctx: Context<Flags>) -> Result<Self, String> {
         let Flags { want, sink, ended } = ctx.flags;
         let period = Duration::from_micros(1_000_000 / u64::from(want.fps.max(1)));
-        Ok(Handler { want, sink, ended, period, start: Instant::now(), last: None })
+        Ok(Handler { want, sink, ended, period, start: Instant::now(), due: None })
     }
 
     fn on_frame_arrived(&mut self, frame: &mut WgcFrame, control: InternalCaptureControl) -> Result<(), String> {
         let now = Instant::now();
         // Windows livre au rythme de l'écran : on ne garde que la fréquence voulue.
-        if let Some(last) = self.last
-            && now.duration_since(last) < self.period * 9 / 10
-        {
-            return Ok(());
-        }
-        self.last = Some(now);
+        let Some(due) = keep(self.due, now, self.period) else { return Ok(()) };
+        self.due = Some(due);
         let (w, h) = (frame.width(), frame.height());
         let (dw, dh) = fit(w, h, self.want);
         let mut fb = frame.buffer().map_err(|e| e.to_string())?;
@@ -218,4 +230,34 @@ pub(super) fn snapshot(kind: SourceKind, raw: &str, max_w: u32) -> Result<Frame,
     let got = rx.recv_timeout(SNAPSHOT_WAIT);
     let _ = control.stop();
     got.map_err(|_| CaptureError::Backend("aucune image".into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Images gardées en une seconde pour un écran à `hz` et une cadence voulue `fps`.
+    fn kept(hz: u64, fps: u64) -> usize {
+        let (t0, period) = (Instant::now(), Duration::from_micros(1_000_000 / fps));
+        let mut due = None;
+        (0..hz)
+            .filter(|k| {
+                let next = keep(due, t0 + Duration::from_micros(k * 1_000_000 / hz), period);
+                if next.is_some() {
+                    due = next;
+                }
+                next.is_some()
+            })
+            .count()
+    }
+
+    #[test]
+    fn la_cadence_voulue_est_tenue_quel_que_soit_l_ecran() {
+        assert_eq!(kept(60, 60), 60);
+        assert_eq!(kept(60, 30), 30);
+        assert!((59..=61).contains(&kept(144, 60)), "{}", kept(144, 60));
+        assert!((29..=31).contains(&kept(144, 30)), "{}", kept(144, 30));
+        assert!((59..=61).contains(&kept(240, 60)), "{}", kept(240, 60));
+        assert_eq!(kept(30, 60), 30, "écran plus lent : toutes ses images");
+    }
 }
