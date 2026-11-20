@@ -398,10 +398,18 @@ impl App {
         p.camera = Some(CameraStep { source: s, preview: Preview::Loading });
     }
 
-    /// Ferme le sélecteur : plus aucune capture ne tourne.
+    /// Ferme le sélecteur : plus aucune capture ne tourne. La qualité et le
+    /// son choisis en dernier sont retenus pour la prochaine ouverture
+    /// (demande de l'utilisateur, 0.1.25), que le partage ait été lancé ou non.
     fn share_close(&mut self, choice: Option<ShareChoice>) {
         self.share.backend.cancel();
-        self.share.picker = None;
+        if let Some(p) = self.share.picker.take() {
+            let mut v = (*self.local.prefs.video).clone();
+            if (v.share_quality, v.share_sound) != (p.quality, p.audio) {
+                (v.share_quality, v.share_sound) = (p.quality, p.audio);
+                self.video_prefs_set(v);
+            }
+        }
         self.share.choice = choice;
         egui::Popup::close_id(&self.ctx, menu_id());
     }
@@ -817,6 +825,12 @@ mod tests {
         assert!(app.share_picker_open());
         click(&mut app, BIG, "Fenêtre d'essai 2");
         assert_eq!(sent(&app), (Some(("window:2".to_string(), Quality::FHD_30, true)), None));
+        // Les réglages choisis en dernier sont retenus : réglages de l'ordinateur
+        // et prochaine ouverture du sélecteur.
+        let v = app.local_prefs().video;
+        assert_eq!((v.share_quality, v.share_sound), (Quality::FHD_30, true));
+        app.open_share_picker(ShareTab::Screens);
+        assert_eq!(app.share_picker_defaults(), Some((Quality::FHD_30, true)));
     }
 
     /// Caméra, réglage « aperçu » coché : le clic montre l'aperçu, rien ne
