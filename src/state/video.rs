@@ -52,6 +52,8 @@ pub struct Share {
     pub quality: Quality,
     pub audio: bool,
     pub key: String,
+    /// Dernière mesure de ce qui est envoyé (`None` : pas encore mesuré).
+    pub stats: Option<super::video_link::SendStats>,
 }
 
 /// Une tuile de la grille, et ce qu'elle montre.
@@ -152,12 +154,13 @@ impl Store {
         let key = stream_key(my.guild_id, my.channel_id, me);
         if let Some(sh) = self.video.share.as_mut().filter(|sh| sh.key == key) {
             (sh.source_id, sh.name, sh.quality, sh.audio) = (source_id.to_string(), name.to_string(), quality, audio);
+            sh.stats = None;
             return true;
         }
         if self.video.share.is_some() {
             self.video_stop_share();
         }
-        self.video.share = Some(Share { source_id: source_id.to_string(), name: name.to_string(), quality, audio, key: key.clone() });
+        self.video.share = Some(Share { source_id: source_id.to_string(), name: name.to_string(), quality, audio, key: key.clone(), stats: None });
         self.stream.request(&key, true);
         self.push_command(Cmd::Video(VideoCmd::StartShare { source_id: source_id.to_string(), quality, audio, stream_key: key, guild_id: my.guild_id, channel_id: my.channel_id }));
         true

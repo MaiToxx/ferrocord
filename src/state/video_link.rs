@@ -67,9 +67,28 @@ pub struct VideoWant<'a> {
     pub sink: &'a VideoSink,
 }
 
+/// Ce que mon partage envoie vraiment, mesuré sur les dernières secondes :
+/// montré sous « Vous partagez » (un partage flou chez ceux qui regardent
+/// sans rien qui dise pourquoi, constaté par l'utilisateur, 0.1.27).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SendStats {
+    pub width: u32,
+    pub height: u32,
+    /// Images réellement encodées par seconde.
+    pub fps: u32,
+    /// Débit réellement produit, en kilobits par seconde.
+    pub kbps: u32,
+    /// Encodeur logiciel (celui de la carte graphique absent ou en panne).
+    pub software: bool,
+    /// Images perdues parce que la connexion n'a pas suivi.
+    pub lost: u32,
+}
+
 /// Vidéo -> interface.
 #[derive(Debug)]
 pub enum VideoUp {
+    /// Mesure périodique de mon partage.
+    ShareStats(SendStats),
     /// Connexion d'un direct : `Connected`, `Failed`, `Closed`.
     Stream(StreamEvent),
     /// La caméra n'a pas pu tourner (message à afficher) : elle est éteinte.
@@ -137,6 +156,12 @@ impl Store {
                 Some(why)
             }
             VideoUp::Problem(why) => Some(why),
+            VideoUp::ShareStats(st) => {
+                if let Some(sh) = self.video.share.as_mut() {
+                    sh.stats = Some(st);
+                }
+                None
+            }
         }
     }
 }
@@ -184,6 +209,10 @@ mod tests {
         assert_eq!(s.video_want().watch[0].conn, StreamWant::Keep);
         // Panne de caméra : éteinte, message rendu, op 4 repartie.
         assert_eq!(s.apply_video_up(VideoUp::CameraFailed("x".into())).as_deref(), Some("x"));
+        // Une mesure sans partage en cours : rien à afficher, rien de retenu.
+        let st = SendStats { width: 3840, height: 2160, fps: 60, kbps: 17_000, software: false, lost: 0 };
+        assert_eq!(s.apply_video_up(VideoUp::ShareStats(st)), None);
+        assert!(s.video.share.is_none());
         assert!(!s.video.camera);
         assert_eq!(s.video_want().camera, None);
         assert_eq!(sink_quality((0, 0)), 0);
