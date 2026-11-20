@@ -83,6 +83,10 @@ impl H264Encoder {
 }
 
 impl Encoder for H264Encoder {
+    fn software(&self) -> bool {
+        true
+    }
+
     fn encode(&mut self, f: &Frame, force_keyframe: bool) -> Result<Vec<EncodedFrame>, CodecError> {
         if !f.is_consistent() {
             return Err(CodecError::BadFrame("taille des plans incohérente"));

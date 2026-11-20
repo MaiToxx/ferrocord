@@ -87,6 +87,10 @@ pub trait Encoder: Send {
     fn encode(&mut self, f: &Frame, force_keyframe: bool) -> Result<Vec<EncodedFrame>, CodecError>;
     /// Débit visé, en bits par seconde.
     fn set_bitrate(&mut self, bps: u32);
+    /// Encodeur logiciel (processeur) plutôt que celui de la carte graphique.
+    fn software(&self) -> bool {
+        false
+    }
 }
 
 pub fn decoder(c: Codec) -> Option<Box<dyn Decoder>> {

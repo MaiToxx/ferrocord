@@ -65,6 +65,14 @@ impl App {
         }
         self.voice.link.sync_video(&want);
         for u in self.voice.link.poll_video() {
+            // Journal local : ce que le partage envoie, quand la définition ou
+            // l'encodeur change (pas toutes les deux secondes).
+            if let crate::state::video_link::VideoUp::ShareStats(st) = &u {
+                let before = self.store.video.share.as_ref().and_then(|s| s.stats);
+                if before.map(|b| (b.width, b.height, b.software)) != Some((st.width, st.height, st.software)) {
+                    self.local_log(&format!("partage : {}", crate::ui::video::share_stats_text(crate::i18n::Lang::Fr, st)));
+                }
+            }
             if let Some(text) = self.store.apply_video_up(u) {
                 self.notify(text);
             }
