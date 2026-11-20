@@ -183,6 +183,15 @@ impl Link {
         &self.offers
     }
 
+    /// Octets par seconde à ne pas dépasser en envoyant une image : quatre
+    /// fois le débit annoncé. Une image clé en taille source part ainsi
+    /// étalée sur un quart de seconde au lieu d'une seule rafale, que les
+    /// routeurs et le serveur ne tiennent pas (paquets perdus, image figée).
+    pub fn pace_rate(&self) -> u64 {
+        let (w, h, fps) = self.active.unwrap_or((1280, 720, 30));
+        max_bitrate(w, h, fps) / 2
+    }
+
     /// Connexion d'un direct (Go Live).
     pub fn screen(&self) -> bool {
         self.screen

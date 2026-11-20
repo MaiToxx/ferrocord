@@ -41,6 +41,13 @@ const SPEAKING_SOUNDSHARE: u64 = 2;
 /// les paquets vidéo (docs.discord.food, « Native RTP Header Extensions »).
 const VIDEO_EXT_PREAMBLE: [u8; 4] = [0xBE, 0xDE, 0, 1];
 const VIDEO_EXT_PLAYOUT: [u8; 4] = [0x62, 0, 0, 0];
+/// Octets d'une image vidéo envoyés d'un trait ; au-delà, l'envoi suit
+/// [`video::Link::pace_rate`].
+const PACE_BURST: usize = 48_000;
+/// Durée d'une trame audio.
+const AUDIO_FRAME: Duration = Duration::from_millis(20);
+/// Trames d'écart à partir desquelles l'horodatage audio saute le silence.
+const AUDIO_GAP_FRAMES: u64 = 4;
 /// Sans émission, une trame de silence part à ce rythme : sans trafic
 /// sortant, les routeurs (NAT) oublient la correspondance UDP et plus rien
 /// n'arrive pendant les silences.
@@ -76,6 +83,8 @@ struct State {
     live: bool,
     /// Dernier paquet RTP envoyé (maintien UDP).
     last_rtp: Option<Instant>,
+    /// Dernier paquet audio parti : mesure les silences pour l'horodatage.
+    last_audio: Option<Instant>,
     video: video::Link,
     /// Vidéo annoncée par `VoiceCtl::VideoState` : (largeur, hauteur, images/s).
     want_video: Option<(u32, u32, u32)>,
@@ -614,6 +623,20 @@ impl Ctx<'_> {
 
     async fn send_rtp(&mut self, payload: &[u8]) {
         let (Some(cipher), Some(sock)) = (self.st.cipher.as_ref(), self.st.udp.as_ref()) else { return };
+        // L'horodatage suit l'horloge du micro, silences compris : après un
+        // silence (porte de voix fermée, DTX d'Opus), il saute la durée
+        // écoulée. Sans ce saut, chaque reprise de parole paraît très en
+        // retard à ceux qui écoutent, et leur tampon de lecture s'allonge :
+        // ma voix leur arrivait avec un délai (constaté par l'utilisateur, 0.1.23).
+        let now = Instant::now();
+        if let Some(prev) = self.st.last_audio {
+            let frames = (now.saturating_duration_since(prev).as_millis() as u64 + 10) / AUDIO_FRAME.as_millis() as u64;
+            if frames >= AUDIO_GAP_FRAMES {
+                let skipped = u32::try_from(frames - 1).unwrap_or(u32::MAX);
+                self.st.rtp_ts = self.st.rtp_ts.wrapping_add(skipped.wrapping_mul(rtp::FRAME_SAMPLES));
+            }
+        }
+        self.st.last_audio = Some(now);
         let header = rtp::header(self.st.rtp_seq, self.st.rtp_ts, self.st.ssrc);
         if let Some(pkt) = cipher.seal(&header, payload, self.st.nonce) {
             let _ = sock.send(&pkt).await;
@@ -679,8 +702,19 @@ impl Ctx<'_> {
         };
         self.st.video_gap = false;
         let (pkts, sr) = self.st.video.send_frame(f.codec, f.ts90k, &data, std::time::Instant::now());
+        // Envoi étalé : les premiers octets d'un trait, la suite au rythme permis.
+        let rate = self.st.video.pace_rate().max(1);
+        let (start, mut sent) = (Instant::now(), 0usize);
         for p in &pkts {
             self.send_video_pkt(p).await;
+            sent += p.payload.len();
+            if sent > PACE_BURST {
+                let due = Duration::from_secs_f64((sent - PACE_BURST) as f64 / rate as f64);
+                let elapsed = start.elapsed();
+                if due > elapsed + Duration::from_millis(2) {
+                    tokio::time::sleep(due - elapsed).await;
+                }
+            }
         }
         if let Some(sr) = sr {
             self.send_rtcp(&sr).await;

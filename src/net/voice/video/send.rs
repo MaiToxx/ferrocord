@@ -13,8 +13,11 @@ use crate::video::Codec;
 /// Charge utile RTP la plus grande : un paquet chiffré tient dans 1200
 /// octets (12 d'en-tête, 16 d'étiquette, 4 de compteur).
 pub const MAX_PAYLOAD: usize = 1100;
-/// Paquets gardés pour les retransmissions : environ une seconde à 4 Mbit/s.
-pub const HISTORY: usize = 512;
+/// Paquets gardés pour les retransmissions : assez pour plusieurs images
+/// clés d'un partage en taille source (une image clé en 1440p ou en 4K
+/// dépasse 500 paquets : avec un historique plus court, ses paquets perdus
+/// ne pouvaient plus être renvoyés et le direct ne chargeait jamais).
+pub const HISTORY: usize = 4096;
 const SR_EVERY: Duration = Duration::from_secs(5);
 
 /// Paquet à chiffrer puis envoyer.
