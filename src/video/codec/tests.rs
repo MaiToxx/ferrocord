@@ -110,6 +110,39 @@ fn aller_retour_psnr() {
     }
 }
 
+/// Le SPS de chaque encodeur H.264 de cette machine se lit, sort conforme
+/// de la mise en forme d'envoi (les clients officiels ne le réécriront pas,
+/// DAVE reste valide) et les images mises en forme se décodent toujours.
+#[test]
+fn sps_des_encodeurs_conforme_apres_mise_en_forme() {
+    use crate::net::voice::video::h264;
+    let list = [("ordinaire", encoder(Codec::H264, 640, 360, 30, 1_000_000)), ("repli", fallback_encoder(Codec::H264, 640, 360, 30, 1_000_000))];
+    for (name, enc) in list {
+        let Some(mut enc) = enc else { continue };
+        let Some(mut dec) = decoder(Codec::H264) else { continue };
+        let mut norm = h264::Normalizer::default();
+        let (mut seen, mut shown) = (false, 0);
+        for t in 0..12 {
+            for f in enc.encode(&pattern(640, 360, t), t == 0 || t == 6).unwrap_or_else(|e| panic!("{name} : {e:?}")) {
+                let before = h264::nal_units(&f.data).into_iter().find(|n| h264::nal_type(n) == h264::NAL_SPS).map(h264::sps_conforming);
+                let data = norm.frame(&f.data);
+                for n in h264::nal_units(&data).into_iter().filter(|n| h264::nal_type(n) == h264::NAL_SPS) {
+                    seen = true;
+                    assert_eq!(h264::sps_conforming(n), Some(true), "{name} : SPS {n:02x?} (avant : {before:?})");
+                }
+                if f.keyframe {
+                    assert!(h264::nal_units(&data).iter().any(|n| h264::nal_type(n) == h264::NAL_SPS), "{name} : image clé sans SPS");
+                    eprintln!("{name} : SPS conforme avant mise en forme : {before:?}");
+                }
+                if dec.decode(&EncodedFrame { data, ..f }).unwrap_or_else(|e| panic!("{name} : {e:?}")).is_some() {
+                    shown += 1;
+                }
+            }
+        }
+        assert!(seen && shown >= 6, "{name} : {shown} images décodées");
+    }
+}
+
 #[test]
 fn image_cle_forcee() {
     for p in pairs() {

@@ -24,6 +24,9 @@ use std::collections::HashMap;
 use std::sync::{mpsc, Arc, Mutex};
 use tokio::sync::mpsc as tmpsc;
 
+/// Écart entre deux images clés forcées de mon partage.
+const KEYFRAME_EVERY: std::time::Duration = std::time::Duration::from_secs(3);
+
 /// Ce que je fais de ce direct.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum Role {
@@ -133,8 +136,18 @@ pub(super) async fn run(s: StreamStart, mut rx: tmpsc::UnboundedReceiver<StreamM
     let mut sending: Option<Sending> = None;
     let mut sound: Option<Media> = None;
     let mut receiving = Receiving::new(s.opts.video.clone(), s.sink.clone(), net.clone(), s.report.clone());
+    // Image clé régulière de mon partage : une personne qui arrive (ou dont
+    // la demande d'image clé s'est perdue) a une image au bout de ce délai
+    // au plus, au lieu d'un chargement sans fin.
+    let mut key_tick = tokio::time::interval(KEYFRAME_EVERY);
+    key_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
         tokio::select! {
+            _ = key_tick.tick(), if sending.is_some() => {
+                if let Some(v) = &sending {
+                    v.keyframe();
+                }
+            }
             e = net_rx.recv() => match e {
                 Some(NetEvent::Ready { .. }) => {
                     s.out.event(StreamEvent::Connected { key: key.clone() });
@@ -172,7 +185,13 @@ pub(super) async fn run(s: StreamStart, mut rx: tmpsc::UnboundedReceiver<StreamM
                     }
                 }
                 Some(NetEvent::VideoState { user_id, active: false }) | Some(NetEvent::UserLeft(user_id)) => receiving.stop(user_id),
-                Some(NetEvent::VideoState { .. } | NetEvent::Speaking { .. } | NetEvent::UserJoined(_) | NetEvent::Ping(_)) => {}
+                // Quelqu'un arrive sur mon direct : une image clé tout de suite.
+                Some(NetEvent::UserJoined(_)) => {
+                    if let Some(v) = &sending {
+                        v.keyframe();
+                    }
+                }
+                Some(NetEvent::VideoState { .. } | NetEvent::Speaking { .. } | NetEvent::Ping(_)) => {}
                 Some(NetEvent::Closed(r)) => {
                     match r {
                         CloseReason::Requested => {}

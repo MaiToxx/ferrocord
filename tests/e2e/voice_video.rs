@@ -198,7 +198,10 @@ async fn direct_go_live() {
     assert_eq!(h.identify["channel_id"], CHANNEL.to_string());
     assert_eq!(h.identify["streams"][0]["type"], "screen");
     ctl(&tx, VoiceCtl::VideoState { active: true, width: 1920, height: 1080, fps: 30 }).await;
-    assert_eq!(c.recv_op(12).await["d"]["streams"][0]["type"], "screen");
+    // Sur un direct, une op 5 (son du direct) précède toujours l'annonce de la vidéo.
+    let speaking = c.recv_op(5).await;
+    assert_eq!((speaking["d"]["speaking"].as_u64(), speaking["d"]["ssrc"].as_u64()), (Some(2), Some(u64::from(MY_SSRC))));
+    assert_eq!(c.recv_op(12).await["d"]["streams"][0]["type"], "video", "« screen » ne sert que dans l'Identify");
     ctl(&tx, VoiceCtl::Disconnect).await;
 }
 

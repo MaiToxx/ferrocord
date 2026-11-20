@@ -295,7 +295,7 @@ async fn partage_d_ecran_avec_son_puis_arret() {
 
     // Définition refusée : repli annoncé, op 12 et images en 640×360.
     let op = next_op(&mut c, 12).await;
-    assert_eq!(op["d"]["streams"][0]["type"], "screen");
+    assert_eq!(op["d"]["streams"][0]["type"], "video", "« screen » ne sert que dans l'Identify");
     assert_eq!(op["d"]["streams"][0]["max_resolution"]["width"], 640);
     r.until_up("repli annoncé", |u| matches!(u, VideoUp::Problem(_))).await;
     assert!(is_key(&next_image(&server, &h).await.1));

@@ -68,7 +68,7 @@ impl Sender {
     /// marqueur sur le dernier. `None` : codec sans paquétiseur.
     pub fn frame(&mut self, ts90k: u32, data: &[u8]) -> Option<Vec<RtpOut>> {
         let payloads = match self.codec {
-            Codec::H264 => h264::packetize(data, MAX_PAYLOAD),
+            Codec::H264 => h264::packetize_plain(data, MAX_PAYLOAD),
             Codec::Vp8 => vp8::packetize(data, MAX_PAYLOAD),
             Codec::Vp9 | Codec::Av1 => return None,
         };

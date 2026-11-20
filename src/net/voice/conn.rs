@@ -33,6 +33,14 @@ type Ws = WebSocketStream<MaybeTlsStream<TcpStream>>;
 const MAX_MESSAGE: usize = 1 << 20;
 const DISCOVERY_TRIES: u32 = 5;
 const SPEAKING_MICROPHONE: u64 = 1;
+/// Son d'un direct (« soundshare ») : l'op 5 de la connexion d'un direct.
+const SPEAKING_SOUNDSHARE: u64 = 2;
+/// Extension RTP des paquets vidéo, préambule en clair (profil `0xBEDE`,
+/// un mot) puis l'élément chiffré avec la charge : délai de lecture
+/// (identifiant 6 sur UDP), minimum et maximum à zéro. Discord l'attend sur
+/// les paquets vidéo (docs.discord.food, « Native RTP Header Extensions »).
+const VIDEO_EXT_PREAMBLE: [u8; 4] = [0xBE, 0xDE, 0, 1];
+const VIDEO_EXT_PLAYOUT: [u8; 4] = [0x62, 0, 0, 0];
 /// Sans émission, une trame de silence part à ce rythme : sans trafic
 /// sortant, les routeurs (NAT) oublient la correspondance UDP et plus rien
 /// n'arrive pendant les silences.
@@ -74,6 +82,8 @@ struct State {
     /// Une image n'a pas pu partir (connexion ou DAVE pas prêts) : rien ne
     /// part plus avant une image clé, que les suivantes ne se décodent pas sans elle.
     video_gap: bool,
+    /// Mise en forme des images H.264 envoyées (SPS conforme, SPS et PPS aux images clés).
+    h264: video::h264::Normalizer,
 }
 
 enum End {
@@ -354,7 +364,7 @@ impl Ctx<'_> {
                 if let Some((w, h, fps)) = self.st.want_video
                     && self.st.video.enabled()
                 {
-                    Self::send(ws, self.st.video.set_state(true, w, h, fps)).await?;
+                    self.announce_video(ws, w, h, fps).await?;
                 }
                 if first {
                     self.emit(VoiceEvent::Ready { ssrc: self.st.ssrc }).await?;
@@ -537,8 +547,35 @@ impl Ctx<'_> {
         }
     }
 
+    /// Op 12 qui annonce notre vidéo. Sur la connexion d'un direct, une op 5
+    /// la précède toujours, même sans son partagé : le serveur veut un
+    /// Speaking avant toute donnée, et sans lui ceux qui regardent
+    /// n'obtiennent pas l'image.
+    async fn announce_video(&mut self, ws: &mut Ws, w: u32, h: u32, fps: u32) -> Step {
+        if self.st.video.screen() && !self.st.speaking {
+            Self::send(ws, json!({"op": 5, "d": {"speaking": SPEAKING_SOUNDSHARE, "delay": 0, "ssrc": self.st.ssrc}})).await?;
+        }
+        Self::send(ws, self.st.video.set_state(true, w, h, fps)).await
+    }
+
+    /// Paquet vidéo ou RTX : extension de délai de lecture ajoutée, puis scellé.
+    async fn send_video_pkt(&mut self, p: &video::send::RtpOut) {
+        let mut header = [0u8; rtp::HEADER_LEN + 4];
+        header[..rtp::HEADER_LEN].copy_from_slice(&p.header);
+        header[0] |= 0x10;
+        header[rtp::HEADER_LEN..].copy_from_slice(&VIDEO_EXT_PREAMBLE);
+        let mut body = Vec::with_capacity(4 + p.payload.len());
+        body.extend_from_slice(&VIDEO_EXT_PLAYOUT);
+        body.extend_from_slice(&p.payload);
+        self.send_sealed(&header, &body).await;
+    }
+
     async fn send_speaking(&mut self, ws: &mut Ws, on: bool) -> Step {
-        let flags = if on { SPEAKING_MICROPHONE } else { 0 };
+        let flags = match (on, self.st.video.screen()) {
+            (false, _) => 0,
+            (true, true) => SPEAKING_SOUNDSHARE,
+            (true, false) => SPEAKING_MICROPHONE,
+        };
         Self::send(ws, json!({"op": 5, "d": {"speaking": flags, "delay": 0, "ssrc": self.st.ssrc}})).await
     }
 
@@ -610,8 +647,10 @@ impl Ctx<'_> {
             // Envoyé avec la clé de session (Session Description).
             return Ok(());
         }
-        let (w, h, fps) = want.unwrap_or_default();
-        Self::send(ws, self.st.video.set_state(want.is_some(), w, h, fps)).await
+        match want {
+            Some((w, h, fps)) => self.announce_video(ws, w, h, fps).await,
+            None => Self::send(ws, self.st.video.set_state(false, 0, 0, 0)).await,
+        }
     }
 
     async fn send_video(&mut self, f: &EncodedFrame) -> Step {
@@ -628,14 +667,20 @@ impl Ctx<'_> {
             };
         }
         // DAVE pas encore prêt : l'image ne part pas (jamais en clair).
-        let Some(data) = self.e2ee.encrypt_video(f.codec, &f.data) else {
+        // H.264 : mis en forme avant le chiffrement, que les clients
+        // officiels n'aient pas à réécrire le SPS (ce qui casserait DAVE).
+        let plain = match f.codec {
+            Codec::H264 => std::borrow::Cow::Owned(self.st.h264.frame(&f.data)),
+            _ => std::borrow::Cow::Borrowed(f.data.as_slice()),
+        };
+        let Some(data) = self.e2ee.encrypt_video(f.codec, &plain) else {
             self.st.video_gap = true;
             return Ok(());
         };
         self.st.video_gap = false;
         let (pkts, sr) = self.st.video.send_frame(f.codec, f.ts90k, &data, std::time::Instant::now());
-        for p in pkts {
-            self.send_sealed(&p.header, &p.payload).await;
+        for p in &pkts {
+            self.send_video_pkt(p).await;
         }
         if let Some(sr) = sr {
             self.send_rtcp(&sr).await;
@@ -648,8 +693,8 @@ impl Ctx<'_> {
     async fn on_rtcp(&mut self, pkt: &[u8]) -> Step {
         let Some(plain) = self.st.cipher.as_ref().and_then(|c| video::rtcp::open(c, pkt)) else { return Ok(()) };
         let fb = self.st.video.on_rtcp(&plain);
-        for r in fb.retransmit {
-            self.send_sealed(&r.header, &r.payload).await;
+        for r in &fb.retransmit {
+            self.send_video_pkt(r).await;
         }
         if fb.keyframe && let Err(mpsc::error::TrySendError::Closed(_)) = self.ev.try_send(VoiceEvent::KeyframeRequested) {
             return Err(End::Stop(CloseReason::Requested));

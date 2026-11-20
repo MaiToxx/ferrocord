@@ -159,6 +159,9 @@ impl GwVideo {
                 self.own_key = Some(stream_key.clone());
                 let kind = if guild_id.is_some() { "guild" } else { "call" };
                 out.push(json!({ "op": 18, "d": { "type": kind, "guild_id": id_or_null(*guild_id), "channel_id": channel_id.to_string(), "preferred_region": null } }).to_string());
+                // Direct annoncé « en cours » aussitôt (op 22), comme le client : sans
+                // elle, il peut rester en pause pour ceux qui le regardent.
+                out.push(json!({ "op": 22, "d": { "stream_key": stream_key, "paused": false } }).to_string());
                 out
             }
             VideoCmd::StopShare => self.own_key.take().map(|k| op19(&k)).into_iter().collect(),
@@ -227,7 +230,7 @@ mod tests {
         assert_eq!(v(&p[0]), json!({ "op": 18, "d": { "type": "guild", "guild_id": "5", "channel_id": "6", "preferred_region": null } }));
         // Second partage : l'ancien direct est d'abord supprimé.
         let p = g.on_cmd(&start, Some(here));
-        assert_eq!(p.iter().map(|x| v(x)["op"].clone()).collect::<Vec<_>>(), vec![json!(19), json!(18)]);
+        assert_eq!(p.iter().map(|x| v(x)["op"].clone()).collect::<Vec<_>>(), vec![json!(19), json!(18), json!(22)]);
         assert_eq!(v(&g.on_cmd(&VideoCmd::StopShare, Some(here))[0]), json!({ "op": 19, "d": { "stream_key": "guild:5:6:1" } }));
         assert!(g.on_cmd(&VideoCmd::StopShare, Some(here)).is_empty(), "déjà arrêté");
         let call = VideoCmd::StartShare { source_id: "e".into(), quality: q, audio: false, stream_key: "call:6:1".into(), guild_id: None, channel_id: 6 };

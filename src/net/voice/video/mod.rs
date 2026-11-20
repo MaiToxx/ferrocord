@@ -13,7 +13,8 @@
 //!   `encode`, `decode`) ; jamais le type de charge 96 (sondes) ;
 //! - Session Description : `video_codec`, le codec à envoyer ;
 //! - op 12 Video : à l'envoi `audio_ssrc`, `video_ssrc`, `rtx_ssrc`,
-//!   `streams` ; à la réception `user_id`, `audio_ssrc`, `video_ssrc`,
+//!   `streams` (de type `video` même pour un direct : `screen` ne sert que
+//!   dans l'Identify) ; à la réception `user_id`, `audio_ssrc`, `video_ssrc`,
 //!   `streams` (avec `rtx_ssrc`) ; `video_ssrc` à 0 : vidéo coupée ;
 //! - RTP vidéo : horloge à 90 kHz, marqueur sur le dernier paquet d'une
 //!   image ; NACK servis par RTX (numéro d'origine en tête de charge).
@@ -182,6 +183,11 @@ impl Link {
         &self.offers
     }
 
+    /// Connexion d'un direct (Go Live).
+    pub fn screen(&self) -> bool {
+        self.screen
+    }
+
     pub fn video_ssrc(&self) -> u32 {
         self.video_ssrc
     }
@@ -230,7 +236,7 @@ impl Link {
             "video_ssrc": self.video_ssrc,
             "rtx_ssrc": self.rtx_ssrc,
             "streams": [{
-                "type": if self.screen { "screen" } else { "video" },
+                "type": "video",
                 "rid": "100",
                 "ssrc": self.video_ssrc,
                 "rtx_ssrc": self.rtx_ssrc,
