@@ -25,7 +25,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use tokio::sync::mpsc as tmpsc;
 
 /// Écart entre deux images clés forcées de mon partage.
-const KEYFRAME_EVERY: std::time::Duration = std::time::Duration::from_secs(3);
+const KEYFRAME_EVERY: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// Ce que je fais de ce direct.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -136,9 +136,10 @@ pub(super) async fn run(s: StreamStart, mut rx: tmpsc::UnboundedReceiver<StreamM
     let mut sending: Option<Sending> = None;
     let mut sound: Option<Media> = None;
     let mut receiving = Receiving::new(s.opts.video.clone(), s.sink.clone(), net.clone(), s.report.clone());
-    // Image clé régulière de mon partage : une personne qui arrive (ou dont
-    // la demande d'image clé s'est perdue) a une image au bout de ce délai
-    // au plus, au lieu d'un chargement sans fin.
+    // Image clé régulière de mon partage : une personne dont la demande
+    // d'image clé s'est perdue a une image au bout de ce délai au plus, au
+    // lieu d'un chargement sans fin. Rare : une image clé pèse lourd en
+    // taille source, et l'arrivée d'une personne en demande déjà une.
     let mut key_tick = tokio::time::interval(KEYFRAME_EVERY);
     key_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {

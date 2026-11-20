@@ -117,6 +117,27 @@ async fn voice_handshake_and_audio_aes_gcm() {
     audio_both_ways(&[XCHACHA, AES, "xsalsa20_poly1305"], AES).await;
 }
 
+/// Après un silence, l'horodatage saute le temps écoulé (horloge du micro) :
+/// la reprise ne paraît pas en retard à ceux qui écoutent.
+#[tokio::test]
+async fn voice_timestamp_follows_the_clock_across_silence() {
+    let mut server = FakeVoice::start().await;
+    let (tx, mut rx) = start(&server, Box::new(Passthrough));
+    let mut c = server.accept().await;
+    let h = joined(&server, &mut c, &mut rx, &[AES]).await;
+    ctl(&tx, VoiceCtl::Opus(b"un".to_vec())).await;
+    ctl(&tx, VoiceCtl::Opus(b"deux".to_vec())).await;
+    assert_eq!(server.recv_audio(&h.cipher).await.1, 0);
+    assert_eq!(server.recv_audio(&h.cipher).await.1, 960, "trames qui se suivent : +960");
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    ctl(&tx, VoiceCtl::Opus(b"trois".to_vec())).await;
+    let (seq, ts, _, opus) = server.recv_audio(&h.cipher).await;
+    assert_eq!((seq, opus.as_slice()), (2, &b"trois"[..]));
+    let frames = (ts - 960) / 960;
+    assert!((ts - 960) % 960 == 0 && (18..=40).contains(&frames), "0,4 s de silence : {frames} trames sautées");
+    ctl(&tx, VoiceCtl::Disconnect).await;
+}
+
 #[tokio::test]
 async fn voice_audio_xchacha20() {
     audio_both_ways(&["xsalsa20_poly1305_lite", XCHACHA], XCHACHA).await;
