@@ -62,6 +62,29 @@ fn lock_player(p: &Player) -> std::sync::MutexGuard<'_, Option<mpsc::Sender<medi
     p.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
+/// La sortie de l'appel en cours, pour les sons de l'interface.
+struct CallMixer {
+    player: Player,
+    in_call: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl crate::audio::clip::Mixer for CallMixer {
+    fn play(&self, id: u64, pcm: crate::audio::clip::Pcm, volume: f32) -> bool {
+        if !self.in_call.load(std::sync::atomic::Ordering::Relaxed) {
+            return false;
+        }
+        let Some(p) = lock_player(&self.player).clone() else { return false };
+        let _ = p.send(media::PlayMsg::StopClip(id));
+        p.send(media::PlayMsg::Clip { id, pcm, pos: 0, volume, deafen: false }).is_ok()
+    }
+
+    fn stop(&self, id: u64) {
+        if let Some(p) = lock_player(&self.player).as_ref() {
+            let _ = p.send(media::PlayMsg::StopClip(id));
+        }
+    }
+}
+
 /// Réglages de l'orchestrateur ; l'application n'utilise que [`Options::real`].
 #[derive(Clone)]
 pub struct Options {
@@ -211,6 +234,7 @@ pub struct Voice {
     wants: Vec<(u64, u8)>,
     sink: Option<VideoSink>,
     player: Player,
+    in_call: Arc<std::sync::atomic::AtomicBool>,
     streams: HashMap<String, RunningStream>,
     stream_gens: u64,
     voice_out: Vec<VoiceEvent>,
@@ -247,6 +271,7 @@ impl Voice {
             wants: Vec::new(),
             sink: None,
             player: Arc::new(Mutex::new(None)),
+            in_call: Arc::default(),
             streams: HashMap::new(),
             stream_gens: 0,
             voice_out: Vec::new(),
@@ -351,7 +376,7 @@ impl Voice {
             kind: ConnKind::Voice,
         };
         let out = call::Out { generation: self.generation, tx: self.up_tx.clone(), wake: self.wake.clone() };
-        let video = call::VideoCx { sink: self.sink(), report: self.report(), player: self.player.clone() };
+        let video = call::VideoCx { sink: self.sink(), report: self.report(), player: self.player.clone(), in_call: self.in_call.clone() };
         let start = call::Start { params, settings, users: self.users.clone(), ptt: self.ptt, opts: self.opts.clone(), out, camera: self.camera.clone(), video };
         self.rt.spawn(call::run(start, rx));
         self.running = Some(Running { generation: self.generation, key: Key::of(t), tx });
@@ -599,6 +624,10 @@ impl VoiceLink for Voice {
         std::mem::take(&mut self.video_out)
     }
 
+    fn call_mixer(&self) -> Option<Arc<dyn crate::audio::clip::Mixer>> {
+        Some(Arc::new(CallMixer { player: self.player.clone(), in_call: self.in_call.clone() }))
+    }
+
     fn play_clip(&mut self, p: ClipPlay) {
         self.clip_play(p);
     }
@@ -647,5 +676,34 @@ impl VoiceLink for Voice {
     fn poll_call_record(&mut self) -> Vec<crate::state::call_rec::CallRecUp> {
         self.drain();
         std::mem::take(&mut self.rec_out)
+    }
+}
+
+#[cfg(test)]
+mod mixer_tests {
+    use super::*;
+    use crate::audio::clip::{Mixer, Pcm};
+    use std::sync::atomic::Ordering::Relaxed;
+
+    /// Un son d'interface ne se mêle à la sortie que pendant un appel ; rejoué,
+    /// il repart du début (l'ancien est arrêté d'abord).
+    #[test]
+    fn interface_sounds_mix_into_the_call_output_only_during_a_call() {
+        let m = CallMixer { player: Arc::new(Mutex::new(None)), in_call: Arc::default() };
+        let pcm = Pcm { channels: 2, data: vec![1i16; 8].into() };
+        assert!(!m.play(7, pcm.clone(), 0.5), "hors appel");
+        let (tx, rx) = mpsc::channel();
+        *lock_player(&m.player) = Some(tx);
+        // Sortie ouverte pour un message vocal, hors appel : toujours non.
+        assert!(!m.play(7, pcm.clone(), 0.5));
+        m.in_call.store(true, Relaxed);
+        assert!(m.play(7, pcm.clone(), 0.5));
+        assert!(matches!(rx.try_recv(), Ok(media::PlayMsg::StopClip(7))));
+        assert!(matches!(rx.try_recv(), Ok(media::PlayMsg::Clip { id: 7, pos: 0, deafen: false, .. })));
+        m.stop(7);
+        assert!(matches!(rx.try_recv(), Ok(media::PlayMsg::StopClip(7))));
+        // Appel fini (sortie fermée) : le lecteur de Windows reprend la main.
+        drop(rx);
+        assert!(!m.play(7, pcm, 0.5));
     }
 }

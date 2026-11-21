@@ -70,15 +70,19 @@ fn activate(target: Target) -> Result<IAudioClient, AudioError> {
         Anonymous: AUDIOCLIENT_ACTIVATION_PARAMS_0 { ProcessLoopbackParams: AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS { TargetProcessId: pid, ProcessLoopbackMode: mode } },
     };
     let blob = BLOB { cbSize: std::mem::size_of::<AUDIOCLIENT_ACTIVATION_PARAMS>() as u32, pBlobData: (&raw mut params).cast() };
-    let prop = PROPVARIANT {
+    // Jamais détruit : la destruction d'un PROPVARIANT libère son contenu
+    // (`PropVariantClear`), or ce BLOB pointe sur `params`, qui est sur la
+    // pile. Le libérer abîmait le tas : Ferrocord plantait au lancement d'un
+    // partage avec le son (0xc0000374, constaté par l'utilisateur, 0.1.28).
+    let prop = std::mem::ManuallyDrop::new(PROPVARIANT {
         Anonymous: PROPVARIANT_0 { Anonymous: std::mem::ManuallyDrop::new(PROPVARIANT_0_0 { vt: VT_BLOB, wReserved1: 0, wReserved2: 0, wReserved3: 0, Anonymous: PROPVARIANT_0_0_0 { blob } }) },
-    };
+    });
     let (tx, done) = mpsc::sync_channel(1);
     let handler: IActivateAudioInterfaceCompletionHandler = Activated(tx).into();
     // SAFETY: `prop` et `params` (pointé par le BLOB) vivent jusqu'à la fin de
     // la fonction, après la fin de l'activation attendue ci-dessous ; Windows
     // copie les paramètres pendant l'appel. L'IID est celui de `IAudioClient`.
-    let op = unsafe { ActivateAudioInterfaceAsync(VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, &IAudioClient::IID, Some(&raw const prop), &handler) }.map_err(backend)?;
+    let op = unsafe { ActivateAudioInterfaceAsync(VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, &IAudioClient::IID, Some(&raw const *prop), &handler) }.map_err(backend)?;
     done.recv_timeout(ACTIVATE_WAIT).map_err(|_| AudioError::Backend("activation timeout".into()))?;
     let mut hr = HRESULT(0);
     let mut unknown: Option<IUnknown> = None;
@@ -208,6 +212,29 @@ impl Drop for Running {
         self.stop.store(true, Ordering::Relaxed);
         if let Some(t) = self.thread.take() {
             let _ = t.join();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// La capture du son de tout sauf ce processus s'ouvre et se ferme sans
+    /// abîmer la mémoire (plantage au lancement d'un partage avec le son,
+    /// constaté par l'utilisateur, 0.1.28). Aucun son n'est joué ; sur un
+    /// Windows sans cette capture, l'ouverture échoue proprement.
+    #[test]
+    fn la_capture_s_ouvre_et_se_ferme_plusieurs_fois() {
+        for _ in 0..20 {
+            if let Ok(r) = Running::start(Target::Exclude(std::process::id()), Box::new(|_| {})) {
+                std::thread::sleep(Duration::from_millis(20));
+                drop(r);
+            }
+            // Le tas est sollicité entre deux ouvertures : une libération
+            // fautive s'y voit.
+            let v: Vec<Vec<u8>> = (0..200).map(|k| vec![0u8; 64 + k]).collect();
+            drop(v);
         }
     }
 }

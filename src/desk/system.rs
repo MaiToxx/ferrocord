@@ -14,6 +14,7 @@ use crate::i18n::table::social::t as so;
 use crate::images::{decode, disk::Disk, DiskConfig, Source};
 use crate::net::Wake;
 use crate::state::model::ImageRef;
+use crate::audio::clip::{Mixer, Pcm};
 use crate::audio::sons::perso::Banque;
 use crate::state::notify::{Alert, DeskPrefs, Kind};
 use std::collections::VecDeque;
@@ -25,7 +26,7 @@ use windows::core::HSTRING;
 use windows::Data::Xml::Dom::XmlDocument;
 use windows::Foundation::TypedEventHandler;
 use windows::Media::Core::MediaSource;
-use windows::Media::Playback::{MediaPlaybackState, MediaPlayer};
+use windows::Media::Playback::{MediaPlaybackState, MediaPlayer, MediaPlayerAudioCategory};
 use windows::Storage::Streams::{DataWriter, InMemoryRandomAccessStream};
 use windows::UI::Notifications::{ToastNotification, ToastNotificationManager, ToastNotifier};
 
@@ -44,6 +45,7 @@ enum Job {
     Toast(Alert, [u8; 3]),
     Sound(Kind, u8),
     Silence(Kind),
+    Mixer(Arc<dyn Mixer>),
 }
 
 /// Bureau de Windows.
@@ -61,7 +63,7 @@ impl Desk {
         let (jobs, rx) = mpsc::channel();
         let (tx, events) = mpsc::channel();
         install_handlers(tx.clone(), wake.clone());
-        let worker = Worker { tx, wake, source, images, disk: None, notifier: None, registered: false, live: VecDeque::new(), players: Vec::new(), sons: Banque::new(crate::audio::sons::perso::dossier()), slot: 0 };
+        let worker = Worker { tx, wake, source, images, disk: None, notifier: None, registered: false, live: VecDeque::new(), players: Vec::new(), sons: Banque::new(crate::audio::sons::perso::dossier()), slot: 0, mixer: None };
         // Sans fil, les demandes sont perdues sans bruit : l'application reste utilisable.
         let _ = std::thread::Builder::new().name("ferrocord-bureau".into()).spawn(move || worker.run(rx));
         Desk { jobs, events, tray: None, accent: [0, 0, 0] }
@@ -87,6 +89,10 @@ impl Desktop for Desk {
 
     fn silence(&mut self, kind: Kind) {
         let _ = self.jobs.send(Job::Silence(kind));
+    }
+
+    fn set_call_mixer(&mut self, mixer: Arc<dyn Mixer>) {
+        let _ = self.jobs.send(Job::Mixer(mixer));
     }
 
     fn custom_sounds(&self) -> bool {
@@ -212,6 +218,8 @@ struct Worker {
     players: Vec<(Kind, MediaPlayer)>,
     /// Sons fabriqués à la demande (rien tant qu'aucun son n'est joué).
     sons: Banque,
+    /// Sortie de l'appel en cours, si un vrai vocal est branché.
+    mixer: Option<Arc<dyn Mixer>>,
     slot: u32,
 }
 
@@ -238,6 +246,7 @@ impl Worker {
                     let _ = self.play(kind, volume);
                 }
                 Job::Silence(kind) => self.silence(kind),
+                Job::Mixer(m) => self.mixer = Some(m),
             }
         }
     }
@@ -310,6 +319,14 @@ impl Worker {
     fn play(&mut self, kind: Kind, volume: u8) -> windows::core::Result<()> {
         // Fabriqué (ou lu dans le dossier de l'utilisateur) ici, hors du fil d'interface.
         let son = self.sons.son(kind);
+        let volume01 = f32::from(volume.min(100)) / 100.0;
+        // Pendant un appel : mêlé à la sortie de l'appel. Un lecteur de Windows
+        // à part coupait le son de l'appel le temps du son (constaté, 0.1.28).
+        if let Some(m) = &self.mixer
+            && m.play(mixer_id(kind), Pcm { channels: 2, data: son.pcm.clone() }, volume01)
+        {
+            return Ok(());
+        }
         let source = media_source(&son.wav)?;
         let player = self.player(kind)?;
         player.SetSource(&source)?;
@@ -326,6 +343,10 @@ impl Worker {
             Some(i) => i,
             None if self.players.len() < PLAYERS => {
                 let player = MediaPlayer::new()?;
+                // Son d'interface, pas un média : la catégorie par défaut (« Media »)
+                // entre dans la gestion des médias de Windows, qui peut baisser ou
+                // couper les autres flux.
+                let _ = player.SetAudioCategory(MediaPlayerAudioCategory::SoundEffects);
                 // Pas d'entrée dans les commandes multimédias de Windows (touches
                 // lecture/pause, volet du volume) pour un simple son d'interface.
                 let _ = player.CommandManager().and_then(|c| c.SetIsEnabled(false));
@@ -344,7 +365,16 @@ impl Worker {
         for (_, p) in self.players.iter().filter(|(k, _)| *k == kind) {
             let _ = p.Pause();
         }
+        if let Some(m) = &self.mixer {
+            m.stop(mixer_id(kind));
+        }
     }
+}
+
+/// Numéro du son de `kind` dans la sortie d'un appel : loin de ceux des
+/// sons du tableau et des messages vocaux, qui comptent à partir de zéro.
+fn mixer_id(kind: Kind) -> u64 {
+    u64::MAX - kind as u64
 }
 
 /// Lecteurs gardés, au plus : sonnerie, son du vocal et notification peuvent se chevaucher.

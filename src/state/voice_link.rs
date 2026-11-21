@@ -85,6 +85,11 @@ pub trait VoiceLink {
     /// Joue un son court (tableau de sons, message vocal), dans l'appel ou,
     /// hors appel, par la sortie audio seule (phase 6).
     fn play_clip(&mut self, _p: super::voice_msg::ClipPlay) {}
+    /// Sortie de l'appel en cours, pour y mêler les sons de l'interface
+    /// (`None` : pas de vrai vocal).
+    fn call_mixer(&self) -> Option<std::sync::Arc<dyn crate::audio::clip::Mixer>> {
+        None
+    }
     fn stop_clip(&mut self, _k: super::voice_msg::ClipKey) {}
     /// Enregistrement d'un message vocal.
     fn record(&mut self, _c: super::voice_msg::RecordCmd) {}
