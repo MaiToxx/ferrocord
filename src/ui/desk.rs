@@ -94,6 +94,15 @@ impl App {
         self.desk.backend = d;
         self.desk.tray = None;
         self.desk.attached = true;
+        self.desk_link_mixer();
+    }
+
+    /// Donne au bureau la sortie des appels, pour que les sons s'y mêlent
+    /// pendant un appel (dans un sens ou l'autre de branchement).
+    pub(in crate::ui) fn desk_link_mixer(&mut self) {
+        if let Some(m) = self.media_link().call_mixer() {
+            self.desk.backend.set_call_mixer(m);
+        }
     }
 
     /// Réglages de bureau en cours (aperçu, tests).

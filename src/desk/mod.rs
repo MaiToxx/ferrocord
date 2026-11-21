@@ -69,6 +69,9 @@ pub trait Desktop {
     fn sound(&mut self, kind: Kind, volume: u8);
     /// Arrête le son de `kind` s'il joue encore (sonnerie d'un appel décroché ou manqué).
     fn silence(&mut self, _kind: Kind) {}
+    /// Sortie de l'appel en cours : pendant un appel, les sons y sont mêlés
+    /// au lieu d'ouvrir un lecteur à part.
+    fn set_call_mixer(&mut self, _mixer: Arc<dyn crate::audio::clip::Mixer>) {}
     /// Ce bureau lit-il le dossier des sons personnels (`audio::sons::perso`) ?
     /// Faux pour un bureau de test ou d'aperçu : la page des réglages ne lit alors aucun dossier.
     fn custom_sounds(&self) -> bool {

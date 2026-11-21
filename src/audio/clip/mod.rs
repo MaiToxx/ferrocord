@@ -29,6 +29,18 @@ pub enum ClipError {
     Unsupported,
 }
 
+/// Sortie audio d'un appel en cours, où mêler un son court. Les sons de
+/// l'interface (notification, arrivée dans le salon…) y passent pendant un
+/// appel : joués par un lecteur de Windows à part, ils coupaient le son de
+/// l'appel le temps de leur lecture (constaté par l'utilisateur, 0.1.28).
+pub trait Mixer: Send + Sync {
+    /// Mêle `pcm` à la sortie de l'appel ; `false` hors appel (rien n'est joué).
+    /// Un son de même `id` encore en cours repart du début.
+    fn play(&self, id: u64, pcm: Pcm, volume: f32) -> bool;
+    /// Arrête le son `id` s'il joue encore.
+    fn stop(&self, id: u64);
+}
+
 /// Son décodé, à 48 kHz, voies entrelacées.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Pcm {

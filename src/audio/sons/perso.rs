@@ -235,6 +235,8 @@ pub fn lire(chemin: &Path) -> Result<Vec<i16>, Refus> {
 pub struct Son {
     /// Fichier WAV entier (48 kHz, stéréo, 16 bits).
     pub wav: Arc<[u8]>,
+    /// Les mêmes échantillons (48 kHz, stéréo entrelacé), pour la sortie d'un appel.
+    pub pcm: Arc<[i16]>,
     /// Il vient du dossier de l'utilisateur.
     pub perso: bool,
 }
@@ -275,7 +277,9 @@ impl Banque {
                 None
             }
         });
-        let son = Son { perso: perso.is_some(), wav: synth::wav(&perso.unwrap_or_else(|| super::integre(kind))).into() };
+        let de_perso = perso.is_some();
+        let pcm = perso.unwrap_or_else(|| super::integre(kind));
+        let son = Son { perso: de_perso, wav: synth::wav(&pcm).into(), pcm: pcm.into() };
         if self.octets() + son.wav.len() > MEMOIRE_MAX {
             self.sons.clear();
         }

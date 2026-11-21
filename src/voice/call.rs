@@ -52,6 +52,8 @@ pub(super) struct VideoCx {
     pub sink: VideoSink,
     pub report: Report,
     pub player: Player,
+    /// Vrai tant que la sortie audio de cet appel tourne.
+    pub in_call: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl VideoCx {
@@ -169,6 +171,7 @@ pub(super) async fn run(s: Start, mut rx: tmpsc::UnboundedReceiver<Msg>) {
     let mut receiving = Receiving::new(opts.video.clone(), video.sink.clone(), net.clone(), video.report.clone());
     let (mut media, err) = open_media(&opts, &settings.prefs, &shared, &net, &aud_tx, &users).await;
     *lock_player(&video.player) = Some(media.player());
+    video.in_call.store(true, std::sync::atomic::Ordering::Relaxed);
     out.event(VoiceEvent::AudioProblem(err));
     let mut check = tokio::time::interval(opts.device_check);
     check.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -295,6 +298,7 @@ pub(super) async fn run(s: Start, mut rx: tmpsc::UnboundedReceiver<Msg>) {
     drop(receiving);
     // Fin de l'appel : l'enregistrement en cours est fermé (émetteurs lâchés).
     shared.set_rec(None);
+    video.in_call.store(false, std::sync::atomic::Ordering::Relaxed);
     *lock_player(&video.player) = None;
     close_media(media);
     out.up(Up::Ended);

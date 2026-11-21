@@ -15,6 +15,7 @@ impl App {
     /// Branche le vrai orchestrateur (réseau et périphériques).
     pub fn attach_voice(&mut self, link: Box<dyn VoiceLink>) {
         self.voice.link = link;
+        self.desk_link_mixer();
     }
 
     /// L'orchestrateur, pour le lecteur de fichiers du fil (lot M).
