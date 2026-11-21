@@ -596,6 +596,19 @@ impl Ctx<'_> {
         if on == self.st.speaking {
             return Ok(());
         }
+        // Sur un direct, le Speaking « son partagé » reste posé quand le son
+        // de l'écran se tait : le retirer (op 5 à zéro) laissait le direct
+        // charger sans fin chez ceux qui regardent, dès que « Partager le
+        // son » était activé (constaté par l'utilisateur, 0.1.29). Les
+        // silences de fin partent quand même.
+        if !on && self.st.video.screen() {
+            if self.st.cipher.is_some() {
+                for _ in 0..5 {
+                    self.send_rtp(&rtp::SILENCE).await;
+                }
+            }
+            return Ok(());
+        }
         self.st.speaking = on;
         if self.st.cipher.is_none() {
             // Envoyé avec la clé de session (Session Description).

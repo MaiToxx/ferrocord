@@ -176,6 +176,20 @@ pub fn bitrate(width: u32, height: u32, fps: u32, screen: bool) -> u32 {
     (px * num / 100).clamp(150_000, max) as u32
 }
 
+/// Débit à régler sur l'encodeur pour qu'il produise vraiment `base` quand
+/// la chaîne ne tient que `real` images par seconde au lieu de `fps`.
+/// L'encodeur répartit son débit sur `fps` images : à 30 images réelles
+/// pour 60 annoncées, un partage en 4K ne sortait que la moitié du débit
+/// visé, d'où une image pixélisée (constaté par l'utilisateur, 0.1.29).
+/// Seulement quand la chaîne est en retard (`behind`) : un écran immobile
+/// donne peu d'images sans manquer de débit. Jamais plus du double.
+fn tuned_bitrate(base: u32, fps: u32, real: u32, behind: bool) -> u32 {
+    if !behind || real == 0 || real >= fps {
+        return base;
+    }
+    (u64::from(base) * u64::from(fps) / u64::from(real)).min(u64::from(base) * 2) as u32
+}
+
 /// Image mise à `w`×`h` (plus proche voisin pour l'I420, bilinéaire pour le BGRA).
 fn scaled(f: Frame, w: u32, h: u32, scaler: &mut crate::video::convert::Scaler) -> Option<Frame> {
     if (f.width, f.height) == (w, h) {
@@ -334,10 +348,15 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
         return;
     };
     let m = mail.clone();
+    // Images de la capture remplacées avant d'avoir été encodées : la chaîne est en retard.
+    let skipped = Arc::new(std::sync::atomic::AtomicU32::new(0));
+    let sk = skipped.clone();
     let on_frame = Box::new(move |f: Frame| {
         let mut s = lock(&m.slot);
         if !s.stop {
-            s.frame = Some(f);
+            if s.frame.replace(f).is_some() {
+                sk.fetch_add(1, Relaxed);
+            }
             drop(s);
             m.ready.notify_one();
         }
@@ -358,6 +377,8 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
     let mut announced = None;
     // Mesure de ce qui part vraiment : (début, images, octets, images perdues).
     let mut seen = (Instant::now(), 0u32, 0u64, 0u32);
+    // Débit réglé sur l'encodeur en service (`None` : celui de son ouverture).
+    let mut tuned: Option<u32> = None;
     loop {
         // Une image, ou l'arrêt ; sans image depuis une seconde, la source a peut-être disparu.
         let (frame, mut key) = {
@@ -389,6 +410,7 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
                 if let Some(e) = made.or_else(|| cfg.backend.encoder(enc.codec, size.0, size.1, fps, bps)) {
                     enc.enc = Some(e);
                     enc.size = size;
+                    tuned = None;
                     break;
                 }
                 // Refusé : palier suivant, s'il réduit vraiment l'image.
@@ -445,6 +467,14 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
                 }
                 let ms = seen.0.elapsed().as_millis() as u64;
                 if ms >= STATS_EVERY_MS {
+                    let real = ((u64::from(seen.1) * 1000 + ms / 2) / ms) as u32;
+                    let behind = skipped.swap(0, Relaxed) > seen.1 / 8;
+                    let base = bitrate(size.0, size.1, fps, cfg.screen);
+                    let want = tuned_bitrate(base, fps, real, behind);
+                    if tuned.unwrap_or(base).abs_diff(want) > base / 10 {
+                        tuned = Some(want);
+                        e.set_bitrate(want);
+                    }
                     if cfg.screen {
                         let st = SendStats {
                             width: size.0,
@@ -730,6 +760,18 @@ mod tests {
         drop(sending);
         while rx.try_recv().is_ok() {}
         (lock(&tries).clone(), lock(&said).clone())
+    }
+
+    #[test]
+    fn bitrate_follows_the_real_frame_rate_when_the_pipeline_is_behind() {
+        let base = 18_000_000;
+        assert_eq!(tuned_bitrate(base, 60, 60, true), base);
+        assert_eq!(tuned_bitrate(base, 60, 45, true), 24_000_000);
+        assert_eq!(tuned_bitrate(base, 60, 30, true), 36_000_000);
+        assert_eq!(tuned_bitrate(base, 60, 10, true), 36_000_000, "jamais plus du double");
+        // Écran immobile : peu d'images, mais la chaîne n'est pas en retard.
+        assert_eq!(tuned_bitrate(base, 60, 5, false), base);
+        assert_eq!(tuned_bitrate(base, 60, 0, true), base);
     }
 
     #[test]

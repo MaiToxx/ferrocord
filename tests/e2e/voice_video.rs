@@ -202,6 +202,27 @@ async fn direct_go_live() {
     let speaking = c.recv_op(5).await;
     assert_eq!((speaking["d"]["speaking"].as_u64(), speaking["d"]["ssrc"].as_u64()), (Some(2), Some(u64::from(MY_SSRC))));
     assert_eq!(c.recv_op(12).await["d"]["streams"][0]["type"], "video", "« screen » ne sert que dans l'Identify");
+    // Son de l'écran partagé : Speaking « son partagé » avec la première trame.
+    ctl(&tx, VoiceCtl::Opus(b"son".to_vec())).await;
+    assert_eq!(c.recv_op(5).await["d"]["speaking"], 2);
+    assert_eq!(server.recv_audio(&h.cipher).await.3, b"son".to_vec());
+    // Le son se tait : les silences partent, mais le Speaking n'est jamais
+    // retiré (le direct chargeait sans fin chez ceux qui regardent). La
+    // reprise du son et une nouvelle annonce de la vidéo ne le redisent pas.
+    ctl(&tx, VoiceCtl::Speaking(false)).await;
+    for _ in 0..5 {
+        assert_eq!(server.recv_audio(&h.cipher).await.3, rtp::SILENCE.to_vec());
+    }
+    ctl(&tx, VoiceCtl::Opus(b"encore".to_vec())).await;
+    assert_eq!(server.recv_audio(&h.cipher).await.3, b"encore".to_vec());
+    ctl(&tx, VoiceCtl::VideoState { active: true, width: 1280, height: 720, fps: 30 }).await;
+    loop {
+        match c.recv().await {
+            Msg::Json(v) if v["op"] == 5 => panic!("Speaking redit ou retiré sur un direct : {v}"),
+            Msg::Json(v) if v["op"] == 12 => break,
+            _ => {}
+        }
+    }
     ctl(&tx, VoiceCtl::Disconnect).await;
 }
 
