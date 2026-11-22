@@ -619,7 +619,7 @@ pub(in crate::ui) fn share_stats_text(lang: crate::i18n::Lang, st: &crate::state
     let sep = if lang == crate::i18n::Lang::Fr { ',' } else { '.' };
     let rate = format!("{}{sep}{}", st.kbps / 1000, st.kbps % 1000 / 100);
     let encoder = if st.software { vt::ENC_SOFT.get(lang) } else { vt::ENC_HARD.get(lang) };
-    let mut text = vf::share_stats(lang, st.width, st.height, st.fps, rate, encoder);
+    let mut text = vf::share_stats(lang, st.width, st.height, st.fps, rate, st.codec, encoder);
     if st.lost > 0 {
         text.push_str(", ");
         text.push_str(&vf::share_lost(lang, st.lost));
@@ -635,9 +635,9 @@ mod stats_tests {
 
     #[test]
     fn share_stats_line_says_what_is_really_sent() {
-        let st = SendStats { width: 3840, height: 2160, fps: 58, kbps: 17_260, software: false, lost: 0 };
-        assert_eq!(share_stats_text(Lang::Fr, &st), "Envoyé\u{a0}: 3840×2160, 58 images/s, 17,2 Mb/s, encodeur de la carte graphique");
-        let st = SendStats { width: 1280, height: 720, fps: 30, kbps: 950, software: true, lost: 4 };
-        assert_eq!(share_stats_text(Lang::En, &st), "Sending: 1280×720, 30 fps, 0.9 Mbps, software encoder (slow), 4 frames dropped (sending is behind)");
+        let st = SendStats { width: 3840, height: 2160, fps: 58, kbps: 17_260, software: false, codec: "H264", lost: 0 };
+        assert_eq!(share_stats_text(Lang::Fr, &st), "Envoyé\u{a0}: 3840×2160, 58 images/s, 17,2 Mb/s, H264, encodeur de la carte graphique");
+        let st = SendStats { width: 1280, height: 720, fps: 30, kbps: 950, software: true, codec: "VP8", lost: 4 };
+        assert_eq!(share_stats_text(Lang::En, &st), "Sending: 1280×720, 30 fps, 0.9 Mbps, VP8, software encoder (slow), 4 frames dropped (sending is behind)");
     }
 }

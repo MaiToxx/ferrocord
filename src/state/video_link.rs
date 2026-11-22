@@ -80,6 +80,8 @@ pub struct SendStats {
     pub kbps: u32,
     /// Encodeur logiciel (celui de la carte graphique absent ou en panne).
     pub software: bool,
+    /// Codec négocié avec Discord (« H264 », « VP8 »).
+    pub codec: &'static str,
     /// Images perdues parce que la connexion n'a pas suivi.
     pub lost: u32,
 }
@@ -210,7 +212,7 @@ mod tests {
         // Panne de caméra : éteinte, message rendu, op 4 repartie.
         assert_eq!(s.apply_video_up(VideoUp::CameraFailed("x".into())).as_deref(), Some("x"));
         // Une mesure sans partage en cours : rien à afficher, rien de retenu.
-        let st = SendStats { width: 3840, height: 2160, fps: 60, kbps: 17_000, software: false, lost: 0 };
+        let st = SendStats { width: 3840, height: 2160, fps: 60, kbps: 17_000, software: false, codec: "H264", lost: 0 };
         assert_eq!(s.apply_video_up(VideoUp::ShareStats(st)), None);
         assert!(s.video.share.is_none());
         assert!(!s.video.camera);

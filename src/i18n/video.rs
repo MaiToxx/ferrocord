@@ -60,8 +60,9 @@ pub mod f {
         share_failed(why) = "Partage arrêté\u{a0}: {why}", "Sharing stopped: {why}";
         video_error(why) = "Erreur vidéo\u{a0}: {why}", "Video error: {why}";
         lowered(width, height) = "La carte graphique refuse cette définition\u{a0}: vidéo envoyée en {width}×{height}.", "The graphics card refuses this resolution: sending {width}×{height} instead.";
-        soft_encoder(why) = "L'encodeur de la carte graphique a échoué ({why})\u{a0}: encodeur logiciel, image réduite.", "The graphics card encoder failed ({why}): software encoder, smaller picture.";
-        share_stats(width, height, fps, rate, encoder) = "Envoyé\u{a0}: {width}×{height}, {fps} images/s, {rate} Mb/s, {encoder}", "Sending: {width}×{height}, {fps} fps, {rate} Mbps, {encoder}";
+        soft_encoder(why) = "L'encodeur de la carte graphique a échoué ({why})\u{a0}: encodeur logiciel, image réduite à 1280×720.", "The graphics card encoder failed ({why}): software encoder, picture reduced to 1280×720.";
+        share_stats(width, height, fps, rate, codec, encoder) = "Envoyé\u{a0}: {width}×{height}, {fps} images/s, {rate} Mb/s, {codec}, {encoder}", "Sending: {width}×{height}, {fps} fps, {rate} Mbps, {codec}, {encoder}";
+        lowered_why(width, height, why) = "L'encodeur a échoué ({why})\u{a0}: vidéo envoyée en {width}×{height}.", "The encoder failed ({why}): sending {width}×{height} instead.";
         share_lost(n) = "{n} images perdues (envoi en retard)", "{n} frames dropped (sending is behind)";
         share_sound_failed(why) = "Le son du partage ne passe pas\u{a0}: {why}", "Shared audio isn't working: {why}";
         screen_of(name) = "Écran de {name}", "{name}'s screen";
