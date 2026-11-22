@@ -302,6 +302,7 @@ pub fn config() -> VoiceConfig {
         hosts: VoiceHosts::Loopback,
         reconnect_base: Duration::from_millis(10),
         max_resumes: 3,
+        min_heartbeat: Duration::from_millis(1),
         discovery_timeout: Duration::from_millis(500),
         video_codecs: ferrocord::net::voice::video::default_offers(),
         ws_headers: Vec::new(),

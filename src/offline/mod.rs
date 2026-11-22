@@ -115,18 +115,39 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         f.write_all(bytes)?;
         f.sync_all()
     })();
-    let result = written.and_then(|()| std::fs::rename(&tmp, path));
+    // Windows refuse par moments de renommer un fichier tout juste créé
+    // (antivirus, indexeur qui le tient encore) : quelques essais.
+    let result = written.and_then(|()| {
+        let mut tries = 0;
+        loop {
+            match std::fs::rename(&tmp, path) {
+                Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied && tries < 5 => {
+                    tries += 1;
+                    std::thread::sleep(std::time::Duration::from_millis(20 * tries));
+                }
+                r => break r,
+            }
+        }
+    });
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp);
     }
     result
 }
 
-/// Relit la clé ; absente ou illisible et `create` : une nouvelle, et les
-/// fichiers chiffrés par l'ancienne (illisibles) sont effacés.
+/// Relit la clé ; absente ou refusée par le système et `create` : une
+/// nouvelle, et les fichiers chiffrés par l'ancienne (illisibles) sont
+/// effacés. Un fichier de clé présent mais qui ne se lit pas (tenu par un
+/// antivirus, erreur passagère du disque) n'est pas une clé perdue : rien
+/// n'est effacé, l'historique attend le prochain essai (audit 0.1.33).
 fn key(dir: &Path, create: bool) -> Option<crypt::Key> {
     let path = dir.join(KEY_FILE);
-    if let Some(bytes) = std::fs::read(&path).ok().and_then(|b| unprotect(&b))
+    let sealed = match std::fs::read(&path) {
+        Ok(b) => Some(b),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(_) => return None,
+    };
+    if let Some(bytes) = sealed.and_then(|b| unprotect(&b))
         && let Ok(raw) = <[u8; crypt::KEY_LEN]>::try_from(bytes.as_slice())
         && let Some(k) = crypt::Key::new(&raw)
     {
@@ -331,6 +352,18 @@ mod tests {
         eprintln!("historique : {size} octets, écrit en {wrote:?}, relu en {read_ms:?}");
         assert!(read_ms < Duration::from_secs(2), "{read_ms:?}");
         purge_all(&dir);
+    }
+
+    #[test]
+    fn an_unreadable_key_file_erases_nothing() {
+        let dir = temp_dir("cle-tenue");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(user_file(&dir, 5), b"historique").unwrap();
+        // Un dossier à la place du fichier : la lecture échoue autrement que par « absent ».
+        std::fs::create_dir(dir.join(KEY_FILE)).unwrap();
+        assert!(key(&dir, true).is_none());
+        assert!(user_file(&dir, 5).exists(), "l'historique ne doit pas être effacé");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

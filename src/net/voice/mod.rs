@@ -192,6 +192,8 @@ pub struct VoiceConfig {
     pub reconnect_base: Duration,
     /// Reprises consécutives sans succès avant d'abandonner.
     pub max_resumes: u32,
+    /// Intervalle de battement le plus court accepté du serveur.
+    pub min_heartbeat: Duration,
     /// Attente d'une réponse de découverte d'adresse, par essai (5 essais).
     pub discovery_timeout: Duration,
     /// Codecs vidéo proposés (Select Protocol) ; vide : pas de vidéo.
@@ -206,6 +208,7 @@ impl Default for VoiceConfig {
             hosts: VoiceHosts::Discord,
             reconnect_base: Duration::from_millis(500),
             max_resumes: 5,
+            min_heartbeat: Duration::from_secs(1),
             discovery_timeout: Duration::from_secs(1),
             video_codecs: video::default_offers(),
             ws_headers: Vec::new(),

@@ -33,6 +33,8 @@ param(
     [string]$ClePublique = '',
     # Essais seulement : ne pas exiger un arbre git propre.
     [switch]$ArbreNonPropre,
+    # Clippy et tests viennent de passer sur ce même commit : ne pas les relancer.
+    [switch]$TestsDejaPasses,
     # Notes de version rédigées (fichier Markdown, UTF-8, hors du dépôt ou ignoré
     # par git) : elles remplacent le `git log` dans NOTES.md et dans le manifeste
     # signé, donc dans le bandeau « nouveautés » de l'application.
@@ -139,8 +141,24 @@ try {
 
     # --- Compilation ----------------------------------------------------------
     if (-not $Exe) {
-        Write-Host "Compilation de Ferrocord $version (cargo build --release)…"
-        & cargo build --release
+        # Rien ne part chez les utilisateurs sans clippy ni tests (audit 0.1.33).
+        if (-not $TestsDejaPasses) {
+            $cibleAvant = $env:CARGO_TARGET_DIR
+            try {
+                Write-Host "Clippy (avertissements refusés)…"
+                $env:CARGO_TARGET_DIR = Join-Path $racine 'target\clippy'
+                & cargo clippy --all-targets --locked -- -D warnings
+                if ($LASTEXITCODE -ne 0) { Echec "clippy signale des défauts : rien n'est publié." }
+                Write-Host "Tests…"
+                $env:CARGO_TARGET_DIR = Join-Path $racine 'target\tests'
+                & cargo test --locked
+                if ($LASTEXITCODE -ne 0) { Echec "des tests échouent : rien n'est publié." }
+            } finally {
+                $env:CARGO_TARGET_DIR = $cibleAvant
+            }
+        }
+        Write-Host "Compilation de Ferrocord $version (cargo build --release --locked)…"
+        & cargo build --release --locked
         if ($LASTEXITCODE -ne 0) { Echec "la compilation a échoué." }
         $cible = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $racine 'target' }
         $Exe = Join-Path $cible 'release\ferrocord.exe'

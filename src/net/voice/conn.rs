@@ -99,6 +99,10 @@ struct State {
     h264: video::h264::Normalizer,
 }
 
+/// Une session vocale est « stable » après ce multiple de l'attente de base
+/// (15 s avec les réglages ordinaires).
+const STABLE_FACTOR: u32 = 30;
+
 enum End {
     /// Coupure à réparer par une reprise.
     Lost,
@@ -123,6 +127,7 @@ async fn drive(p: &VoiceParams, e2ee: &mut dyn FrameCrypto, cfg: &VoiceConfig, c
     let mut failures = 0u32;
     loop {
         let ws_cfg = WebSocketConfig::default().max_message_size(Some(MAX_MESSAGE)).max_frame_size(Some(MAX_MESSAGE));
+        let began = Instant::now();
         let end = match crate::net::identity::ws_request(url.as_str(), &cfg.ws_headers) {
             // Ouverture plafonnée : une poignée de main qui ne répond plus ne
             // doit pas laisser l'appel « en cours de connexion » sans fin.
@@ -135,7 +140,11 @@ async fn drive(p: &VoiceParams, e2ee: &mut dyn FrameCrypto, cfg: &VoiceConfig, c
         if let End::Stop(reason) = end {
             return reason;
         }
-        if std::mem::take(&mut cx.st.live) {
+        // Une session ne remet le compteur à zéro que si elle a tenu : acceptée
+        // puis refermée aussitôt par le serveur, elle se rouvrait deux à trois
+        // fois par seconde, sans fin (audit 0.1.33 ; même garde que la
+        // passerelle principale).
+        if std::mem::take(&mut cx.st.live) && began.elapsed() >= cfg.reconnect_base.saturating_mul(STABLE_FACTOR) {
             failures = 0;
         }
         failures += 1;
@@ -353,7 +362,8 @@ impl Ctx<'_> {
         let d = &env.d;
         match env.op {
             8 => {
-                let ms = d["heartbeat_interval"].as_f64().unwrap_or(0.0).clamp(1.0, 60_000.0);
+                // Intervalle absent ou minuscule : jamais un battement par milliseconde.
+                let ms = d["heartbeat_interval"].as_f64().unwrap_or(0.0).clamp(self.cfg.min_heartbeat.as_secs_f64() * 1000.0, 60_000.0);
                 let interval = Duration::from_secs_f64(ms / 1000.0);
                 *hb = Some(Heartbeat { interval, next: Instant::now() + interval, pending: None });
             }

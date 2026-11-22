@@ -63,9 +63,14 @@ pub enum Command {
 
 pub fn parse_cli<S: AsRef<str>>(args: &[S]) -> Command {
     let has = |name: &str| args.iter().any(|a| a.as_ref() == name);
-    if has(UNINSTALL_ARG) {
+    // Installer et désinstaller ne se demandent qu'en premier argument : le
+    // protocole `discord://` lance `"exe" "%1"`, et un lien aux guillemets
+    // non encodés pouvait glisser « --desinstaller --supprimer-donnees »
+    // derrière lui (audit 0.1.33).
+    let setup = args.first().is_some_and(|a| [UNINSTALL_ARG, INSTALL_ARG].contains(&a.as_ref()));
+    if setup && has(UNINSTALL_ARG) {
         Command::Uninstall { silent: has(SILENT_ARG), wipe: has(WIPE_ARG) }
-    } else if has(INSTALL_ARG) {
+    } else if setup && has(INSTALL_ARG) {
         Command::Install { silent: has(SILENT_ARG), options: Options { desktop: has(DESKTOP_ARG), autostart: has(AUTOSTART_ARG) } }
     } else if has(PORTABLE_ARG) {
         Command::Portable
@@ -468,6 +473,9 @@ mod tests {
         assert_eq!(cli(&["--installer", "--silencieux", "--bureau", "--demarrage"]), Command::Install { silent: true, options: Options { desktop: true, autostart: true } });
         assert_eq!(cli(&["--desinstaller"]), Command::Uninstall { silent: false, wipe: false });
         assert_eq!(cli(&["--desinstaller", "--silencieux", "--supprimer-donnees"]), Command::Uninstall { silent: true, wipe: true });
+        // Derrière un lien, ces options ne sont jamais des commandes.
+        assert_eq!(cli(&["discord://x", "--desinstaller", "--silencieux", "--supprimer-donnees"]), Command::Run);
+        assert_eq!(cli(&["--reduit", "--installer"]), Command::Run);
         // Désinstaller l'emporte : jamais d'installation par erreur.
         assert_eq!(cli(&["--installer", "--desinstaller"]), Command::Uninstall { silent: false, wipe: false });
     }

@@ -30,7 +30,12 @@ pub fn command(url: &str) -> Option<Command> {
         return None;
     }
     let url = url.trim();
-    let mut cmd = if let Some(path) = url.strip_prefix("file:///") {
+    // Même comparaison que `allowed` (sans la casse) : « FILE:///… » passait
+    // le filtre puis échappait à cette branche, et le fichier partait tel
+    // quel vers le gestionnaire de Windows, qui l'aurait lancé (audit 0.1.33).
+    const FILE: &str = "file:///";
+    let local = url.get(..FILE.len()).is_some_and(|p| p.eq_ignore_ascii_case(FILE));
+    let mut cmd = if let Some(path) = url.get(FILE.len()..).filter(|_| local) {
         let path = path.replace('/', "\\");
         if path.starts_with('\\') || !std::path::Path::new(&path).is_dir() {
             return None;
@@ -107,6 +112,12 @@ mod tests {
         let file = temp.join(format!("ferrocord-lien-{}.exe", std::process::id()));
         std::fs::write(&file, b"x").unwrap();
         assert!(command(&format!("file:///{}", file.display().to_string().replace('\\', "/"))).is_none());
+        // Ni en majuscules : jamais confié au gestionnaire de liens de Windows.
+        for scheme in ["FILE:///", "File:///"] {
+            assert!(command(&format!("{scheme}{}", file.display().to_string().replace('\\', "/"))).is_none(), "{scheme}");
+            let folder = command(&format!("{scheme}{}", temp.display().to_string().replace('\\', "/"))).unwrap();
+            assert_eq!(folder.get_program(), OsStr::new("explorer.exe"), "{scheme}");
+        }
         let _ = std::fs::remove_file(&file);
     }
 
