@@ -310,6 +310,9 @@ struct Enc {
     /// Palier déjà annoncé à l'écran : une réduction après une panne à
     /// l'envoi se dit comme une définition refusée à l'ouverture.
     told: usize,
+    /// Dernière panne à l'envoi : dite avec la définition réduite (sans elle,
+    /// « la carte graphique refuse » ne disait pas pourquoi, 0.1.31).
+    why: Option<String>,
 }
 
 /// Pannes de suite de l'encodeur ordinaire avant le repli logiciel : à la
@@ -384,7 +387,7 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
         }
     };
     let fps = cfg.quality.fps.clamp(1, 60);
-    let mut enc = Enc { codec: cfg.codec, level: first_level(cfg.quality), size: (0, 0), enc: None, fallback: false, dry: 0, errors: 0, told: first_level(cfg.quality) };
+    let mut enc = Enc { codec: cfg.codec, level: first_level(cfg.quality), size: (0, 0), enc: None, fallback: false, dry: 0, errors: 0, told: first_level(cfg.quality), why: None };
     let mut scaler = crate::video::convert::Scaler::new();
     let mut announced = None;
     // Mesure de ce qui part vraiment : (début, images, octets, images perdues).
@@ -408,7 +411,7 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
                     return;
                 }
                 if let Some(c) = s.codec.take().filter(|c| *c != enc.codec) {
-                    enc = Enc { codec: c, level: first_level(cfg.quality), size: (0, 0), enc: None, fallback: false, dry: 0, errors: 0, told: first_level(cfg.quality) };
+                    enc = Enc { codec: c, level: first_level(cfg.quality), size: (0, 0), enc: None, fallback: false, dry: 0, errors: 0, told: first_level(cfg.quality), why: None };
                 }
                 if let Some(f) = s.frame.take() {
                     break (f, std::mem::take(&mut s.keyframe), false);
@@ -483,13 +486,18 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
                     // l'envoi) : dite une fois que l'encodeur y tient.
                     if enc.level != enc.told {
                         enc.told = enc.level;
-                        (cfg.report)(VideoUp::Problem(vf::lowered(lang, size.0, size.1)));
+                        (cfg.report)(VideoUp::Problem(match enc.why.take() {
+                            Some(why) => vf::lowered_why(lang, size.0, size.1, why),
+                            None => vf::lowered(lang, size.0, size.1),
+                        }));
                     }
                 }
                 if enc.dry >= DRY_FRAMES && !enc.fallback && cfg.backend.fallback_encoder(enc.codec, size.0, size.1, fps, 1).is_some() {
                     enc.enc = None;
                     enc.fallback = true;
                     enc.level = enc.level.max(SOFT_LEVEL);
+                    // Le message du repli dit déjà la définition : pas de second message par-dessus.
+                    enc.told = enc.level;
                     enc.dry = 0;
                     lock(&mail.slot).keyframe = true;
                     (cfg.report)(VideoUp::Problem(vf::soft_encoder(lang, vt::ENCODER_MUTE.get(lang))));
@@ -524,6 +532,7 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
                             fps: ((u64::from(seen.1) * 1000 + ms / 2) / ms) as u32,
                             kbps: (seen.2 * 8 / ms) as u32,
                             software,
+                            codec: enc.codec.name(),
                             lost: seen.3,
                         };
                         (cfg.report)(VideoUp::ShareStats(st));
@@ -534,6 +543,7 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
             Err(CodecError::BadFrame(_)) => continue,
             Err(err) => {
                 enc.enc = None;
+                enc.why = Some(err.to_string());
                 // Première panne à l'envoi (constaté : « Media Foundation :
                 // 0x8000ffff » de l'encodeur de la carte graphique, qui
                 // s'ouvrait pourtant) : même définition, encodeur logiciel.
@@ -560,6 +570,7 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
                         // L'encodeur logiciel ne tient pas la cadence au-delà de 720p :
                         // image réduite (et annoncée) plutôt que saccadée.
                         enc.level = enc.level.max(SOFT_LEVEL);
+                        enc.told = enc.level;
                         lock(&mail.slot).keyframe = true;
                         (cfg.report)(VideoUp::Problem(vf::soft_encoder(lang, err)));
                         continue;
@@ -847,7 +858,7 @@ mod tests {
         let (tries, said) = share_4k(1920, 6);
         assert_eq!(tries[..6], [(3840, false), (3840, false), (2560, false), (2560, false), (1920, false), (1920, false)]);
         assert!(tries[6..].iter().all(|t| *t == (1920, false)), "{tries:?}");
-        assert_eq!(said, vec![vf::lowered(crate::i18n::language(), 1920, 1080)]);
+        assert_eq!(said, vec![vf::lowered_why(crate::i18n::language(), 1920, 1080, "erreur du codec : panne d'essai")]);
         // Elle lâche partout : encodeur logiciel en 720p, et le message dit pourquoi.
         let (tries, said) = share_4k(0, 8);
         assert_eq!(tries[..6], [(3840, false), (3840, false), (2560, false), (2560, false), (1920, false), (1920, false)]);
