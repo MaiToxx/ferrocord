@@ -2938,7 +2938,7 @@ fn spawn_test_patterns(sink: ferrocord::state::video::VideoSink, stop: bool) {
         let mut step = 0u32;
         while !stop || started.elapsed() < Duration::from_secs(2) {
             for (i, (tile, (w, h))) in tiles.iter().enumerate() {
-                sink.push(tile.clone(), test_pattern(*w, *h, step, i as u64 + 1));
+                sink.push(tile.clone(), &test_pattern(*w, *h, step, i as u64 + 1));
             }
             step = step.wrapping_add(1);
             std::thread::sleep(Duration::from_millis(33));
