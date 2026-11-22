@@ -473,7 +473,7 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
             }
         }
         let Some(e) = enc.enc.as_mut() else { continue };
-        let software = e.software();
+        let (software, encoder) = (e.software(), e.name());
         match e.encode(img, key) {
             Ok(list) => {
                 // Une image redonnée peut ne rien coûter : ce n'est pas un encodeur muet.
@@ -533,6 +533,7 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
                             kbps: (seen.2 * 8 / ms) as u32,
                             software,
                             codec: enc.codec.name(),
+                            encoder,
                             lost: seen.3,
                         };
                         (cfg.report)(VideoUp::ShareStats(st));

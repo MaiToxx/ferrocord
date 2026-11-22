@@ -318,3 +318,21 @@ fn bench_codecs_1080p() {
         eprintln!("1080p décodage {name} : {ms:.1} ms/image, {shown}/{} images rendues", stream.len());
     }
 }
+
+/// Intel Quick Sync annonce un changement de format avant sa première
+/// image : la sortie redemandée tout de suite rendait 0x8000ffff, et le
+/// partage finissait en 720p logiciel (constaté par l'utilisateur, 0.1.32).
+#[test]
+fn every_hardware_encoder_gives_its_first_frames() {
+    let (w, h) = (1280u32, 720u32);
+    for (name, enc) in mf::MfEncoder::each(w, h, 30, 2_000_000) {
+        let Ok(mut enc) = enc else { continue };
+        let mut out = Vec::new();
+        for n in 0..6u64 {
+            let f = Frame { width: w, height: h, pts_us: n * 33_333, data: FrameData::Bgra(vec![(n * 9) as u8; (w * h * 4) as usize]) };
+            out.extend(enc.encode(&f, n == 0).unwrap_or_else(|e| panic!("{name} : image {n} : {e}")));
+        }
+        assert!(out.len() >= 4, "{name} : {} images rendues sur 6", out.len());
+        assert!(out[0].keyframe, "{name} : la première image est une image clé");
+    }
+}

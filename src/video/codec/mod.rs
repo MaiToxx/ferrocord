@@ -91,6 +91,10 @@ pub trait Encoder: Send {
     fn software(&self) -> bool {
         false
     }
+    /// Nom de l'encodeur pour l'affichage (vide : rien à préciser).
+    fn name(&self) -> &'static str {
+        ""
+    }
 }
 
 pub fn decoder(c: Codec) -> Option<Box<dyn Decoder>> {
