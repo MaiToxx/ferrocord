@@ -152,6 +152,8 @@ pub(super) fn output_sample(mft: &IMFTransform) -> windows::core::Result<Option<
 pub struct MfEncoder {
     /// H.264 ; AV1 pour fabriquer les jeux d'essai.
     codec: Codec,
+    /// Nom de la transformée, pour dire quelle carte graphique encode.
+    name: &'static str,
     activate: IMFActivate,
     mft: IMFTransform,
     events: IMFMediaEventGenerator,
@@ -296,6 +298,7 @@ impl MfEncoder {
                 Ok((mft, events, api))
             })()
         };
+        let name = friendly_name(&activate);
         let (mft, events, api) = match built {
             Ok(b) => b,
             Err(e) => {
@@ -306,6 +309,7 @@ impl MfEncoder {
         };
         Ok(Self {
             codec,
+            name,
             activate,
             mft,
             events,
@@ -344,35 +348,83 @@ impl MfEncoder {
     }
 
     fn collect(&mut self) -> Result<(), CodecError> {
-        loop {
-            match process_output(&self.mft, output_sample(&self.mft).map_err(hr)?).map_err(hr)? {
-                Out::NeedMore => return Ok(()),
-                Out::StreamChange => {
-                    // SAFETY: le type proposé par la transformée lui est rendu tel quel.
-                    unsafe {
-                        let t = self.mft.GetOutputAvailableType(0, 0).map_err(hr)?;
-                        self.mft.SetOutputType(0, &t, 0).map_err(hr)?;
-                    }
+        let out = match process_output(&self.mft, output_sample(&self.mft).map_err(hr)?) {
+            Ok(o) => o,
+            // Sortie demandée sans qu'elle soit annoncée : rien à prendre pour l'instant.
+            Err(e) if e.code() == windows::Win32::Foundation::E_UNEXPECTED => return Ok(()),
+            Err(e) => return Err(hr(e)),
+        };
+        match out {
+            Out::NeedMore => {}
+            Out::StreamChange => {
+                // SAFETY: le type proposé par la transformée lui est rendu tel quel.
+                unsafe {
+                    let t = self.mft.GetOutputAvailableType(0, 0).map_err(hr)?;
+                    self.mft.SetOutputType(0, &t, 0).map_err(hr)?;
                 }
-                Out::Sample(s) => {
-                    sample_bytes(&s, &mut self.bytes).map_err(hr)?;
-                    if self.codec == Codec::H264 {
-                        strip_filler(&mut self.bytes);
-                    }
-                    // SAFETY: lectures d'attributs d'un échantillon valide.
-                    let (key, t) = unsafe { (s.GetUINT32(&MFSampleExtension_CleanPoint).unwrap_or(0) != 0, s.GetSampleTime().unwrap_or(0)) };
-                    if !self.bytes.is_empty() {
-                        let pts_us = u64::try_from(t / HNS_PER_US).unwrap_or(0);
-                        self.ready.push(EncodedFrame { codec: self.codec, keyframe: key, ts90k: us_to_90k(pts_us), data: std::mem::take(&mut self.bytes) });
-                    }
-                    return Ok(());
+                // Transformée asynchrone : une sortie par annonce (METransformHaveOutput).
+                // En redemander une tout de suite rendait 0x8000ffff sur Intel Quick
+                // Sync ; l'encodeur était jeté, rouvert, et échouait de nouveau à chaque
+                // définition, jusqu'à l'encodeur logiciel en 720p (constaté par
+                // l'utilisateur, 0.1.32). La sortie viendra avec l'annonce suivante.
+            }
+            Out::Sample(s) => {
+                sample_bytes(&s, &mut self.bytes).map_err(hr)?;
+                if self.codec == Codec::H264 {
+                    strip_filler(&mut self.bytes);
+                }
+                // SAFETY: lectures d'attributs d'un échantillon valide.
+                let (key, t) = unsafe { (s.GetUINT32(&MFSampleExtension_CleanPoint).unwrap_or(0) != 0, s.GetSampleTime().unwrap_or(0)) };
+                if !self.bytes.is_empty() {
+                    let pts_us = u64::try_from(t / HNS_PER_US).unwrap_or(0);
+                    self.ready.push(EncodedFrame { codec: self.codec, keyframe: key, ts90k: us_to_90k(pts_us), data: std::mem::take(&mut self.bytes) });
                 }
             }
         }
+        Ok(())
+    }
+}
+
+/// Nom donné par Windows à une transformée (« NVIDIA H.264 Encoder MFT »),
+/// gardé pour toute la vie du processus (il n'y en a qu'une poignée).
+fn friendly_name(a: &IMFActivate) -> &'static str {
+    static NAMES: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(Vec::new());
+    let (mut p, mut n) = (windows::core::PWSTR::null(), 0u32);
+    // SAFETY: en cas de succès, `p` désigne une chaîne allouée par COM,
+    // copiée puis libérée une fois.
+    let name = unsafe {
+        if a.GetAllocatedString(&MFT_FRIENDLY_NAME_Attribute, &mut p, &mut n).is_err() || p.is_null() {
+            return "";
+        }
+        let s = p.to_string().unwrap_or_default();
+        CoTaskMemFree(Some(p.0 as *const _));
+        s
+    };
+    let mut names = NAMES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(known) = names.iter().find(|k| **k == name) {
+        return known;
+    }
+    let kept: &'static str = Box::leak(name.into_boxed_str());
+    names.push(kept);
+    kept
+}
+
+#[cfg(test)]
+impl MfEncoder {
+    /// Un encodeur par transformée matérielle de la machine, avec son nom.
+    pub(super) fn each(w: u32, h: u32, fps: u32, bps: u32) -> Vec<(&'static str, Result<Self, CodecError>)> {
+        if !ready() {
+            return Vec::new();
+        }
+        hardware_encoders(Codec::H264).into_iter().map(|a| (friendly_name(&a), Self::open(a, Codec::H264, w, h, fps, bps))).collect()
     }
 }
 
 impl Encoder for MfEncoder {
+    fn name(&self) -> &'static str {
+        self.name
+    }
+
     fn encode(&mut self, f: &Frame, force_keyframe: bool) -> Result<Vec<EncodedFrame>, CodecError> {
         if !f.is_consistent() {
             return Err(CodecError::BadFrame("taille des plans incohérente"));
