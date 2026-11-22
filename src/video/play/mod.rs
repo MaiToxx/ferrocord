@@ -808,9 +808,11 @@ impl Source for PcmSource {
 pub fn open(data: Vec<u8>, mime: Option<&str>) -> Result<Box<dyn Source>, OpenError> {
     let mp3 = mime.is_some_and(|m| m.starts_with("audio/mpeg") || m.starts_with("audio/mp3")) || data.starts_with(b"ID3");
     if data.starts_with(b"OggS") || mp3 {
-        return match crate::audio::clip::decode(data) {
-            Ok(pcm) => Ok(Box::new(PcmSource::new(pcm))),
-            Err(_) => Err(OpenError::Unsupported),
+        // Fichier d'un tiers : une panique du décodeur est contenue, comme
+        // pour le tableau de sons (`voice::clips`).
+        return match crate::panics::contain(|| crate::audio::clip::decode(data)) {
+            Some(Ok(pcm)) => Ok(Box::new(PcmSource::new(pcm))),
+            Some(Err(_)) | None => Err(OpenError::Unsupported),
         };
     }
     if data.starts_with(&crate::video::mkv::MAGIC) {
