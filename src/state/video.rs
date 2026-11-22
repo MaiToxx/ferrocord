@@ -335,14 +335,14 @@ impl VideoSink {
     }
 
     /// Nouvelle image pour cette tuile (fil du décodeur ou de la capture).
-    pub fn push(&self, tile: Tile, frame: Frame) {
+    pub fn push(&self, tile: Tile, frame: &Frame) {
         let (shown, mut buf) = {
             let mut g = self.lock();
             let Some(slot) = g.slots.get_mut(&tile).filter(|s| s.visible) else { return };
             (slot.shown, std::mem::take(&mut slot.spare))
         };
         let (w, h) = fit((frame.width, frame.height), shown);
-        if !to_rgba(&frame, w, h, &mut buf) {
+        if !to_rgba(frame, w, h, &mut buf) {
             return;
         }
         let wake = {
@@ -652,15 +652,15 @@ mod tests {
         }));
         let bob = Tile::Camera(BOB);
         // Hors champ : rien n'est gardé, aucun réveil.
-        sink.push(bob.clone(), test_pattern(64, 36, 0, 1));
+        sink.push(bob.clone(), &test_pattern(64, 36, 0, 1));
         assert!(sink.take(&bob, 0).is_none());
         assert_eq!(wakes.load(Ordering::Relaxed), 0);
         assert_eq!(sink.wanted_quality(&bob), (0, 0));
         // Affichée à 32×18 : réduite à cette taille.
         sink.show(&[(bob.clone(), (32, 18))]);
         assert_eq!(sink.wanted_quality(&bob), (320, 180));
-        sink.push(bob.clone(), test_pattern(64, 36, 1, 1));
-        sink.push(bob.clone(), test_pattern(64, 36, 2, 1));
+        sink.push(bob.clone(), &test_pattern(64, 36, 1, 1));
+        sink.push(bob.clone(), &test_pattern(64, 36, 2, 1));
         assert_eq!(wakes.load(Ordering::Relaxed), 2);
         let (generation, img) = sink.take(&bob, 0).unwrap_or_else(|| panic!("image"));
         assert_eq!((generation, img.width, img.height, img.pixels.len()), (2, 32, 18, 32 * 18 * 4));

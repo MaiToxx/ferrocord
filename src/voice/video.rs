@@ -277,6 +277,8 @@ impl Sending {
     /// Image clé demandée (PLI, FIR) : la prochaine image en sera une.
     pub fn keyframe(&self) {
         lock(&self.mail.slot).keyframe = true;
+        // Écran immobile : le fil d'envoi attend une image qui ne viendra pas.
+        self.mail.ready.notify_one();
     }
 
     /// La connexion a négocié un autre codec : l'encodeur change à l'image suivante.
@@ -321,6 +323,16 @@ const HARD_ERRORS: u32 = 2;
 /// 61 ms en 1440p, soit 16 à 22 images par seconde, contre 6 à 11 ms pour
 /// l'encodeur de la carte graphique.
 const SOFT_LEVEL: usize = 3;
+
+/// Secondes pendant lesquelles la dernière image est redonnée à l'encodeur
+/// quand la source ne bouge plus. La capture ne livre une image que si
+/// l'écran change : sans cela, l'encodeur restait sur la dernière, encodée
+/// avec le budget d'un soixantième de seconde, et un écran immobile (texte)
+/// restait flou chez ceux qui regardent (constaté par l'utilisateur,
+/// 0.1.30). Mesuré en 4K à 18 Mb/s sur une page de texte : 23,8 dB sans
+/// rien redonner, 31,6 dB après 40 images redonnées. Ensuite, une par
+/// seconde.
+const REFINE_SECS: u32 = 2;
 
 /// Intervalle entre deux mesures de ce que le partage envoie.
 const STATS_EVERY_MS: u64 = 2000;
@@ -379,29 +391,51 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
     let mut seen = (Instant::now(), 0u32, 0u64, 0u32);
     // Débit réglé sur l'encodeur en service (`None` : celui de son ouverture).
     let mut tuned: Option<u32> = None;
+    let period = Duration::from_micros(1_000_000 / u64::from(fps));
+    // Dernière image donnée à l'encodeur, redonnée tant que la source ne bouge pas.
+    let mut still: Option<Frame> = None;
+    // Images redonnées depuis la dernière image de la capture.
+    let mut repeats = 0u32;
+    // Horodatage et moment de la dernière image donnée à l'encodeur.
+    let mut last = (0u64, Instant::now());
     loop {
-        // Une image, ou l'arrêt ; sans image depuis une seconde, la source a peut-être disparu.
-        let (frame, mut key) = {
+        // Une image de la capture, l'arrêt, ou la dernière image redonnée
+        // (source immobile, ou image clé demandée alors que rien ne bouge).
+        let (mut frame, mut key, repeat) = {
             let mut s = lock(&mail.slot);
             loop {
                 if s.stop {
                     return;
                 }
+                if let Some(c) = s.codec.take().filter(|c| *c != enc.codec) {
+                    enc = Enc { codec: c, level: first_level(cfg.quality), size: (0, 0), enc: None, fallback: false, dry: 0, errors: 0, told: first_level(cfg.quality) };
+                }
                 if let Some(f) = s.frame.take() {
-                    if let Some(c) = s.codec.take().filter(|c| *c != enc.codec) {
-                        enc = Enc { codec: c, level: first_level(cfg.quality), size: (0, 0), enc: None, fallback: false, dry: 0, errors: 0, told: first_level(cfg.quality) };
+                    break (f, std::mem::take(&mut s.keyframe), false);
+                }
+                let soon = still.is_some() && (s.keyframe || repeats < fps * REFINE_SECS);
+                let due = last.1 + if soon { period } else { Duration::from_secs(1) };
+                let now = Instant::now();
+                if now >= due {
+                    // Sans image depuis une seconde : la source a peut-être disparu.
+                    if capture.ended() {
+                        drop(s);
+                        fail(vt::SOURCE_ENDED.get(lang).to_string());
+                        return;
                     }
-                    break (f, std::mem::take(&mut s.keyframe));
+                    if let Some(f) = still.take() {
+                        break (f, std::mem::take(&mut s.keyframe), true);
+                    }
+                    last.1 = now;
+                    continue;
                 }
-                let (g, t) = mail.ready.wait_timeout(s, Duration::from_secs(1)).unwrap_or_else(PoisonError::into_inner);
-                s = g;
-                if t.timed_out() && !s.stop && capture.ended() {
-                    drop(s);
-                    fail(vt::SOURCE_ENDED.get(lang).to_string());
-                    return;
-                }
+                s = mail.ready.wait_timeout(s, due - now).unwrap_or_else(PoisonError::into_inner).0;
             }
         };
+        // Horodatages toujours croissants, images redonnées comprises.
+        frame.pts_us = if repeat { last.0 + (last.1.elapsed().as_micros() as u64).max(1) } else { frame.pts_us.max(last.0 + 1) };
+        last = (frame.pts_us, Instant::now());
+        repeats = if repeat { repeats + 1 } else { 0 };
         let mut size = level_size(frame.width, frame.height, enc.level);
         if enc.enc.is_none() || size != enc.size {
             loop {
@@ -423,7 +457,12 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
             }
             key = true;
         }
+        if key {
+            // L'image clé coûte cher : l'encodeur a besoin des images suivantes pour l'affiner.
+            repeats = 0;
+        }
         let Some(img) = scaled(frame, size.0, size.1, &mut scaler) else { continue };
+        let img = &*still.insert(img);
         if announced != Some(size) {
             announced = Some(size);
             if cfg.net.blocking_send(VoiceCtl::VideoState { active: true, width: size.0, height: size.1, fps }).is_err() {
@@ -432,9 +471,12 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
         }
         let Some(e) = enc.enc.as_mut() else { continue };
         let software = e.software();
-        match e.encode(&img, key) {
+        match e.encode(img, key) {
             Ok(list) => {
-                enc.dry = if list.is_empty() { enc.dry + 1 } else { 0 };
+                // Une image redonnée peut ne rien coûter : ce n'est pas un encodeur muet.
+                if !repeat || !list.is_empty() {
+                    enc.dry = if list.is_empty() { enc.dry + 1 } else { 0 };
+                }
                 if !list.is_empty() {
                     enc.errors = 0;
                     // Définition réduite (refusée à l'ouverture, ou en panne à
@@ -534,7 +576,10 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
                 continue;
             }
         }
-        cfg.sink.push(cfg.tile.clone(), img);
+        // L'aperçu local a déjà une image redonnée.
+        if !repeat {
+            cfg.sink.push(cfg.tile.clone(), img);
+        }
     }
 }
 
@@ -635,7 +680,7 @@ fn decode_thread(j: DecodeJob) {
         match d.decode(&f) {
             Ok(Some(img)) => {
                 need_key = false;
-                j.sink.push(j.tile.clone(), img);
+                j.sink.push(j.tile.clone(), &img);
             }
             Ok(None) => need_key = false,
             Err(CodecError::Corrupt(_)) => {
@@ -719,6 +764,15 @@ mod tests {
     /// Partage d'un écran 4K en « Source » avec une carte graphique qui ne
     /// tient que jusqu'à `hard_max` : essais d'encodage et messages affichés.
     fn share_4k(hard_max: u32, frames: usize) -> (Vec<(u32, bool)>, Vec<String>) {
+        share(hard_max, frames, frames)
+    }
+
+    /// Une seule image de la capture ; attend `tries` passages par l'encodeur.
+    fn share_still(tries: usize) -> (Vec<(u32, bool)>, Vec<String>) {
+        share(3840, tries, 1)
+    }
+
+    fn share(hard_max: u32, frames: usize, fed: usize) -> (Vec<(u32, bool)>, Vec<String>) {
         let tries = Arc::new(Mutex::new(Vec::new()));
         let backend = Arc::new(Fake { hard_max, feed: Mutex::new(None), tries: tries.clone() });
         let said = Arc::new(Mutex::new(Vec::new()));
@@ -751,12 +805,13 @@ mod tests {
         wait(&|| lock(&backend.feed).is_some());
         let (w, h) = (3840usize, 2160usize);
         let frame = Frame { width: w as u32, height: h as u32, pts_us: 0, data: FrameData::I420 { y: vec![0; w * h], u: vec![0; w * h / 4], v: vec![0; w * h / 4] } };
-        for n in 1..=frames {
+        for n in 1..=frames.min(fed) {
             if let Some(feed) = lock(&backend.feed).as_mut() {
                 feed(frame.clone());
             }
             wait(&|| lock(&tries).len() >= n);
         }
+        wait(&|| lock(&tries).len() >= frames);
         drop(sending);
         while rx.try_recv().is_ok() {}
         (lock(&tries).clone(), lock(&said).clone())
@@ -775,17 +830,28 @@ mod tests {
     }
 
     #[test]
+    fn a_still_screen_is_fed_again_to_the_encoder() {
+        // Une seule image de la capture, puis plus rien : l'encodeur la
+        // reçoit encore, pour l'affiner et pour servir une image clé demandée.
+        let (tries, _) = share_4k(3840, 1);
+        assert_eq!(tries[0], (3840, false));
+        let (tries, _) = share_still(10);
+        assert!(tries.len() >= 10 && tries.iter().all(|t| *t == (3840, false)), "{tries:?}");
+    }
+
+    #[test]
     fn a_failing_graphics_encoder_steps_down_before_software() {
         assert!(Quality { width: 0, height: 0, fps: 60 }.is_source());
         // La carte graphique lâche en 4K et en 1440p mais tient en 1080p : elle
         // sert en 1080p, l'encodeur logiciel (720p) ne sert jamais.
         let (tries, said) = share_4k(1920, 6);
-        assert_eq!(tries, vec![(3840, false), (3840, false), (2560, false), (2560, false), (1920, false), (1920, false)]);
+        assert_eq!(tries[..6], [(3840, false), (3840, false), (2560, false), (2560, false), (1920, false), (1920, false)]);
+        assert!(tries[6..].iter().all(|t| *t == (1920, false)), "{tries:?}");
         assert_eq!(said, vec![vf::lowered(crate::i18n::language(), 1920, 1080)]);
         // Elle lâche partout : encodeur logiciel en 720p, et le message dit pourquoi.
         let (tries, said) = share_4k(0, 8);
         assert_eq!(tries[..6], [(3840, false), (3840, false), (2560, false), (2560, false), (1920, false), (1920, false)]);
-        assert_eq!(tries[6..], [(1280, true), (1280, true)]);
+        assert!(tries.len() >= 8 && tries[6..].iter().all(|t| *t == (1280, true)), "{tries:?}");
         assert!(said.iter().any(|t| t.contains("panne d'essai")), "{said:?}");
     }
 

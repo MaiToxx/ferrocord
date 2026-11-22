@@ -2142,8 +2142,8 @@ mod tests {
         assert!(!sink.is_visible(&Tile::Camera(1)), "ma tuile sans caméra : aucune image attendue");
         assert_ne!(sink.wanted_quality(&Tile::Camera(7)), (0, 0));
         assert_eq!(h.app.video_textures(), 0, "rien reçu, rien téléversé");
-        sink.push(Tile::Camera(7), test_pattern(64, 36, 1, 7));
-        sink.push(Tile::Camera(1), test_pattern(64, 36, 1, 1));
+        sink.push(Tile::Camera(7), &test_pattern(64, 36, 1, 7));
+        sink.push(Tile::Camera(1), &test_pattern(64, 36, 1, 1));
         assert_eq!(wakes.load(Ordering::Relaxed), 1, "seule la tuile affichée réveille");
         h.frame();
         assert_eq!(h.app.video_textures(), 1);
@@ -2152,7 +2152,7 @@ mod tests {
         h.frame();
         assert_eq!(h.app.video_textures(), 0);
         assert!(!sink.is_visible(&Tile::Camera(7)));
-        sink.push(Tile::Camera(7), test_pattern(64, 36, 2, 7));
+        sink.push(Tile::Camera(7), &test_pattern(64, 36, 2, 7));
         assert_eq!(wakes.load(Ordering::Relaxed), 1, "hors champ : aucun réveil");
     }
 }
