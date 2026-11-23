@@ -13,6 +13,8 @@ use crate::video::Codec;
 const MAX_GAP: u64 = 512;
 /// Paquets en attente au plus.
 const MAX_BUFFER: usize = 1024;
+/// Paquets manquants suivis à la fois (redemandés par NACK).
+const MAX_MISSING: usize = 512;
 /// Une image incomplète plus vieille que la plus récente de 500 ms est abandonnée.
 const GIVE_UP_90K: u32 = 45_000;
 const NACK_TRIES: u8 = 3;
@@ -108,6 +110,11 @@ impl Receiver {
                     self.missing.insert(s, Missing { tries: 0, last: None });
                 }
                 self.highest = Some(ext);
+                // Les plus anciens d'abord : un flux dont les numéros sautent sans
+                // cesse faisait grossir la table, parcourue à chaque paquet (audit 0.1.33).
+                while self.missing.len() > MAX_MISSING {
+                    self.missing.pop_first();
+                }
             }
             Some(_) => {}
             None => self.highest = Some(ext),

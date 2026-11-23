@@ -202,11 +202,9 @@ fn mfa_required(text: &str) -> bool {
 
 /// Erreur d'envoi : jamais partie (connexion impossible), ou issue inconnue.
 fn network_error(e: reqwest::Error) -> ApiError {
-    if e.is_connect() || e.is_builder() {
-        ApiError::Other(Problem::Network(e.to_string()))
-    } else {
-        ApiError::Unknown(Problem::Network(e.to_string()))
-    }
+    let unsent = e.is_connect() || e.is_builder();
+    let text = e.without_url().to_string();
+    if unsent { ApiError::Other(Problem::Network(text)) } else { ApiError::Unknown(Problem::Network(text)) }
 }
 
 pub(super) async fn api(

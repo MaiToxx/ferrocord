@@ -50,7 +50,22 @@ impl Resolve for MessageContext<'_> {
 
 /// Analyse le texte d'un message (à faire une fois, puis garder le résultat),
 /// avec l'extrait de sa réponse, le message transféré et les textes de ses embeds.
+///
+/// Une panique de l'analyse est contenue : le message s'affiche en texte
+/// brut. Sans cela, un seul message fautif fermait l'application à chaque
+/// affichage du salon, y compris au redémarrage par l'historique hors ligne
+/// (audit 0.1.33).
 pub fn parse_message(store: &Store, message: &Message, lang: Lang, h24: bool) -> Doc {
+    crate::panics::contain(|| parse_message_inner(store, message, lang, h24)).unwrap_or_else(|| plain_doc(&message.content))
+}
+
+/// `text` tel quel, une ligne par paragraphe, sans aucune mise en forme.
+fn plain_doc(text: &str) -> Doc {
+    let block = |line: &str| super::Block { kind: super::BlockKind::Paragraph, quote: false, spans: vec![super::Span { text: line.to_string(), style: super::Style::default(), kind: super::SpanKind::Text }] };
+    Doc { blocks: text.lines().map(block).collect(), ..Doc::default() }
+}
+
+fn parse_message_inner(store: &Store, message: &Message, lang: Lang, h24: bool) -> Doc {
     let mut doc = parse(&message.content, &MessageContext { store, message, lang, h24 });
     // Mentions propres à l'extrait ou au transfert : résolues avec leur liste.
     let other = |content: &str, mentions: &[(u64, String)], first: u32| {
@@ -111,4 +126,19 @@ pub fn parse_message(store: &Store, message: &Message, lang: Lang, h24: bool) ->
         }
     }
     doc
+}
+
+#[cfg(test)]
+mod plain_tests {
+    #[test]
+    fn a_contained_failure_falls_back_to_plain_text() {
+        let doc = super::plain_doc("**gras**
+> citation");
+        assert_eq!(doc.plain(), "**gras**
+> citation");
+        assert!(doc.links.is_empty() && doc.spoilers == 0);
+        // Le repli lui-même : une panique contenue rend le texte brut.
+        let got = crate::panics::contain(|| -> super::Doc { panic!("essai") }).unwrap_or_else(|| super::plain_doc("x"));
+        assert_eq!(got.plain(), "x");
+    }
 }
