@@ -138,6 +138,17 @@ pub(super) struct Leaving {
     pub(super) trust: bool,
 }
 
+/// Site de vidéos connu : le triangle de lecture d'un aperçu y mène sans
+/// confirmation. Tout autre site passe par « Vous quittez Discord » : la
+/// page d'un inconnu peut se faire passer pour une vidéo par ses balises
+/// (audit 0.1.33).
+fn video_site(url: &str) -> bool {
+    const SITES: [&str; 5] = ["youtube.com", "youtu.be", "twitch.tv", "vimeo.com", "dailymotion.com"];
+    let Ok(u) = reqwest::Url::parse(url.trim()) else { return false };
+    let host = u.host_str().unwrap_or_default().to_ascii_lowercase();
+    u.scheme() == "https" && SITES.iter().any(|s| host == *s || host.strip_suffix(s).is_some_and(|sub| sub.ends_with('.')))
+}
+
 fn direct_id() -> Id {
     Id::unique("liens-directs")
 }
@@ -326,7 +337,7 @@ impl App {
         }
         // Boutons de lecture vers un site (YouTube, Twitch) : sans confirmation.
         for u in ctx.data_mut(|d| d.remove_temp::<Vec<String>>(direct_id())).unwrap_or_default() {
-            self.open_link_with(&u, false);
+            self.open_link_with(&u, !video_site(&u));
         }
         self.leaving_ui(ctx);
         // Images à copier ou à enregistrer, demandées pendant l'image (lot VID).
@@ -596,10 +607,14 @@ mod tests {
         assert!(app.install.leaving.take().is_some_and(|l| l.shown.starts_with("https://xn--")));
         app.open_link("mailto:quelqu.un@exemple.invalid");
         assert!(app.install.leaving.take().is_some_and(|l| l.host.is_none()));
-        // Bouton de lecture d'une vidéo externe : direct, sans fenêtre.
-        frame(&mut app, |ctx| open_direct(ctx, "https://video.exemple.invalid/v/1"));
+        // Bouton de lecture d'une vidéo sur un site connu : direct, sans fenêtre.
+        frame(&mut app, |ctx| open_direct(ctx, "https://www.youtube.com/watch?v=1"));
         assert!(app.install.leaving.is_none());
-        assert_eq!(opened(&fake).last().map(String::as_str), Some("https://video.exemple.invalid/v/1"));
+        assert_eq!(opened(&fake).last().map(String::as_str), Some("https://www.youtube.com/watch?v=1"));
+        // Sur un site inconnu : la fenêtre, comme pour tout autre lien.
+        frame(&mut app, |ctx| open_direct(ctx, "https://video.exemple.invalid/v/1"));
+        assert!(app.install.leaving.take().is_some());
+        assert_eq!(opened(&fake).last().map(String::as_str), Some("https://www.youtube.com/watch?v=1"));
         // La liste survit au redémarrage, dans son fichier.
         let dir = std::env::temp_dir().join(format!("ferrocord-liens-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -629,5 +644,18 @@ mod tests {
         app.open_link("https://discord.com/channels/9/9");
         assert!(app.toast.is_some());
         assert!(fake.opened.lock().unwrap().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod video_site_tests {
+    #[test]
+    fn only_known_video_sites_open_without_asking() {
+        for ok in ["https://www.youtube.com/watch?v=x", "https://youtu.be/x", "https://clips.twitch.tv/x", "https://vimeo.com/1"] {
+            assert!(super::video_site(ok), "{ok}");
+        }
+        for bad in ["https://video.exemple.invalid/regarder", "https://youtube.com.exemple.invalid/x", "https://fauxyoutube.com/x", "http://youtube.com/x", "pas une adresse"] {
+            assert!(!super::video_site(bad), "{bad}");
+        }
     }
 }

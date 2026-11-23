@@ -71,6 +71,8 @@ pub fn client() -> Result<reqwest::Client, String> {
         // L'adresse d'où l'on vient n'est pas redite à l'hôte où l'on est renvoyé.
         .referer(false)
         .connect_timeout(std::time::Duration::from_secs(15))
+        // Entre deux lectures : un serveur qui se tait ne retient pas le fil d'installation.
+        .read_timeout(std::time::Duration::from_secs(60))
         .build()
         .map_err(|e| e.to_string())
 }

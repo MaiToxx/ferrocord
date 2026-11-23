@@ -7,7 +7,7 @@
 
 use std::{fs::File, os::windows::io::AsRawHandle};
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
-use windows::Win32::System::Memory::{CreateFileMappingW, MapViewOfFile, UnmapViewOfFile, FILE_MAP_READ, MEMORY_MAPPED_VIEW_ADDRESS, PAGE_READONLY};
+use windows::Win32::System::Memory::{CreateFileMappingW, MapViewOfFile, UnmapViewOfFile, VirtualQuery, FILE_MAP_READ, MEMORY_BASIC_INFORMATION, MEMORY_MAPPED_VIEW_ADDRESS, PAGE_READONLY};
 
 /// Vue en lecture seule d'un fichier entier ; démappée à la fin de vie.
 pub struct Mapped {
@@ -41,16 +41,34 @@ impl Mapped {
         unsafe {
             let _ = CloseHandle(mapping);
         }
-        (!view.Value.is_null()).then_some(Mapped { view, len })
+        if view.Value.is_null() {
+            return None;
+        }
+        // La vue a la taille du fichier à l'instant de la projection, pas
+        // forcément `len` (lu avant) : un fichier raccourci entre-temps aurait
+        // donné une tranche plus longue que la vue (audit 0.1.33).
+        let mut info = MEMORY_BASIC_INFORMATION::default();
+        // SAFETY: `view` est une adresse valide de ce processus ; `info` est
+        // un emplacement de la taille annoncée, rempli par Windows.
+        let got = unsafe { VirtualQuery(Some(view.Value), &mut info, size_of::<MEMORY_BASIC_INFORMATION>()) };
+        if got == 0 || info.RegionSize < len {
+            // SAFETY: vue rendue par MapViewOfFile, démappée une seule fois (aucun `Mapped` n'est construit).
+            unsafe {
+                let _ = UnmapViewOfFile(view);
+            }
+            return None;
+        }
+        Some(Mapped { view, len })
     }
 }
 
 impl AsRef<[u8]> for Mapped {
     fn as_ref(&self) -> &[u8] {
-        // SAFETY: `view` désigne au moins `len` octets lisibles (le fichier
-        // entier, dont `len` est la taille lue avant la projection), valables
-        // jusqu'à `Drop`. Les polices du système ne sont pas réécrites en place
-        // (dossier protégé ; Windows refuse de tronquer un fichier projeté).
+        // SAFETY: `view` désigne au moins `len` octets lisibles (vérifié par
+        // `VirtualQuery` à la création), valables jusqu'à `Drop` : Windows
+        // refuse de tronquer un fichier projeté. Le contenu peut en revanche
+        // être réécrit en place par un autre programme (polices du dossier de
+        // l'utilisateur) : ce sont des octets lus, jamais des références.
         unsafe { std::slice::from_raw_parts(self.view.Value.cast::<u8>(), self.len) }
     }
 }

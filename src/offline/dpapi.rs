@@ -15,8 +15,10 @@ fn take(out: CRYPT_INTEGER_BLOB) -> Vec<u8> {
     // SAFETY: en cas de succès, DPAPI rend dans `out` un tampon de
     // `cbData` octets alloué par LocalAlloc, lisible jusqu'à LocalFree.
     let bytes = unsafe { std::slice::from_raw_parts(out.pbData, out.cbData as usize) }.to_vec();
-    // SAFETY: le tampon vient de DPAPI (LocalAlloc) et n'est plus lu après.
+    // SAFETY: le tampon vient de DPAPI (LocalAlloc), fait `cbData` octets et
+    // n'est plus lu après ; mis à zéro d'abord (il a pu porter la clé en clair).
     unsafe {
+        std::ptr::write_bytes(out.pbData, 0, out.cbData as usize);
         LocalFree(Some(HLOCAL(out.pbData.cast())));
     }
     bytes

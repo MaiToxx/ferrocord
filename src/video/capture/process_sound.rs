@@ -118,6 +118,9 @@ fn capture_loop(client: &IAudioClient, stop: &AtomicBool, cb: &mut CaptureFn) ->
         unsafe { client.Start() }.map_err(backend)?;
         let mut mix = Downmixer::new(usize::from(CHANNELS), RATE);
         let mut silence: Vec<f32> = Vec::new();
+        // Boucle à part : quelle que soit sa fin (arrêt demandé ou erreur du
+        // périphérique), le client est arrêté avant que l'événement soit fermé.
+        let mut pump = || -> Result<(), AudioError> {
         while !stop.load(Ordering::Relaxed) {
             // SAFETY: `event` est valide (voir plus haut).
             if unsafe { WaitForSingleObject(event, WAIT_MS) } != WAIT_OBJECT_0 {
@@ -148,9 +151,12 @@ fn capture_loop(client: &IAudioClient, stop: &AtomicBool, cb: &mut CaptureFn) ->
                 unsafe { capture.ReleaseBuffer(frames) }.map_err(backend)?;
             }
         }
+        Ok(())
+        };
+        let pumped = pump();
         // SAFETY: client démarré.
         let _ = unsafe { client.Stop() };
-        Ok(())
+        pumped
     };
     let result = run();
     // SAFETY: l'événement n'est plus utilisé (client arrêté ou jamais démarré).
