@@ -7,7 +7,7 @@
 //! - Un direct regardé : réception seule ; images de son auteur → décodeur
 //!   → tuile du direct ; son de l'auteur → fil de lecture de l'appel.
 
-use super::call::{close_media, failure, SharedDave};
+use super::call::{close_media, failure, joined, SharedDave, Task};
 use super::media::{error_text, Media, PlayMsg, Shared};
 use super::video::{voice_config, Receiving, Report, SendCfg, Sending};
 use super::{Options, Player, Settings, Up, STREAM_AUDIO};
@@ -82,8 +82,9 @@ fn share_settings() -> Settings {
     Settings { muted: false, deafened: true, prefs, extras: Default::default() }
 }
 
-/// Ouvre le son de la source partagée (hors de la boucle : l'ouverture peut prendre une seconde).
-async fn open_sound(s: &StreamStart, source_id: &str, net: &tmpsc::Sender<VoiceCtl>) -> Option<Media> {
+/// Ouvre le son de la source partagée sur un fil à part (l'ouverture peut
+/// prendre une seconde) ; la boucle du direct n'attend jamais dessus.
+fn start_sound(s: &StreamStart, source_id: &str, net: &tmpsc::Sender<VoiceCtl>) -> Option<Task<Media>> {
     let source = super::video::source_of(source_id)?;
     let backend = s.opts.video.share_sound(&source)?;
     let (net, report) = (net.clone(), s.report.clone());
@@ -98,7 +99,7 @@ async fn open_sound(s: &StreamStart, source_id: &str, net: &tmpsc::Sender<VoiceC
         }
         m
     };
-    tokio::task::spawn_blocking(job).await.ok()
+    Some(tokio::task::spawn_blocking(job))
 }
 
 /// Lance la capture et l'encodage de mon partage.
@@ -135,6 +136,11 @@ pub(super) async fn run(s: StreamStart, mut rx: tmpsc::UnboundedReceiver<StreamM
     let mut send_codec = crate::video::Codec::H264;
     let mut sending: Option<Sending> = None;
     let mut sound: Option<Media> = None;
+    // Son en cours d'ouverture, et la source pour laquelle il a été demandé.
+    let mut sound_opening: Option<Task<Media>> = None;
+    let mut sound_src: Option<String> = None;
+    // Qualité demandée pas encore partie.
+    let mut wants: Option<Vec<(u64, u8)>> = None;
     let mut receiving = Receiving::new(s.opts.video.clone(), s.sink.clone(), net.clone(), s.report.clone());
     // Image clé régulière de mon partage : une personne dont la demande
     // d'image clé s'est perdue a une image au bout de ce délai au plus, au
@@ -144,6 +150,30 @@ pub(super) async fn run(s: StreamStart, mut rx: tmpsc::UnboundedReceiver<StreamM
     key_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
         tokio::select! {
+            m = joined(&mut sound_opening) => {
+                // Le partage a pu changer pendant l'ouverture : son gardé
+                // seulement s'il est encore voulu pour cette source.
+                let want = share.as_ref().filter(|(_, _, audio)| *audio).map(|(src, _, _)| src.clone());
+                if m.is_some() && want.is_some() && want == sound_src {
+                    if let Some(old) = std::mem::replace(&mut sound, m) {
+                        close_media(old);
+                    }
+                } else {
+                    if let Some(m) = m {
+                        close_media(m);
+                    }
+                    if let Some(src) = want.filter(|w| Some(w) != sound_src.as_ref()) {
+                        sound_opening = start_sound(&s, &src, &net);
+                        sound_src = Some(src);
+                    }
+                }
+            }
+            // Jamais d'attente sur la file de la connexion sans continuer à la lire.
+            p = net.reserve(), if wants.is_some() => {
+                if let (Ok(p), Some(w)) = (p, wants.take()) {
+                    p.send(VoiceCtl::SinkWants(w));
+                }
+            }
             _ = key_tick.tick(), if sending.is_some() => {
                 if let Some(v) = &sending {
                     v.keyframe();
@@ -157,8 +187,9 @@ pub(super) async fn run(s: StreamStart, mut rx: tmpsc::UnboundedReceiver<StreamM
                         && sending.is_none()
                     {
                         sending = Some(start_sending(&s, source_id, *quality, send_codec, &tile, &net));
-                        if *audio {
-                            sound = open_sound(&s, source_id, &net).await;
+                        if *audio && sound_opening.is_none() {
+                            sound_opening = start_sound(&s, source_id, &net);
+                            sound_src = Some(source_id.clone());
                         }
                     }
                 }
@@ -210,7 +241,7 @@ pub(super) async fn run(s: StreamStart, mut rx: tmpsc::UnboundedReceiver<StreamM
             m = rx.recv() => match m {
                 None | Some(StreamMsg::Stop) => {
                     drop(sending.take());
-                    let _ = net.send(VoiceCtl::Disconnect).await;
+                    let _ = net.try_send(VoiceCtl::Disconnect);
                     break;
                 }
                 Some(StreamMsg::Source { source_id, quality, audio }) => {
@@ -229,14 +260,16 @@ pub(super) async fn run(s: StreamStart, mut rx: tmpsc::UnboundedReceiver<StreamM
                         if let Some(m) = sound.take() {
                             close_media(m);
                         }
-                        if audio {
-                            sound = open_sound(&s, &source_id, &net).await;
+                        // Une ouverture en cours se termine d'abord, puis s'ajuste (voir plus haut).
+                        if audio && sound_opening.is_none() {
+                            sound_opening = start_sound(&s, &source_id, &net);
+                            sound_src = Some(source_id.clone());
                         }
                     }
                 }
                 Some(StreamMsg::Quality(q)) => {
                     if let Role::Watch { owner } = s.role {
-                        let _ = net.send(VoiceCtl::SinkWants(vec![(owner, q)])).await;
+                        wants = Some(vec![(owner, q)]);
                     }
                 }
             },

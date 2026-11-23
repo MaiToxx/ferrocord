@@ -126,6 +126,12 @@ async fn drive(p: &VoiceParams, e2ee: &mut dyn FrameCrypto, cfg: &VoiceConfig, c
     let mut cx = Ctx { p, cfg, e2ee, ev, st: State { seq_ack: -1, ..State::default() }, told_codec: Codec::H264 };
     let mut failures = 0u32;
     loop {
+        // Réseau changé (Wi-Fi vers Ethernet, VPN) : la reprise garderait une
+        // socket UDP liée à l'ancienne adresse, et l'appel paraîtrait connecté
+        // en restant muet. On repart d'une identification neuve (audit 0.1.33).
+        if cx.st.identified && cx.st.udp.as_ref().is_some_and(route_changed) {
+            cx.st.identified = false;
+        }
         let ws_cfg = WebSocketConfig::default().max_message_size(Some(MAX_MESSAGE)).max_frame_size(Some(MAX_MESSAGE));
         let began = Instant::now();
         let end = match crate::net::identity::ws_request(url.as_str(), &cfg.ws_headers) {
@@ -172,6 +178,24 @@ async fn drive(p: &VoiceParams, e2ee: &mut dyn FrameCrypto, cfg: &VoiceConfig, c
     }
 }
 
+/// L'adresse locale par laquelle on joint le serveur vocal n'est plus celle
+/// de `sock`. Indéterminé (réseau coupé) : `false`, la reprise s'essaie.
+fn route_changed(sock: &UdpSocket) -> bool {
+    let (Ok(local), Ok(peer)) = (sock.local_addr(), sock.peer_addr()) else { return false };
+    let any: SocketAddr = match peer {
+        SocketAddr::V4(_) => (IpAddr::from([0, 0, 0, 0]), 0).into(),
+        SocketAddr::V6(_) => (IpAddr::from([0u16; 8]), 0).into(),
+    };
+    // Rien n'est envoyé : « connecter » une socket UDP ne fait que choisir la route.
+    let now = std::net::UdpSocket::bind(any).and_then(|p| p.connect(peer).and_then(|()| p.local_addr()));
+    now.is_ok_and(|n| differs(local.ip(), n.ip()))
+}
+
+/// Deux adresses locales déterminées et différentes.
+fn differs(old: IpAddr, now: IpAddr) -> bool {
+    !old.is_unspecified() && !now.is_unspecified() && old != now
+}
+
 struct Heartbeat {
     interval: Duration,
     next: Instant,
@@ -194,8 +218,16 @@ async fn sleep_opt(at: Option<Instant>) {
 
 async fn recv_udp(sock: Option<&UdpSocket>, buf: &mut [u8]) -> usize {
     match sock {
-        // Une erreur (ICMP « port injoignable » sous Windows) n'arrête rien.
-        Some(s) => s.recv(buf).await.unwrap_or(0),
+        // Une erreur (ICMP « port injoignable » sous Windows) n'arrête rien ;
+        // une erreur qui dure (interface retirée) ne fait pas tourner la
+        // boucle à vide pour autant.
+        Some(s) => match s.recv(buf).await {
+            Ok(n) => n,
+            Err(_) => {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                0
+            }
+        },
         None => std::future::pending().await,
     }
 }
@@ -788,5 +820,28 @@ impl Ctx<'_> {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod route_tests {
+    use super::*;
+
+    #[test]
+    fn a_new_local_address_means_the_network_changed() {
+        let ip = |s: &str| s.parse::<IpAddr>().unwrap();
+        assert!(differs(ip("192.168.1.20"), ip("10.0.0.5")));
+        assert!(!differs(ip("192.168.1.20"), ip("192.168.1.20")));
+        // Adresse indéterminée d'un côté : on ne conclut rien, la reprise s'essaie.
+        assert!(!differs(ip("0.0.0.0"), ip("10.0.0.5")));
+        assert!(!differs(ip("192.168.1.20"), ip("::")));
+    }
+
+    #[tokio::test]
+    async fn a_socket_on_the_same_route_has_not_changed() {
+        let server = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let sock = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        sock.connect(server.local_addr().unwrap()).await.unwrap();
+        assert!(!route_changed(&sock));
     }
 }
