@@ -75,6 +75,8 @@ Ferrocord vérifie au démarrage puis une fois par jour au plus (réglage « Vé
 
 **Publier une version** (clé de signature, `tools\publier.ps1`, `gh release create`, renouvellement de la clé) : voir `docs/distribution.md`. La **clé privée ne doit jamais entrer dans le dépôt** : les outils refusent de l'écrire ou de la lire dans un dossier suivi par git.
 
+Ferrocord est distribué sous licence MIT (fichier `LICENSE`) ; ses dépendances gardent chacune la leur.
+
 **Licences** : Paramètres > À propos montre le texte complet de la licence de chaque dépendance de l'exécutable, bibliothèques C comprises (libopus, OpenH264, aws-lc). Le fichier intégré (`src/install/licences.json.gz`) se refait après tout changement de `Cargo.lock` : `powershell -ExecutionPolicy Bypass -File tools\licences.ps1`.
 
 ## Android (première version)

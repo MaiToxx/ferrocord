@@ -5,6 +5,7 @@ edition = "2024"
 # 1.88 suffit aux let-chains, mais eframe/egui 0.37 exigent 1.95.
 rust-version = "1.95"
 description = "Client Discord natif et léger écrit en Rust (non officiel)"
+license = "MIT"
 
 # android/ : bibliothèque native de l'APK (phase 7). Les commandes lancées
 # ici ne concernent que ferrocord ; tools/signer reste un outil à part.
