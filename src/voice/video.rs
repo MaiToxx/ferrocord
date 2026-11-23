@@ -430,6 +430,9 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
     // Dernière image clé partie, et part du débit gardée (pertes du réseau).
     let mut last_key: Option<Instant> = None;
     let mut pressure = 1.0f32;
+    // Pour le journal : (images clés, plus grosse image en octets, images sans sortie) de la mesure.
+    let mut logged = (0u32, 0usize, 0u32);
+    crate::sharelog::line(format_args!("partage : début, qualité {}x{} à {} images/s, écran : {}", cfg.quality.width, cfg.quality.height, cfg.quality.fps, cfg.screen));
     loop {
         // Une image de la capture, l'arrêt, ou la dernière image redonnée
         // (source immobile, ou image clé demandée alors que rien ne bouge).
@@ -474,6 +477,7 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
                 let bps = bitrate(size.0, size.1, fps, cfg.screen);
                 let made = if enc.fallback { cfg.backend.fallback_encoder(enc.codec, size.0, size.1, fps, bps) } else { None };
                 if let Some(e) = made.or_else(|| cfg.backend.encoder(enc.codec, size.0, size.1, fps, bps)) {
+                    crate::sharelog::line(format_args!("encodeur : {} ouvert en {}x{} à {fps} images/s, {} kb/s, logiciel : {}", e.name(), size.0, size.1, bps / 1000, enc.fallback));
                     enc.enc = Some(e);
                     enc.size = size;
                     tuned = None;
@@ -516,6 +520,11 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
                 if !repeat || !list.is_empty() {
                     enc.dry = if list.is_empty() { enc.dry + 1 } else { 0 };
                 }
+                logged.2 += u32::from(list.is_empty());
+                for f in &list {
+                    logged.0 += u32::from(f.keyframe);
+                    logged.1 = logged.1.max(f.data.len());
+                }
                 if !list.is_empty() {
                     enc.errors = 0;
                     // Définition réduite (refusée à l'ouverture, ou en panne à
@@ -535,6 +544,7 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
                     // Le message du repli dit déjà la définition : pas de second message par-dessus.
                     enc.told = enc.level;
                     enc.dry = 0;
+                    crate::sharelog::line(format_args!("encodeur : muet, repli sur l'encodeur logiciel"));
                     lock(&mail.slot).keyframe = true;
                     (cfg.report)(VideoUp::Problem(vf::soft_encoder(lang, vt::ENCODER_MUTE.get(lang))));
                     continue;
@@ -566,6 +576,24 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
                         tuned = Some(want);
                         e.set_bitrate(want);
                     }
+                    {
+                        use crate::sharelog::{GAP, PLI, SENT};
+                        crate::sharelog::line(format_args!(
+                            "envoi : {}x{} {real} images/s {} kb/s (visé {} kb/s), clés {}, plus grosse image {} Ko, sans sortie {}, file pleine {}, paquets redemandés {lost_pct} %, parties {}, jetées par la connexion {}, images clés demandées par le serveur {}",
+                            size.0,
+                            size.1,
+                            seen.2 * 8 / ms,
+                            want / 1000,
+                            logged.0,
+                            logged.1 / 1024,
+                            logged.2,
+                            seen.3,
+                            SENT.swap(0, Relaxed),
+                            GAP.swap(0, Relaxed),
+                            PLI.swap(0, Relaxed)
+                        ));
+                        logged = (0, 0, 0);
+                    }
                     if cfg.screen {
                         let st = SendStats {
                             width: size.0,
@@ -586,6 +614,7 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
             }
             Err(CodecError::BadFrame(_)) => continue,
             Err(err) => {
+                crate::sharelog::line(format_args!("encodeur : erreur ({err}), palier {}, logiciel : {}", enc.level, enc.fallback));
                 enc.enc = None;
                 enc.why = Some(err.to_string());
                 // Première panne à l'envoi (constaté : « Media Foundation :
