@@ -42,6 +42,7 @@ pub mod t {
         END_UNAVAILABLE = "Le direct est indisponible (panne de Discord).", "The stream is unavailable (Discord outage).";
         NO_CAMERA = "Aucune caméra n'est branchée.", "No camera is plugged in.";
         ENCODER_MUTE = "il ne rend aucune image", "it outputs no frames";
+        SHARE_REDUCED = "débit réduit (réseau)", "bitrate reduced (network)";
         ENC_HARD = "encodeur de la carte graphique", "graphics card encoder";
         ENC_SOFT = "encodeur logiciel (lent)", "software encoder (slow)";
         NO_ENCODER = "Cet ordinateur ne sait pas encoder la vidéo en H.264.", "This computer can't encode H.264 video.";
@@ -63,6 +64,7 @@ pub mod f {
         soft_encoder(why) = "L'encodeur de la carte graphique a échoué ({why})\u{a0}: encodeur logiciel, image réduite à 1280×720.", "The graphics card encoder failed ({why}): software encoder, picture reduced to 1280×720.";
         share_stats(width, height, fps, rate, codec, encoder) = "Envoyé\u{a0}: {width}×{height}, {fps} images/s, {rate} Mb/s, {codec}, {encoder}", "Sending: {width}×{height}, {fps} fps, {rate} Mbps, {codec}, {encoder}";
         lowered_why(width, height, why) = "L'encodeur a échoué ({why})\u{a0}: vidéo envoyée en {width}×{height}.", "The encoder failed ({why}): sending {width}×{height} instead.";
+        share_network_loss(n) = "{n}\u{a0}% de paquets perdus chez ceux qui regardent", "{n}% of packets lost on the viewers' side";
         share_lost(n) = "{n} images perdues (envoi en retard)", "{n} frames dropped (sending is behind)";
         share_sound_failed(why) = "Le son du partage ne passe pas\u{a0}: {why}", "Shared audio isn't working: {why}";
         screen_of(name) = "Écran de {name}", "{name}'s screen";

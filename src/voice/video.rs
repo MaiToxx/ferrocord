@@ -235,6 +235,8 @@ struct Slot {
 struct Mailbox {
     slot: Mutex<Slot>,
     ready: Condvar,
+    /// Paquets redemandés par ceux qui regardent depuis la dernière mesure.
+    nacked: std::sync::atomic::AtomicU32,
 }
 
 /// Ce que montre et envoie une vidéo à émettre.
@@ -263,7 +265,7 @@ pub(super) struct Sending {
 
 impl Sending {
     pub fn start(cfg: SendCfg) -> Sending {
-        let mail = Arc::new(Mailbox { slot: Mutex::new(Slot { keyframe: true, ..Default::default() }), ready: Condvar::new() });
+        let mail = Arc::new(Mailbox { slot: Mutex::new(Slot { keyframe: true, ..Default::default() }), ready: Condvar::new(), nacked: Default::default() });
         let m = mail.clone();
         let report = cfg.report.clone();
         let fail = cfg.fail;
@@ -279,6 +281,11 @@ impl Sending {
         lock(&self.mail.slot).keyframe = true;
         // Écran immobile : le fil d'envoi attend une image qui ne viendra pas.
         self.mail.ready.notify_one();
+    }
+
+    /// Ceux qui regardent ont redemandé `packets` paquets perdus.
+    pub fn lost(&self, packets: u32) {
+        self.mail.nacked.fetch_add(packets, Relaxed);
     }
 
     /// La connexion a négocié un autre codec : l'encodeur change à l'image suivante.
@@ -336,6 +343,25 @@ const SOFT_LEVEL: usize = 3;
 /// rien redonner, 31,6 dB après 40 images redonnées. Ensuite, une par
 /// seconde.
 const REFINE_SECS: u32 = 2;
+
+/// Écart minimal entre deux images clés demandées. Chaque spectateur qui
+/// perd des paquets en redemande une ; servies une à une, sans limite, ces
+/// images de plus d'un mégaoctet en 4K engorgeaient encore la liaison, les
+/// pertes continuaient et le direct restait figé chez ceux qui regardent
+/// jusqu'à ce qu'il soit relancé (constaté par l'utilisateur, 0.1.33 ; cause
+/// supposée, non vérifiée sur une liaison réelle).
+const MIN_KEY_GAP: Duration = Duration::from_secs(1);
+
+/// Part du débit gardée d'après les pertes de la dernière mesure : dès 5 %
+/// de paquets redemandés, le débit baisse de 30 % (jamais sous le quart) ;
+/// sans aucune perte, il remonte de 15 % par mesure.
+fn next_pressure(pressure: f32, lost_pct: u32) -> f32 {
+    match lost_pct {
+        0 => (pressure * 1.15).min(1.0),
+        1..=4 => pressure,
+        _ => (pressure * 0.7).max(0.25),
+    }
+}
 
 /// Intervalle entre deux mesures de ce que le partage envoie.
 const STATS_EVERY_MS: u64 = 2000;
@@ -401,6 +427,9 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
     let mut repeats = 0u32;
     // Horodatage et moment de la dernière image donnée à l'encodeur.
     let mut last = (0u64, Instant::now());
+    // Dernière image clé partie, et part du débit gardée (pertes du réseau).
+    let mut last_key: Option<Instant> = None;
+    let mut pressure = 1.0f32;
     loop {
         // Une image de la capture, l'arrêt, ou la dernière image redonnée
         // (source immobile, ou image clé demandée alors que rien ne bouge).
@@ -459,8 +488,15 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
                 size = level_size(frame.width, frame.height, next);
             }
             key = true;
+            last_key = None;
+        }
+        // Image clé demandée trop tôt après la précédente : remise à plus tard.
+        if key && last_key.is_some_and(|t| t.elapsed() < MIN_KEY_GAP) {
+            key = false;
+            lock(&mail.slot).keyframe = true;
         }
         if key {
+            last_key = Some(Instant::now());
             // L'image clé coûte cher : l'encodeur a besoin des images suivantes pour l'affiner.
             repeats = 0;
         }
@@ -519,9 +555,14 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
                 if ms >= STATS_EVERY_MS {
                     let real = ((u64::from(seen.1) * 1000 + ms / 2) / ms) as u32;
                     let behind = skipped.swap(0, Relaxed) > seen.1 / 8;
-                    let base = bitrate(size.0, size.1, fps, cfg.screen);
+                    // Pertes chez ceux qui regardent : paquets redemandés sur paquets partis.
+                    let packets = (seen.2 / crate::net::voice::video::send::MAX_PAYLOAD as u64).max(1);
+                    let lost_pct = (u64::from(mail.nacked.swap(0, Relaxed)) * 100 / packets).min(100) as u32;
+                    pressure = next_pressure(pressure, lost_pct);
+                    let full = bitrate(size.0, size.1, fps, cfg.screen);
+                    let base = (f64::from(full) * f64::from(pressure)) as u32;
                     let want = tuned_bitrate(base, fps, real, behind);
-                    if tuned.unwrap_or(base).abs_diff(want) > base / 10 {
+                    if tuned.unwrap_or(full).abs_diff(want) > full / 10 {
                         tuned = Some(want);
                         e.set_bitrate(want);
                     }
@@ -535,6 +576,8 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
                             codec: enc.codec.name(),
                             encoder,
                             lost: seen.3,
+                            network_loss: lost_pct,
+                            reduced: pressure < 1.0,
                         };
                         (cfg.report)(VideoUp::ShareStats(st));
                     }
@@ -839,6 +882,20 @@ mod tests {
         // Écran immobile : peu d'images, mais la chaîne n'est pas en retard.
         assert_eq!(tuned_bitrate(base, 60, 5, false), base);
         assert_eq!(tuned_bitrate(base, 60, 0, true), base);
+    }
+
+    #[test]
+    fn bitrate_drops_under_loss_and_comes_back() {
+        let mut p = 1.0f32;
+        for _ in 0..10 {
+            p = next_pressure(p, 20);
+        }
+        assert_eq!(p, 0.25, "jamais sous le quart");
+        assert_eq!(next_pressure(0.5, 3), 0.5, "quelques pertes : on ne bouge pas");
+        for _ in 0..12 {
+            p = next_pressure(p, 0);
+        }
+        assert_eq!(p, 1.0, "revenu au débit plein");
     }
 
     #[test]

@@ -86,6 +86,10 @@ pub struct SendStats {
     pub encoder: &'static str,
     /// Images perdues parce que la connexion n'a pas suivi.
     pub lost: u32,
+    /// Paquets que ceux qui regardent ont redemandés, en pourcentage.
+    pub network_loss: u32,
+    /// Débit baissé à cause de ces pertes.
+    pub reduced: bool,
 }
 
 /// Vidéo -> interface.
@@ -214,7 +218,7 @@ mod tests {
         // Panne de caméra : éteinte, message rendu, op 4 repartie.
         assert_eq!(s.apply_video_up(VideoUp::CameraFailed("x".into())).as_deref(), Some("x"));
         // Une mesure sans partage en cours : rien à afficher, rien de retenu.
-        let st = SendStats { width: 3840, height: 2160, fps: 60, kbps: 17_000, software: false, codec: "H264", encoder: "", lost: 0 };
+        let st = SendStats { width: 3840, height: 2160, fps: 60, kbps: 17_000, software: false, codec: "H264", encoder: "", lost: 0, network_loss: 0, reduced: false };
         assert_eq!(s.apply_video_up(VideoUp::ShareStats(st)), None);
         assert!(s.video.share.is_none());
         assert!(!s.video.camera);

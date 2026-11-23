@@ -204,6 +204,11 @@ pub(super) async fn run(s: StreamStart, mut rx: tmpsc::UnboundedReceiver<StreamM
                         v.keyframe();
                     }
                 }
+                Some(NetEvent::VideoLoss(n)) => {
+                    if let Some(v) = &sending {
+                        v.lost(n);
+                    }
+                }
                 Some(NetEvent::Video { user_id, frame }) => {
                     if s.role == (Role::Watch { owner: user_id }) {
                         receiving.frame(user_id, tile.clone(), frame);
