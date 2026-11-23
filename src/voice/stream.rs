@@ -181,6 +181,7 @@ pub(super) async fn run(s: StreamStart, mut rx: tmpsc::UnboundedReceiver<StreamM
             }
             e = net_rx.recv() => match e {
                 Some(NetEvent::Ready { .. }) => {
+                    crate::sharelog::line(format_args!("direct : connexion prête"));
                     s.out.event(StreamEvent::Connected { key: key.clone() });
                     ready = true;
                     if let Some((source_id, quality, audio)) = &share
@@ -194,6 +195,7 @@ pub(super) async fn run(s: StreamStart, mut rx: tmpsc::UnboundedReceiver<StreamM
                     }
                 }
                 Some(NetEvent::SendCodec(c)) => {
+                    crate::sharelog::line(format_args!("direct : codec d'envoi {}", c.name()));
                     send_codec = c;
                     if let Some(v) = &sending {
                         v.set_codec(c);
@@ -224,12 +226,14 @@ pub(super) async fn run(s: StreamStart, mut rx: tmpsc::UnboundedReceiver<StreamM
                 Some(NetEvent::VideoState { user_id, active: false }) | Some(NetEvent::UserLeft(user_id)) => receiving.stop(user_id),
                 // Quelqu'un arrive sur mon direct : une image clé tout de suite.
                 Some(NetEvent::UserJoined(_)) => {
+                    crate::sharelog::line(format_args!("direct : quelqu'un arrive"));
                     if let Some(v) = &sending {
                         v.keyframe();
                     }
                 }
                 Some(NetEvent::VideoState { .. } | NetEvent::Speaking { .. } | NetEvent::Ping(_)) => {}
                 Some(NetEvent::Closed(r)) => {
+                    crate::sharelog::line(format_args!("direct : connexion fermée ({r:?})"));
                     match r {
                         CloseReason::Requested => {}
                         CloseReason::Disconnected(_) | CloseReason::SessionExpired(_) => s.out.event(StreamEvent::Closed { key: key.clone() }),

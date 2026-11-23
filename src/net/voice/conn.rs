@@ -146,8 +146,10 @@ async fn drive(p: &VoiceParams, e2ee: &mut dyn FrameCrypto, cfg: &VoiceConfig, c
             Err(_) => End::Lost,
         };
         if let End::Stop(reason) = end {
+            crate::sharelog::line(format_args!("connexion : arrêt ({reason:?}) après {} s", began.elapsed().as_secs()));
             return reason;
         }
+        crate::sharelog::line(format_args!("connexion : coupée après {} s, échec n° {}, identifiée : {}", began.elapsed().as_secs(), failures + 1, cx.st.identified));
         // Une session ne remet le compteur à zéro que si elle a tenu : acceptée
         // puis refermée aussitôt par le serveur, elle se rouvrait deux à trois
         // fois par seconde, sans fin (audit 0.1.33 ; même garde que la
@@ -394,6 +396,10 @@ impl Ctx<'_> {
             self.st.seq_ack = s;
         }
         let d = &env.d;
+        // Journal : tout sauf la parole (5), les battements (6) et l'accueil (8).
+        if !matches!(env.op, 5 | 6 | 8) {
+            crate::sharelog::line(format_args!("connexion : opération {} reçue", env.op));
+        }
         match env.op {
             8 => {
                 // Intervalle absent ou minuscule : jamais un battement par milliseconde.
@@ -542,6 +548,7 @@ impl Ctx<'_> {
         }
         self.st.seq_ack = i64::from(u16::from_be_bytes([b[0], b[1]]));
         let op = b[2];
+        crate::sharelog::line(format_args!("connexion : opération binaire {op} reçue ({} octets)", b.len()));
         if (21..=31).contains(&op) {
             let mut out = Vec::new();
             self.e2ee.on_op(op, None, Some(&b[3..]), &mut out);
@@ -739,12 +746,17 @@ impl Ctx<'_> {
 
     async fn send_video(&mut self, f: &EncodedFrame) -> Step {
         if self.st.cipher.is_none() || self.st.want_video.is_none() {
+            if !self.st.video_gap {
+                crate::sharelog::line(format_args!("vidéo : images jetées (clé de transport : {}, vidéo annoncée : {})", self.st.cipher.is_some(), self.st.want_video.is_some()));
+            }
+            crate::sharelog::GAP.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             self.st.video_gap = true;
             return Ok(());
         }
         // Après une image perdue, la première à partir est une image clé : elle
         // est demandée à l'encodeur, et les images intermédiaires sont jetées.
         if self.st.video_gap && !f.keyframe {
+            crate::sharelog::GAP.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             return match self.ev.try_send(VoiceEvent::KeyframeRequested) {
                 Err(mpsc::error::TrySendError::Closed(_)) => Err(End::Stop(CloseReason::Requested)),
                 _ => Ok(()),
@@ -758,9 +770,17 @@ impl Ctx<'_> {
             _ => std::borrow::Cow::Borrowed(f.data.as_slice()),
         };
         let Some(data) = self.e2ee.encrypt_video(f.codec, &plain) else {
+            if !self.st.video_gap {
+                crate::sharelog::line(format_args!("vidéo : images jetées (chiffrement de bout en bout sans clé)"));
+            }
+            crate::sharelog::GAP.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             self.st.video_gap = true;
             return Ok(());
         };
+        if self.st.video_gap {
+            crate::sharelog::line(format_args!("vidéo : l'envoi reprend sur une image clé de {} octets", f.data.len()));
+        }
+        crate::sharelog::SENT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.st.video_gap = false;
         let (pkts, sr) = self.st.video.send_frame(f.codec, f.ts90k, &data, std::time::Instant::now());
         // Envoi étalé : les premiers octets d'un trait, la suite au rythme permis.
@@ -796,6 +816,9 @@ impl Ctx<'_> {
         // Pertes dites à l'encodeur, qui baisse son débit (événement perdable).
         if !fb.retransmit.is_empty() {
             let _ = self.ev.try_send(VoiceEvent::VideoLoss(fb.retransmit.len() as u32));
+        }
+        if fb.keyframe {
+            crate::sharelog::PLI.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
         if fb.keyframe && let Err(mpsc::error::TrySendError::Closed(_)) = self.ev.try_send(VoiceEvent::KeyframeRequested) {
             return Err(End::Stop(CloseReason::Requested));

@@ -13,6 +13,7 @@ pub mod game_pick;
 pub mod avatar;
 // Rapport de plantage local (lot E5).
 pub mod crash;
+pub mod sharelog;
 pub mod desk;
 pub mod guild_icon;
 pub mod i18n;
@@ -246,6 +247,7 @@ pub fn run() -> eframe::Result {
     // Toute panique arrête l'application, sauf celles d'un décodeur sur une donnée reçue.
     panics::install();
     crash::install(crash::default_dir());
+    sharelog::install(sharelog::default_path());
     let raw_args: Vec<String> = std::env::args().skip(1).collect();
     let args = install::single::parse_args(raw_args.iter().cloned());
     // Installation, désinstallation, ou proposition d'installer un exécutable
