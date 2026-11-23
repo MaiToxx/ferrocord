@@ -117,6 +117,8 @@ async fn video_dans_les_deux_sens() {
     assert_eq!((pt, ts, ssrc), (104, 90_000, rtx_ssrc));
     assert_eq!(&payload[..2], &seqs[7].to_be_bytes());
     assert_eq!(&payload[2..], payloads[7].as_slice());
+    // … et la perte est dite à l'encodeur, qui règle son débit dessus.
+    assert_eq!(next(&mut rx).await, VoiceEvent::VideoLoss(1));
 
     // PLI du serveur : le client demande une image clé à l'encodeur.
     server.send_rtcp_sealed(&h, &rtcp::pli(1, video_ssrc), 2).await;

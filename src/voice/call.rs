@@ -252,6 +252,11 @@ pub(super) async fn run(s: Start, mut rx: tmpsc::UnboundedReceiver<Msg>) {
                         c.keyframe();
                     }
                 }
+                Some(NetEvent::VideoLoss(n)) => {
+                    if let Some((_, c)) = &cam {
+                        c.lost(n);
+                    }
+                }
                 Some(NetEvent::Closed(r)) => {
                     match r {
                         CloseReason::SessionExpired(_) => out.event(VoiceEvent::Expired),

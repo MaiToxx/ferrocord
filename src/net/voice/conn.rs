@@ -48,6 +48,8 @@ const VIDEO_EXT_PLAYOUT: [u8; 4] = [0x62, 0x00, 0x00, 0x28];
 /// Octets d'une image vidéo envoyés d'un trait ; au-delà, l'envoi suit
 /// [`video::Link::pace_rate`].
 const PACE_BURST: usize = 48_000;
+/// Paquets renvoyés au plus pour une demande de retransmission (≈ 280 Ko).
+const MAX_RTX: usize = 256;
 /// Durée d'une trame audio.
 const AUDIO_FRAME: Duration = Duration::from_millis(20);
 /// Trames d'écart à partir desquelles l'horodatage audio saute le silence.
@@ -786,8 +788,14 @@ impl Ctx<'_> {
     async fn on_rtcp(&mut self, pkt: &[u8]) -> Step {
         let Some(plain) = self.st.cipher.as_ref().and_then(|c| video::rtcp::open(c, pkt)) else { return Ok(()) };
         let fb = self.st.video.on_rtcp(&plain);
-        for r in &fb.retransmit {
+        // Plafond par demande : sous de fortes pertes, tout renvoyer d'un
+        // trait (des milliers de paquets) ne fait qu'aggraver l'engorgement.
+        for r in fb.retransmit.iter().take(MAX_RTX) {
             self.send_video_pkt(r).await;
+        }
+        // Pertes dites à l'encodeur, qui baisse son débit (événement perdable).
+        if !fb.retransmit.is_empty() {
+            let _ = self.ev.try_send(VoiceEvent::VideoLoss(fb.retransmit.len() as u32));
         }
         if fb.keyframe && let Err(mpsc::error::TrySendError::Closed(_)) = self.ev.try_send(VoiceEvent::KeyframeRequested) {
             return Err(End::Stop(CloseReason::Requested));

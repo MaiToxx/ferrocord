@@ -96,6 +96,8 @@ pub enum VoiceEvent {
     VideoState { user_id: u64, active: bool },
     /// Un abonné demande une image clé (PLI ou FIR) : forcer la prochaine.
     KeyframeRequested,
+    /// Paquets vidéo que les abonnés n'ont pas reçus et ont redemandés (NACK).
+    VideoLoss(u32),
     /// Codec vidéo à envoyer (Session Description ou Update) : l'encodeur suit.
     SendCodec(crate::video::Codec),
     /// Dernier événement : la tâche s'arrête.

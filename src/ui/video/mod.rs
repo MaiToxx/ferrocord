@@ -621,6 +621,14 @@ pub(in crate::ui) fn share_stats_text(lang: crate::i18n::Lang, st: &crate::state
     let kind = if st.software { vt::ENC_SOFT.get(lang) } else { vt::ENC_HARD.get(lang) };
     let encoder = if st.encoder.is_empty() { kind.to_string() } else { format!("{kind} ({})", st.encoder) };
     let mut text = vf::share_stats(lang, st.width, st.height, st.fps, rate, st.codec, encoder);
+    if st.network_loss > 0 {
+        text.push_str(", ");
+        text.push_str(&vf::share_network_loss(lang, st.network_loss));
+    }
+    if st.reduced {
+        text.push_str(", ");
+        text.push_str(vt::SHARE_REDUCED.get(lang));
+    }
     if st.lost > 0 {
         text.push_str(", ");
         text.push_str(&vf::share_lost(lang, st.lost));
@@ -636,9 +644,9 @@ mod stats_tests {
 
     #[test]
     fn share_stats_line_says_what_is_really_sent() {
-        let st = SendStats { width: 3840, height: 2160, fps: 58, kbps: 17_260, software: false, codec: "H264", encoder: "NVIDIA H.264 Encoder MFT", lost: 0 };
+        let st = SendStats { width: 3840, height: 2160, fps: 58, kbps: 17_260, software: false, codec: "H264", encoder: "NVIDIA H.264 Encoder MFT", lost: 0, network_loss: 0, reduced: false };
         assert_eq!(share_stats_text(Lang::Fr, &st), "Envoyé\u{a0}: 3840×2160, 58 images/s, 17,2 Mb/s, H264, encodeur de la carte graphique (NVIDIA H.264 Encoder MFT)");
-        let st = SendStats { width: 1280, height: 720, fps: 30, kbps: 950, software: true, codec: "VP8", encoder: "", lost: 4 };
-        assert_eq!(share_stats_text(Lang::En, &st), "Sending: 1280×720, 30 fps, 0.9 Mbps, VP8, software encoder (slow), 4 frames dropped (sending is behind)");
+        let st = SendStats { width: 1280, height: 720, fps: 30, kbps: 950, software: true, codec: "VP8", encoder: "", lost: 4, network_loss: 12, reduced: true };
+        assert_eq!(share_stats_text(Lang::En, &st), "Sending: 1280×720, 30 fps, 0.9 Mbps, VP8, software encoder (slow), 12% of packets lost on the viewers' side, bitrate reduced (network), 4 frames dropped (sending is behind)");
     }
 }
