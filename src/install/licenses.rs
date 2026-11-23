@@ -58,7 +58,7 @@ mod tests {
     fn embedded_file_covers_rust_and_c_dependencies() {
         let l = embedded().unwrap();
         let find = |name: &str| l.packages.iter().find(|p| p.name == name).unwrap_or_else(|| panic!("{name} absent"));
-        for name in ["eframe", "tokio", "aws-lc-sys", "opusic-sys", "openh264-sys2", "serde"] {
+        for name in ["eframe", "tokio", "aws-lc-sys", "opusic-sys", "openh264-sys2", "serde", "resvg", "symphonia"] {
             let p = find(name);
             assert!(l.texts_of(p).next().is_some(), "{name} sans texte");
         }
@@ -68,6 +68,10 @@ mod tests {
         assert!(all("openh264-sys2").contains("Cisco"), "licence d'OpenH264");
         assert!(all("aws-lc-sys").contains("OpenSSL"), "licence d'aws-lc");
         assert!(l.packages.iter().all(|p| p.texts.iter().all(|i| *i < l.texts.len())));
+        // Liste refaite après chaque changement de dépendances : aucun paquet sans texte
+        // (15 paquets manquaient et 6 n'avaient pas de texte, audit 0.1.33).
+        let bare: Vec<_> = l.packages.iter().filter(|p| p.texts.is_empty()).map(|p| p.name.as_str()).collect();
+        assert!(bare.is_empty(), "sans texte de licence : {bare:?}");
     }
 
     #[test]
