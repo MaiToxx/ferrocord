@@ -379,8 +379,6 @@ fn playback_fn(shared: Arc<Shared>, rx: mpsc::Receiver<PlayMsg>, up: tmpsc::Unbo
 pub(super) struct Media {
     streams: Option<Box<dyn AudioStreams>>,
     play: mpsc::Sender<PlayMsg>,
-    pub(super) input: Option<String>,
-    pub(super) output: Option<String>,
 }
 
 impl Media {
@@ -407,7 +405,7 @@ impl Media {
             Ok(s) => (Some(s), None),
             Err(e) => (None, Some(e)),
         };
-        (Media { streams, play: tx, input, output }, err)
+        (Media { streams, play: tx }, err)
     }
 
     /// Sortie seule, hors appel (son d'un direct regardé, sons courts) : le
@@ -422,13 +420,13 @@ impl Media {
             Ok(s) => (Some(s), None),
             Err(e) => (None, Some(e)),
         };
-        (Media { streams, play: tx, input: None, output }, err)
+        (Media { streams, play: tx }, err)
     }
 
     /// Aucun périphérique ouvert.
     pub(super) fn closed() -> Media {
         let (play, _) = mpsc::channel();
-        Media { streams: None, play, input: None, output: None }
+        Media { streams: None, play }
     }
 
     pub(super) fn send(&self, m: PlayMsg) {

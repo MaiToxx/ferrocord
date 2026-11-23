@@ -128,13 +128,31 @@ pub(super) fn failure(r: CloseReason) -> Option<String> {
     })
 }
 
-/// Ouvre les périphériques hors de la boucle (l'ouverture peut prendre une seconde).
-async fn open_media(opts: &Options, prefs: &crate::state::audio_prefs::AudioPrefs, shared: &Arc<Shared>, net: &tmpsc::Sender<VoiceCtl>, aud: &tmpsc::UnboundedSender<AudioUp>, users: &HashMap<u64, (f32, bool)>) -> (Media, Option<String>) {
+/// Ouvre les périphériques sur un fil à part (l'ouverture peut prendre une
+/// seconde ou plus). La boucle de l'appel n'attend jamais dessus : pendant
+/// ce temps elle ne lisait plus la connexion vocale, dont la file se
+/// remplissait jusqu'à la bloquer, battement compris (audit 0.1.33).
+fn start_open(opts: &Options, prefs: &crate::state::audio_prefs::AudioPrefs, shared: &Arc<Shared>, net: &tmpsc::Sender<VoiceCtl>, aud: &tmpsc::UnboundedSender<AudioUp>, users: &HashMap<u64, (f32, bool)>) -> Task<(Media, Option<String>)> {
     let (backend, prefs, shared, net, aud, users) = (opts.backend.clone(), prefs.clone(), shared.clone(), net.clone(), aud.clone(), users.clone());
-    match tokio::task::spawn_blocking(move || Media::open(backend.as_ref(), &prefs, shared, net, aud, &users)).await {
-        Ok((m, err)) => (m, err.as_ref().map(error_text)),
-        // Panique à l'ouverture (pilote) : l'appel continue, sans son.
-        Err(_) => (Media::closed(), Some(crate::i18n::tr(vt::AUDIO_FAILED).to_string())),
+    tokio::task::spawn_blocking(move || {
+        let (m, err) = Media::open(backend.as_ref(), &prefs, shared, net, aud, &users);
+        (m, err.as_ref().map(error_text))
+    })
+}
+
+/// Travail lancé hors de la boucle, attendu par [`joined`].
+pub(super) type Task<T> = tokio::task::JoinHandle<T>;
+
+/// Résultat du travail en cours (`None` s'il a paniqué) ; sans travail,
+/// n'aboutit jamais. Sûr à abandonner : le travail reste en place.
+pub(super) async fn joined<T>(task: &mut Option<Task<T>>) -> Option<T> {
+    match task {
+        Some(t) => {
+            let r = t.await.ok();
+            *task = None;
+            r
+        }
+        None => std::future::pending().await,
     }
 }
 
@@ -144,14 +162,12 @@ pub(super) fn close_media(m: Media) {
 }
 
 /// Codes de vérification : scrypt par personne, hors du fil d'interface et de la boucle.
-async fn codes(dave: Option<Arc<Mutex<DaveSession>>>) -> VoiceCodes {
+fn start_codes(dave: Option<Arc<Mutex<DaveSession>>>) -> Task<VoiceCodes> {
     let inputs = dave.map(|d| locked(&d).code_inputs()).unwrap_or_default();
     tokio::task::spawn_blocking(move || {
         let users = inputs.users().map(|u| (u, inputs.pairwise(u))).collect();
         VoiceCodes { call: inputs.call.clone(), users }
     })
-    .await
-    .unwrap_or_default()
 }
 
 pub(super) async fn run(s: Start, mut rx: tmpsc::UnboundedReceiver<Msg>) {
@@ -169,16 +185,43 @@ pub(super) async fn run(s: Start, mut rx: tmpsc::UnboundedReceiver<Msg>) {
     let shared = Arc::new(Shared::new(&settings, ptt));
     let mut cam = camera.map(|c| (c.clone(), video.camera(&opts, c, &net, me, send_codec)));
     let mut receiving = Receiving::new(opts.video.clone(), video.sink.clone(), net.clone(), video.report.clone());
-    let (mut media, err) = open_media(&opts, &settings.prefs, &shared, &net, &aud_tx, &users).await;
-    *lock_player(&video.player) = Some(media.player());
-    video.in_call.store(true, std::sync::atomic::Ordering::Relaxed);
-    out.event(VoiceEvent::AudioProblem(err));
+    let devices = |s: &Settings| (s.prefs.input_device.clone(), s.prefs.output_device.clone());
+    // Périphériques en cours d'ouverture (ou ouverts) et leur ouverture en cours.
+    let mut media = Media::closed();
+    let mut asked = devices(&settings);
+    let mut opening = Some(start_open(&opts, &settings.prefs, &shared, &net, &aud_tx, &users));
+    let mut coding: Option<Task<VoiceCodes>> = None;
+    // Qualités demandées pas encore parties (la dernière remplace la précédente).
+    let mut wants: Option<Vec<(u64, u8)>> = None;
     let mut check = tokio::time::interval(opts.device_check);
     check.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut others: Vec<u64> = Vec::new();
     let mut me_speaking = false;
     loop {
         tokio::select! {
+            o = joined(&mut opening) => {
+                // Panique à l'ouverture (pilote) : l'appel continue, sans son.
+                let (m, err) = o.unwrap_or_else(|| (Media::closed(), Some(crate::i18n::tr(vt::AUDIO_FAILED).to_string())));
+                if devices(&settings) != asked {
+                    // Périphériques changés pendant l'ouverture : rouverts avec les nouveaux.
+                    close_media(m);
+                    asked = devices(&settings);
+                    opening = Some(start_open(&opts, &settings.prefs, &shared, &net, &aud_tx, &users));
+                } else {
+                    media = m;
+                    *lock_player(&video.player) = Some(media.player());
+                    video.in_call.store(true, std::sync::atomic::Ordering::Relaxed);
+                    out.event(VoiceEvent::AudioProblem(err));
+                }
+            }
+            c = joined(&mut coding) => out.event(VoiceEvent::Codes(c.unwrap_or_default())),
+            // Jamais d'attente sur la file de la connexion sans continuer à la
+            // lire : elle-même peut attendre que cette boucle la lise.
+            p = net.reserve(), if wants.is_some() => {
+                if let (Ok(p), Some(w)) = (p, wants.take()) {
+                    p.send(VoiceCtl::SinkWants(w));
+                }
+            }
             e = net_rx.recv() => match e {
                 Some(NetEvent::Audio { user_id, seq, opus, .. }) => media.send(PlayMsg::Packet { user_id, seq, opus }),
                 Some(NetEvent::Ready { .. }) => out.event(VoiceEvent::Connected),
@@ -246,7 +289,9 @@ pub(super) async fn run(s: Start, mut rx: tmpsc::UnboundedReceiver<Msg>) {
             m = rx.recv() => match m {
                 None | Some(Msg::Stop) => {
                     cam = None;
-                    let _ = net.send(VoiceCtl::Disconnect).await;
+                    // File pleine : la connexion s'arrête de toute façon quand
+                    // tous ses émetteurs sont lâchés, à la sortie de cette boucle.
+                    let _ = net.try_send(VoiceCtl::Disconnect);
                     break;
                 }
                 Some(Msg::Camera(want)) => match want {
@@ -259,19 +304,15 @@ pub(super) async fn run(s: Start, mut rx: tmpsc::UnboundedReceiver<Msg>) {
                         }
                     }
                 },
-                Some(Msg::Wants(w)) => {
-                    let _ = net.send(VoiceCtl::SinkWants(w)).await;
-                }
+                Some(Msg::Wants(w)) => wants = Some(w),
                 Some(Msg::Settings(n)) => {
                     shared.set(&n);
-                    let devices = (n.prefs.input_device != media.input) || (n.prefs.output_device != media.output);
                     settings = n;
-                    if devices {
-                        close_media(media);
-                        let (m, err) = open_media(&opts, &settings.prefs, &shared, &net, &aud_tx, &users).await;
-                        media = m;
-                        *lock_player(&video.player) = Some(media.player());
-                        out.event(VoiceEvent::AudioProblem(err));
+                    // Une ouverture en cours se termine d'abord (voir plus haut).
+                    if devices(&settings) != asked && opening.is_none() {
+                        asked = devices(&settings);
+                        close_media(std::mem::replace(&mut media, Media::closed()));
+                        opening = Some(start_open(&opts, &settings.prefs, &shared, &net, &aud_tx, &users));
                     }
                 }
                 Some(Msg::Ptt(b)) => shared.set_ptt(b),
@@ -285,7 +326,11 @@ pub(super) async fn run(s: Start, mut rx: tmpsc::UnboundedReceiver<Msg>) {
                     users.entry(u).or_insert((1.0, false)).1 = b;
                     media.send(PlayMsg::Muted(u, b));
                 }
-                Some(Msg::Codes) => out.event(VoiceEvent::Codes(codes(dave.clone()).await)),
+                Some(Msg::Codes) => {
+                    if coding.is_none() {
+                        coding = Some(start_codes(dave.clone()));
+                    }
+                }
             },
             _ = check.tick(), if media.is_open() => {
                 if let Some(e) = media.take_error() {
