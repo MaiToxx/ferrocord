@@ -100,7 +100,7 @@ async fn gateway_reply_forward_and_reactions() {
     assert!(s.client.store.find_message(GENERAL, REPLY).is_some_and(|m| m.meta.reactions.is_empty()));
 
     s.conn.dispatch_fixture("guild_emojis_update", 37).await;
-    s.client.until("emojis", |e| matches!(e, Event::Social(SocialEvent::GuildEmojis { .. }))).await;
+    s.client.until("emojis", |e| matches!(e, Event::GuildEmojis { .. })).await;
     let names: Vec<&str> = s.client.store.guild_emojis(ALPHA).iter().map(|e| e.name.as_str()).collect();
     assert!(names.contains(&"ferris") && names.contains(&"chat_qui_danse"), "{names:?}");
 

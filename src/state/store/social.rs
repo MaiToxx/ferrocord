@@ -7,7 +7,7 @@ use crate::state::event::Cmd;
 use crate::state::model::{ChannelKind, Message};
 use crate::state::notice::{Notice, Problem};
 use crate::state::perms::{Permissions, Verdict};
-use crate::state::social::{Emoji, GuildEmoji, Pin, Reaction, Reactor, ReplyState, SendKind, SocialCmd, SocialEvent};
+use crate::state::social::{Emoji, Pin, Reaction, Reactor, ReplyState, SendKind, SocialCmd, SocialEvent};
 use std::collections::{HashMap, HashSet, VecDeque};
 
 /// Listes de qui a réagi gardées en mémoire, au plus (les plus anciennes partent).
@@ -71,7 +71,6 @@ pub struct Social {
     reactors_order: VecDeque<(u64, Emoji, bool)>,
     pins: HashMap<u64, PinList>,
     pins_order: VecDeque<u64>,
-    emojis: HashMap<u64, Vec<GuildEmoji>>,
     /// Envois particuliers par nonce : un nouvel essai garde la référence.
     sends: HashMap<u64, SendKind>,
     /// Suppressions demandées, pas encore confirmées.
@@ -505,8 +504,11 @@ impl Store {
 
     // ------------------------------------------------------------------ emojis
 
-    pub fn guild_emojis(&self, guild_id: u64) -> &[GuildEmoji] {
-        self.social.emojis.get(&guild_id).map_or(&[], Vec::as_slice)
+    /// Emojis d'un serveur : ceux du serveur lui-même (`Guild::emojis`). Ils
+    /// étaient aussi recopiés ici, pour tous les serveurs, dans une table que
+    /// plus rien ne lisait.
+    pub fn guild_emojis(&self, guild_id: u64) -> &[crate::state::model::Emoji] {
+        self.guilds.iter().find(|g| g.id == guild_id).map_or(&[], |g| g.emojis.as_slice())
     }
 
     /// Serveur d'un salon (aucun pour un MP).
@@ -630,9 +632,8 @@ impl Store {
                     list.more = false;
                 }
             }
-            SocialEvent::GuildEmojis { guild_id, emojis } => {
-                self.social.emojis.insert(guild_id, emojis);
-            }
+            // La liste tenue à jour est celle du serveur (`Event::GuildEmojis`).
+            SocialEvent::GuildEmojis { .. } => {}
         }
         None
     }
@@ -898,7 +899,8 @@ mod tests {
     #[test]
     fn emojis_and_ready_reset() {
         let mut s = store(all());
-        s.apply(Event::Social(SocialEvent::GuildEmojis { guild_id: G, emojis: vec![GuildEmoji { id: 1, name: "chat".into(), animated: false, available: true }] }));
+        let emoji = crate::state::model::Emoji { id: 1, name: "chat".into(), animated: false, available: true, roles: Vec::new() };
+        s.apply(Event::GuildEmojis { guild_id: G, emojis: vec![emoji] });
         assert_eq!(s.guild_emojis(G).len(), 1);
         assert_eq!(s.guild_of(C), Some(G));
         s.apply(Event::Ready { me: User::new(ME, "Moi".into()), guilds: Vec::new(), dms: Vec::new() });

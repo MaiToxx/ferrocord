@@ -1019,11 +1019,54 @@ fn commit(ctx: &egui::Context, a: Applied) {
 /// les images (4 096 au plus) et une vidéo en 8K.
 pub const ATLAS_SIDE: usize = 8192;
 
+/// Hauteur de l'atlas à partir de laquelle il repart de zéro.
+///
+/// egui ne vide l'atlas qu'à 80 % de sa hauteur maximale, qui vaut sa
+/// largeur : 8 192 × 6 553 pixels, soit 215 Mo (et autant dans la texture)
+/// avant le premier ménage. Chaque glyphe à chaque taille y reste : au fil
+/// d'une longue session (emojis de toutes tailles, écritures variées, zoom),
+/// il ne fait que doubler. À 512 lignes (16 Mo), il est refait avec les seuls
+/// glyphes à l'écran : un atlas tenu ne dépasse donc pas 8 Mo.
+pub const ATLAS_ROWS_MAX: usize = 512;
+/// Pas deux remises à zéro plus rapprochées : si l'écran seul remplissait
+/// l'atlas, le refaire à chaque image coûterait plus que de le garder.
+const ATLAS_REST: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Hauteur de l'atlas à la dernière image dessinée.
+static ATLAS_ROWS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+/// Dernière remise à zéro.
+static ATLAS_RESET: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+
+/// Relève la hauteur de l'atlas : à appeler dans chaque image dessinée.
+pub fn note_atlas(ctx: &egui::Context) {
+    ATLAS_ROWS.store(ctx.fonts(|f| f.font_image_size()[1]), std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Largeur à annoncer à egui : `side` borné à [`ATLAS_SIDE`], ou la moitié
+/// le temps d'une image quand l'atlas a trop grandi (`rows`). egui refait
+/// l'atlas dès que cette largeur change : l'image suivante retrouve la
+/// largeur normale, avec un atlas neuf. `since` : temps écoulé depuis la
+/// dernière remise à zéro. Le booléen dit si c'en est une.
+fn atlas_side(side: usize, rows: usize, since: Option<std::time::Duration>) -> (usize, bool) {
+    let side = side.min(ATLAS_SIDE);
+    if rows >= ATLAS_ROWS_MAX && side >= 2 * ATLAS_ROWS_MAX && since.is_none_or(|d| d >= ATLAS_REST) { (side / 2, true) } else { (side, false) }
+}
+
 /// Borne l'atlas des glyphes : à appeler sur les entrées de chaque image,
 /// avant qu'egui les lise (`eframe::App::raw_input_hook`).
 pub fn limit_atlas(raw: &mut egui::RawInput) {
+    use std::sync::atomic::Ordering::Relaxed;
     if let Some(side) = &mut raw.max_texture_side {
-        *side = (*side).min(ATLAS_SIDE);
+        let mut last = ATLAS_RESET.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (now, reset) = atlas_side(*side, ATLAS_ROWS.load(Relaxed), last.map(|t| t.elapsed()));
+        *side = now;
+        if reset {
+            *last = Some(std::time::Instant::now());
+            ATLAS_ROWS.store(0, Relaxed);
+            // Les mises en page gardées désignent l'ancien atlas : jetées
+            // à cette image et à la suivante, comme pour un changement de police.
+            GENERATION.fetch_add(1, Relaxed);
+        }
     }
 }
 
@@ -1395,6 +1438,37 @@ mod name_tests {
         let offered: Vec<u16> = NAMES.iter().filter(|n| n.offered).map(|n| n.id).collect();
         assert_eq!(offered, [11, 3, 4, 6, 7, 8, 10, 12, 13, 14, 15, 16]);
         assert_eq!(DEFAULT_NAME_FONT, 11);
+    }
+
+    /// L'atlas trop haut repart de zéro : une image à demi-largeur, pas deux
+    /// fois dans la même minute.
+    #[test]
+    fn a_tall_atlas_starts_over_once() {
+        use std::time::Duration;
+        assert_eq!(atlas_side(16_384, 256, None), (ATLAS_SIDE, false));
+        assert_eq!(atlas_side(16_384, ATLAS_ROWS_MAX, None), (ATLAS_SIDE / 2, true));
+        assert_eq!(atlas_side(16_384, 4096, Some(Duration::from_secs(5))), (ATLAS_SIDE, false), "trop tôt après la dernière");
+        assert_eq!(atlas_side(16_384, 4096, Some(ATLAS_REST)), (ATLAS_SIDE / 2, true));
+        assert_eq!(atlas_side(4096, ATLAS_ROWS_MAX, None), (2048, true));
+        // egui refait bien l'atlas quand la largeur change, et il repart petit.
+        let ctx = egui::Context::default();
+        install_builtin(&ctx);
+        let run = |side: usize, text: &str| {
+            let raw = egui::RawInput { max_texture_side: Some(side), ..Default::default() };
+            let mut out = ctx.run_ui(raw, |ui| {
+                for size in 10..80 {
+                    ui.label(egui::RichText::new(text).size(size as f32));
+                }
+            });
+            out.textures_delta.clear();
+            ctx.fonts(|f| f.font_image_size())
+        };
+        let grown = run(ATLAS_SIDE, "Portez ce vieux whisky au juge blond qui fume 0123456789");
+        assert!(grown[1] > 64, "atlas rempli : {grown:?}");
+        assert_eq!(run(ATLAS_SIDE / 2, "a")[0], ATLAS_SIDE / 2);
+        let fresh = run(ATLAS_SIDE, "a");
+        assert_eq!(fresh[0], ATLAS_SIDE);
+        assert!(fresh[1] < grown[1], "atlas neuf : {fresh:?} contre {grown:?}");
     }
 
     /// Lot « ram » : l'atlas des glyphes est borné en largeur, jamais élargi.

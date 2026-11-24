@@ -174,6 +174,14 @@ impl LocalIndex {
         if q.sort == Sort::Oldest { found.collect() } else { found.rev().collect() }
     }
 
+    /// Copie à enregistrer : sans les textes repliés, que le fichier ne
+    /// contient pas (la moitié de la copie, refaite à chaque enregistrement).
+    /// Elle ne sert qu'à [`Self::encode`] : chercher dedans ne trouverait rien.
+    pub fn for_saving(&self) -> LocalIndex {
+        let entries = self.entries.iter().map(|(id, e)| (*id, Entry { chan: e.chan, msg: e.msg.clone(), folded: String::new() })).collect();
+        LocalIndex { entries, bytes: self.bytes, dirty: false }
+    }
+
     /// Ajoute ce qui a été relu du disque ; ce que la session a déjà rangé
     /// (plus frais) n'est pas remplacé.
     pub fn merge(&mut self, other: LocalIndex) {
@@ -335,6 +343,8 @@ mod tests {
         session.upsert(&fresh, None);
         session.merge(back);
         assert_eq!(session.message(2000).unwrap().content, "version fraîche");
+        // La copie à enregistrer donne le même fichier que l'index lui-même.
+        assert_eq!(session.for_saving().encode(7), session.encode(7));
         assert_eq!(session.len(), big.len());
     }
 }
