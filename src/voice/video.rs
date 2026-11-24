@@ -395,7 +395,9 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
     let on_frame = Box::new(move |f: Frame| {
         let mut s = lock(&m.slot);
         if !s.stop {
-            if s.frame.replace(f).is_some() {
+            // Image pas encore prise par l'encodeur : remplacée, son tampon resservira.
+            if let Some(old) = s.frame.replace(f) {
+                capture::recycle(old);
                 sk.fetch_add(1, Relaxed);
             }
             drop(s);
@@ -412,6 +414,14 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
             return;
         }
     };
+    // Fin du fil, quelle qu'en soit la raison : les tampons recyclés sont rendus.
+    struct Spares;
+    impl Drop for Spares {
+        fn drop(&mut self) {
+            capture::drop_spares();
+        }
+    }
+    let _spares = Spares;
     let fps = cfg.quality.fps.clamp(1, 60);
     let mut enc = Enc { codec: cfg.codec, level: first_level(cfg.quality), size: (0, 0), enc: None, fallback: false, dry: 0, errors: 0, told: first_level(cfg.quality), why: None };
     let mut scaler = crate::video::convert::Scaler::new();
@@ -505,6 +515,10 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
             repeats = 0;
         }
         let Some(img) = scaled(frame, size.0, size.1, &mut scaler) else { continue };
+        // L'image précédente ne servira plus : son tampon retourne à la capture.
+        if let Some(old) = still.take() {
+            capture::recycle(old);
+        }
         let img = &*still.insert(img);
         if announced != Some(size) {
             announced = Some(size);
