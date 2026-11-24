@@ -351,7 +351,11 @@ const OURS_KEY: &str = r"Software\Ferrocord";
 /// « 1 » : la préférence « économie d'énergie » de l'exécutable est la nôtre.
 const OURS_WROTE: &str = "CarteEconomeEcrite";
 /// « 1 » : la préférence d'une installation d'avant la 0.1.40 a été revue.
-const OURS_REVIEWED: &str = "CarteEconomeRevue";
+/// (« Revue2 » : la revue des versions 0.1.40 et 0.1.41, notée
+/// « CarteEconomeRevue », se trompait sur les écrans et est refaite.)
+const OURS_REVIEWED: &str = "CarteEconomeRevue2";
+/// Note de la revue des versions 0.1.40 et 0.1.41, retirée à la désinstallation.
+const OURS_REVIEWED_OLD: &str = "CarteEconomeRevue";
 
 /// Règle la préférence d'après les écrans. `fits` : la carte économe pilote
 /// tous les écrans (un portable à deux cartes) ; `None` : inconnu, rien ne
@@ -388,35 +392,51 @@ pub fn tune_card(h: &mut dyn Hive, exe: &Path, fits: Option<bool>) -> io::Result
 /// La carte économe pilote-t-elle tous les écrans ? `None` : une seule carte,
 /// ou Windows ne le dit pas. N'ouvre aucun périphérique : aucun pilote
 /// graphique n'est chargé par cette question.
+///
+/// Les écrans sont lus par `EnumDisplayDevices`, pas par DXGI : quand une
+/// préférence de carte est déjà posée pour l'exécutable, DXGI range tous les
+/// écrans sous la carte préférée (compatibilité des portables), et la
+/// question recevait toujours « oui » (constaté sur un PC de bureau, 0.1.41 :
+/// la préférence à retirer n'était jamais retirée).
 #[cfg(windows)]
 pub fn saving_card_drives_every_screen() -> Option<bool> {
     use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIAdapter1, IDXGIFactory6, DXGI_ADAPTER_FLAG_SOFTWARE, DXGI_GPU_PREFERENCE_MINIMUM_POWER};
+    use windows::Win32::Graphics::Gdi::{EnumDisplayDevicesW, DISPLAY_DEVICEW, DISPLAY_DEVICE_ATTACHED_TO_DESKTOP};
+    let text = |w: &[u16]| String::from_utf16_lossy(w).trim_end_matches('\0').trim().to_string();
     // SAFETY: appels COM sur des objets valides, rendus par DXGI ; les
     // descriptions sont lues par valeur et rien n'est gardé.
-    unsafe {
+    let (low, cards) = unsafe {
         let factory: IDXGIFactory6 = CreateDXGIFactory1().ok()?;
         let low: IDXGIAdapter1 = factory.EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_MINIMUM_POWER).ok()?;
-        let low = low.GetDesc1().ok()?.AdapterLuid;
-        let (mut cards, mut on_low, mut elsewhere) = (0u32, false, false);
+        let low = text(&low.GetDesc1().ok()?.Description);
+        // Cartes matérielles de noms différents (une même carte peut paraître deux fois).
+        let mut names: Vec<String> = Vec::new();
         let mut i = 0;
         while let Ok(a) = factory.EnumAdapters1(i) {
             i += 1;
             let Ok(d) = a.GetDesc1() else { continue };
-            if d.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 != 0 {
-                continue;
-            }
-            cards += 1;
-            let same = (d.AdapterLuid.LowPart, d.AdapterLuid.HighPart) == (low.LowPart, low.HighPart);
-            let mut o = 0;
-            while let Ok(out) = a.EnumOutputs(o) {
-                o += 1;
-                if out.GetDesc().is_ok_and(|d| d.AttachedToDesktop.as_bool()) {
-                    if same { on_low = true } else { elsewhere = true }
-                }
+            let name = text(&d.Description);
+            if d.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 == 0 && !names.contains(&name) {
+                names.push(name);
             }
         }
-        (cards >= 2).then_some(on_low && !elsewhere)
+        (low, names.len())
+    };
+    if cards < 2 || low.is_empty() {
+        return None;
     }
+    let (mut on_low, mut elsewhere) = (false, false);
+    for i in 0.. {
+        let mut d = DISPLAY_DEVICEW { cb: size_of::<DISPLAY_DEVICEW>() as u32, ..Default::default() };
+        // SAFETY: `d` est une structure locale de la taille annoncée (`cb`), remplie par Windows.
+        if !unsafe { EnumDisplayDevicesW(None, i, &mut d, 0) }.as_bool() {
+            break;
+        }
+        if d.StateFlags.0 & DISPLAY_DEVICE_ATTACHED_TO_DESKTOP.0 != 0 {
+            if text(&d.DeviceString) == low { on_low = true } else { elsewhere = true }
+        }
+    }
+    (on_low || elsewhere).then_some(on_low && !elsewhere)
 }
 
 /// Désinstallation : retire la préférence de `exe` si c'est encore la nôtre
@@ -426,6 +446,7 @@ pub fn forget_saving(h: &mut dyn Hive, exe: &Path) -> io::Result<()> {
     // Nos deux notes partent avec elle, quel que soit le choix resté en place.
     h.remove_value(OURS_KEY, OURS_WROTE)?;
     h.remove_value(OURS_KEY, OURS_REVIEWED)?;
+    h.remove_value(OURS_KEY, OURS_REVIEWED_OLD)?;
     if h.get(GPU_KEY, &name).as_deref() == Some(GPU_SAVING) { h.remove_value(GPU_KEY, &name) } else { Ok(()) }
 }
 
