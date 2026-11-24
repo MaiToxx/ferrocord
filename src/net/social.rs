@@ -323,26 +323,6 @@ pub(super) fn guild_emojis(raw: Vec<super::raw::Item<RawGuildEmoji>>) -> Vec<Gui
         .collect()
 }
 
-/// Relève la liste d'emojis d'un serveur reçu (READY, GUILD_CREATE), si le
-/// paquet en porte une. Elle reste aussi dans le serveur (`Guild::emojis`,
-/// autocomplétion du lot T7).
-pub(super) fn take_emojis(g: &mut super::raw::RawGuild, into: &mut Vec<(u64, Vec<GuildEmoji>)>) {
-    if !g.unavailable
-        && let Some(list) = g.emoji_list()
-    {
-        let mut list: Vec<GuildEmoji> = list.into_iter().map(|e| GuildEmoji { id: e.id, name: e.name, animated: e.animated, available: e.available }).collect();
-        list.shrink_to_fit();
-        into.push((g.id, list));
-    }
-}
-
-/// Publie les emojis retirés par `take_emojis`, après le serveur lui-même.
-pub(super) fn send_emojis(list: Vec<(u64, Vec<GuildEmoji>)>, out: &Out) {
-    for (guild_id, emojis) in list {
-        out.send(Event::Social(SocialEvent::GuildEmojis { guild_id, emojis }));
-    }
-}
-
 #[derive(Deserialize)]
 struct RawEmojisUpdate {
     #[serde(deserialize_with = "req_id")]

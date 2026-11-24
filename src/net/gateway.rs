@@ -957,7 +957,6 @@ pub(super) fn dispatch(kind: &str, d: &str, hosts: ResumeHosts, resume: &mut Opt
                 .filter_map(|(i, id)| Some((id.parse().ok()?, i)))
                 .collect();
             let me_id = Some(r.user.id);
-            let mut emojis = Vec::new();
             let mut threads = Vec::new();
             let mut stickers = Vec::new();
             let mut roles = Vec::new();
@@ -967,7 +966,6 @@ pub(super) fn dispatch(kind: &str, d: &str, hosts: ResumeHosts, resume: &mut Opt
                 .into_iter()
                 .filter_map(|mut g| {
                     let mine = merged.next().flatten();
-                    super::social::take_emojis(&mut g, &mut emojis);
                     super::threads::take(&mut g, &mut threads);
                     super::stickers::take(&mut g, &mut stickers);
                     super::admin::roles::take(&g, &mut roles);
@@ -989,20 +987,17 @@ pub(super) fn dispatch(kind: &str, d: &str, hosts: ResumeHosts, resume: &mut Opt
             }
             super::relations::ready(d, out);
             out.send(Event::Status(Status::Connected));
-            super::social::send_emojis(emojis, out);
             super::stickers::send(stickers, out);
             roles.into_iter().for_each(|e| out.send(e));
             super::admin::send_boosts(boosts, out);
         }
         "RESUMED" => out.send(Event::Status(Status::Connected)),
         "GUILD_CREATE" => {
-            let mut emojis = Vec::new();
             let mut threads = Vec::new();
             let mut stickers = Vec::new();
             let mut roles = Vec::new();
             let mut boosts = Vec::new();
             if let Some(g) = shared.guild().and_then(|g| g.read::<RawGuild>().ok()).and_then(|mut g| {
-                super::social::take_emojis(&mut g, &mut emojis);
                 super::threads::take(&mut g, &mut threads);
                 super::stickers::take(&mut g, &mut stickers);
                 super::admin::roles::take(&g, &mut roles);
@@ -1012,7 +1007,6 @@ pub(super) fn dispatch(kind: &str, d: &str, hosts: ResumeHosts, resume: &mut Opt
             }) {
                 out.send(Event::GuildCreate(g));
                 threads.into_iter().for_each(|e| out.send(e));
-                super::social::send_emojis(emojis, out);
                 super::stickers::send(stickers, out);
                 roles.into_iter().for_each(|e| out.send(e));
                 super::admin::send_boosts(boosts, out);

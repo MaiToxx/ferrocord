@@ -1316,6 +1316,7 @@ impl eframe::App for App {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        fonts::note_atlas(ui.ctx());
         self.ui_pass(ui);
     }
 

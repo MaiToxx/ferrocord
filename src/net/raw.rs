@@ -903,15 +903,6 @@ impl RawEmoji {
     }
 }
 
-impl RawGuild {
-    /// Emojis lisibles du serveur, sans les retirer : `into_guild` les garde
-    /// dans `Guild::emojis`, `net/social.rs` en tire la liste du sélecteur de
-    /// réactions (lots T5 et T7).
-    pub(super) fn emoji_list(&self) -> Option<Vec<Emoji>> {
-        self.emojis.as_ref().map(|list| list.iter().filter_map(|e| e.0.as_ref()?.to_emoji()).collect())
-    }
-}
-
 /// GUILD_EMOJIS_UPDATE
 #[derive(Deserialize)]
 pub(super) struct RawEmojisUpdate {

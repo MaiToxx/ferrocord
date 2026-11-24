@@ -201,7 +201,7 @@ impl App {
         if !self.local_search.known.as_ref().is_some_and(|k| k.contains(&user)) {
             return;
         }
-        let payload = Payload::Index(Box::new(self.local_search.index.clone()));
+        let payload = Payload::Index(Box::new(self.local_search.index.for_saving()));
         if let Some(files) = self.journal.vault.files() {
             if self.local_search.index.is_empty() {
                 files.purge(Kind::Index, user);
