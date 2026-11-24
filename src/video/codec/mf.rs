@@ -169,9 +169,6 @@ pub struct MfEncoder {
     credits: u32,
     ready: Vec<EncodedFrame>,
     bytes: Vec<u8>,
-    y: Vec<u8>,
-    u: Vec<u8>,
-    v: Vec<u8>,
 }
 
 // SAFETY: les transformées sont créées dans le MTA (voir `ready`), où un
@@ -322,9 +319,6 @@ impl MfEncoder {
             credits: 0,
             ready: Vec::new(),
             bytes: Vec::new(),
-            y: Vec::new(),
-            u: Vec::new(),
-            v: Vec::new(),
         })
     }
 
@@ -435,29 +429,30 @@ impl Encoder for MfEncoder {
             *self = Self::with_codec(self.codec, f.width, f.height, self.fps, self.asked)?;
         }
         let (w, h) = (f.width as usize, f.height as usize);
-        let (y, u, v): (&[u8], &[u8], &[u8]) = match &f.data {
-            FrameData::I420 { y, u, v } => (y, u, v),
-            FrameData::Bgra(b) => {
-                convert::bgra_to_i420(w, h, b, &mut self.y, &mut self.u, &mut self.v).map_err(|_| CodecError::BadFrame("BGRA incohérent"))?;
-                (&self.y, &self.u, &self.v)
-            }
-        };
         // NV12 aux dimensions paires : dernière colonne ou ligne impaire rognée.
         let (ew, eh, cw) = (self.width as usize, self.height as usize, w.div_ceil(2));
         let pts = i64::try_from(f.pts_us).unwrap_or(i64::MAX / HNS_PER_US) * HNS_PER_US;
-        let sample = new_sample(ew * eh * 3 / 2, pts, |dst| {
-            let (dy, duv) = dst.split_at_mut(ew * eh);
-            for (row, d) in dy.chunks_exact_mut(ew).enumerate() {
-                d.copy_from_slice(&y[row * w..row * w + ew]);
-            }
-            for (row, d) in duv.chunks_exact_mut(ew).enumerate() {
-                let (us, vs) = (&u[row * cw..row * cw + ew / 2], &v[row * cw..row * cw + ew / 2]);
-                for ((p, &a), &b) in d.as_chunks_mut::<2>().0.iter_mut().zip(us).zip(vs) {
-                    *p = [a, b];
+        let mut bad = false;
+        let sample = new_sample(ew * eh * 3 / 2, pts, |dst| match &f.data {
+            // Image d'écran : convertie droit dans le tampon de la transformée.
+            FrameData::Bgra(b) => bad = b.len() != w * h * 4 || convert::bgra_to_nv12(w, b, ew, eh, dst).is_err(),
+            FrameData::I420 { y, u, v } => {
+                let (dy, duv) = dst.split_at_mut(ew * eh);
+                for (row, d) in dy.chunks_exact_mut(ew).enumerate() {
+                    d.copy_from_slice(&y[row * w..row * w + ew]);
+                }
+                for (row, d) in duv.chunks_exact_mut(ew).enumerate() {
+                    let (us, vs) = (&u[row * cw..row * cw + ew / 2], &v[row * cw..row * cw + ew / 2]);
+                    for ((p, &a), &b) in d.as_chunks_mut::<2>().0.iter_mut().zip(us).zip(vs) {
+                        *p = [a, b];
+                    }
                 }
             }
         })
         .map_err(hr)?;
+        if bad {
+            return Err(CodecError::BadFrame("BGRA incohérent"));
+        }
         // SAFETY: échantillon valide ; durée en unités de 100 ns.
         let _ = unsafe { sample.SetSampleDuration(10_000_000 / i64::from(self.fps)) };
         if force_keyframe {
