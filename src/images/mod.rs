@@ -558,6 +558,22 @@ impl Images {
     /// l'animation et affichée en l'attendant (une bannière animée pèse
     /// parfois plusieurs Mo : le profil ne reste pas vide entre-temps).
     fn moving_as(&self, still: Key, akey: Key, play: bool, still_first: bool, job: impl FnOnce() -> Option<(String, u32)>, still_get: impl FnOnce() -> Image) -> Image {
+        // Animation en mémoire mais au repos (pointeur parti, animations
+        // coupées) : l'image fixe passe devant dès qu'elle est là, et
+        // l'animation n'est plus tenue pour affichée. Sans cela, toutes ses
+        // images restaient en mémoire tant que l'image fixe était à l'écran
+        // (jusqu'à 12 Mio par avatar ou bannière survolés une fois).
+        let mut still_get = Some(still_get);
+        // Lu à part : l'emprunt du cache est rendu avant de demander l'image fixe.
+        let resting = !play && matches!(self.inner.borrow().entries.get(&akey), Some(Entry::Anim { .. }));
+        if resting
+            && let Some(get) = still_get.take()
+            && let Image::Ready(id) = get()
+        {
+            self.rest(&akey);
+            return Image::Ready(id);
+        }
+        let mut still_get = move || still_get.take().map_or(Image::Pending, |get| get());
         {
             let mut inner = self.inner.borrow_mut();
             let (frame, now) = (inner.frame, inner.now);
@@ -1106,6 +1122,14 @@ mod tests {
         // Plus jouée : retour à la première image, aucun réveil.
         assert!(matches!(moving(false), (Image::Ready(_), None)));
         assert_eq!(shown().0, 0);
+        // Au repos, elle n'est plus tenue pour affichée : ses images peuvent être libérées.
+        moving(false);
+        let inner = b.images.inner.borrow();
+        match inner.entries.get(&akey) {
+            Some(Entry::Anim { last_frame, .. }) => assert!(*last_frame < inner.frame, "animation au repos encore épinglée"),
+            _ => panic!("animation absente"),
+        }
+        drop(inner);
         // Pas affichée du tout : rien non plus.
         b.images.begin_frame();
         b.images.end_frame();

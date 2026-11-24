@@ -133,6 +133,50 @@ impl Drop for CaptureHandle {
     }
 }
 
+/// Tampons de pixels rendus par l'encodeur, repris par la capture.
+///
+/// Une image d'écran en 4K pèse 33 Mo : en allouer une neuve soixante fois
+/// par seconde, c'est autant de mémoire demandée à Windows, mise à zéro puis
+/// rendue à chaque image. Deux tampons tournent à la place (celui que la
+/// capture remplit, celui que l'encodeur tient). Rien ne survit au partage :
+/// [`drop_spares`] les rend à sa fin.
+static SPARES: std::sync::Mutex<Vec<Vec<u8>>> = std::sync::Mutex::new(Vec::new());
+const MAX_SPARES: usize = 2;
+
+/// Rend le tampon d'une image qui ne servira plus.
+pub fn recycle(f: Frame) {
+    if let crate::video::FrameData::Bgra(v) = f.data {
+        let mut spares = SPARES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if spares.len() < MAX_SPARES {
+            spares.push(v);
+        }
+    }
+}
+
+/// Tampon vide d'au moins `len` octets de capacité : un tampon rendu s'il
+/// convient, un neuf sinon.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn spare(len: usize) -> Vec<u8> {
+    let mut spares = SPARES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    match spares.iter().position(|v| v.capacity() >= len) {
+        Some(i) => {
+            let mut v = spares.swap_remove(i);
+            v.clear();
+            v
+        }
+        None => {
+            // Trop petits (la source a grandi) : ils ne serviront plus.
+            spares.clear();
+            Vec::with_capacity(len)
+        }
+    }
+}
+
+/// Fin d'un partage : les tampons en attente sont libérés.
+pub fn drop_spares() {
+    SPARES.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clear();
+}
+
 const SCREEN: &str = "screen:";
 const WINDOW: &str = "window:";
 const CAMERA: &str = "camera:";
@@ -396,6 +440,28 @@ mod tests {
     }
 
     #[test]
+    fn spare_buffers_are_reused_then_dropped() {
+        drop_spares();
+        let mut v = spare(1000);
+        v.extend_from_slice(&[7; 1000]);
+        let ptr = v.as_ptr();
+        recycle(Frame { width: 1, height: 1, pts_us: 0, data: crate::video::FrameData::Bgra(v) });
+        let again = spare(800);
+        assert!(again.is_empty() && again.capacity() >= 1000);
+        assert_eq!(again.as_ptr(), ptr, "le même tampon, sans nouvelle allocation");
+        recycle(Frame { width: 1, height: 1, pts_us: 0, data: crate::video::FrameData::Bgra(again) });
+        // Plus grand que ce qui attend : un neuf, et l'ancien est lâché.
+        assert!(spare(5000).capacity() >= 5000);
+        assert!(SPARES.lock().unwrap().is_empty());
+        for _ in 0..5 {
+            recycle(Frame { width: 1, height: 1, pts_us: 0, data: crate::video::FrameData::Bgra(vec![0; 16]) });
+        }
+        assert_eq!(SPARES.lock().unwrap().len(), MAX_SPARES);
+        drop_spares();
+        assert!(SPARES.lock().unwrap().is_empty());
+    }
+
+    #[test]
     fn presets() {
         assert!(Quality::SOURCE.is_source() && !Quality::HD_30.is_source());
         // « Source » existe aux deux cadences ; la taille ne dépend pas de la cadence.
@@ -403,5 +469,44 @@ mod tests {
         assert_eq!(fit(1001, 777, Quality::SOURCE_60), (1000, 776));
         assert_eq!(Quality::PRESETS.len(), 5);
         assert_eq!(Quality::default(), Quality::HD_30);
+    }
+}
+
+#[cfg(all(test, windows))]
+mod live_tests {
+    use super::*;
+
+    /// Capture réelle du premier écran (à lancer à la main : `--ignored`).
+    #[test]
+    #[ignore]
+    fn a_real_screen_is_captured_through_the_kept_texture() {
+        let Some(s) = screens().into_iter().next() else { return };
+        let snap = snapshot(&s, 640).expect("vignette");
+        let crate::video::FrameData::Bgra(px) = &snap.data else { panic!("BGRA attendu") };
+        assert_eq!(px.len(), 4 * snap.width as usize * snap.height as usize);
+        assert!(px.iter().any(|b| *b != 0), "image toute noire");
+        let seen = std::sync::Arc::new(std::sync::Mutex::new((0u32, 0usize, (0u32, 0u32))));
+        let s2 = seen.clone();
+        let h = open(
+            &s,
+            Quality::SOURCE_60,
+            Box::new(move |f| {
+                let mut g = s2.lock().unwrap();
+                g.0 += 1;
+                g.2 = (f.width, f.height);
+                if let crate::video::FrameData::Bgra(v) = &f.data {
+                    g.1 = v.len();
+                }
+                recycle(f);
+            }),
+        )
+        .expect("capture");
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        drop(h);
+        let g = seen.lock().unwrap();
+        eprintln!("{} images en 3 s, {}x{}, {} octets", g.0, g.2.0, g.2.1, g.1);
+        assert!(g.0 >= 1);
+        assert_eq!(g.1, 4 * g.2.0 as usize * g.2.1 as usize);
+        drop_spares();
     }
 }

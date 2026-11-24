@@ -114,6 +114,51 @@ struct Handler {
     start: Instant,
     /// Instant où la prochaine image est due.
     due: Option<Instant>,
+    /// Texture de lecture, gardée d'une image à l'autre.
+    staging: Option<Staging>,
+}
+
+/// Texture intermédiaire lisible par le processeur, à la taille de la source.
+/// La crate en créait une neuve à chaque image (33 Mo en 4K, demandés au
+/// pilote graphique puis rendus soixante fois par seconde) : celle-ci sert
+/// tant que la taille ne change pas.
+struct Staging {
+    tex: windows_capture::d3d11::SendDirectX<windows_capture::d3d11::StagingTexture>,
+    size: (u32, u32),
+}
+
+impl Staging {
+    /// Copie `frame` dans la texture et donne ses octets (lignes espacées de
+    /// `stride`) à `read`.
+    fn read<R>(slot: &mut Option<Staging>, frame: &WgcFrame, read: impl FnOnce(&[u8], usize) -> R) -> Result<R, String> {
+        use windows::Win32::Graphics::Direct3D11::{D3D11_MAPPED_SUBRESOURCE, D3D11_MAP_READ};
+        let size = (frame.width(), frame.height());
+        if slot.as_ref().is_none_or(|s| s.size != size) {
+            let tex = windows_capture::d3d11::StagingTexture::new(frame.device(), size.0, size.1, frame.desc().Format).map_err(|e| e.to_string())?;
+            *slot = Some(Staging { tex: windows_capture::d3d11::SendDirectX::new(tex), size });
+        }
+        let Some(s) = slot.as_ref() else { return Err("texture de lecture absente".into()) };
+        let (ctx, tex) = (frame.device_context(), s.tex.0.texture());
+        let mut map = D3D11_MAPPED_SUBRESOURCE::default();
+        // SAFETY: les deux textures sont du même périphérique, de même taille
+        // et de même format ; la nôtre est une texture de lecture (STAGING,
+        // accès processeur). Entre Map et Unmap, `pData` désigne
+        // `RowPitch` octets par ligne sur `size.1` lignes, dont on ne lit que
+        // les `4 * largeur` premiers de la dernière ; rien n'est gardé après Unmap.
+        unsafe {
+            ctx.CopyResource(tex, frame.as_raw_texture());
+            ctx.Map(tex, 0, D3D11_MAP_READ, 0, Some(&mut map)).map_err(|e| e.to_string())?;
+            let stride = map.RowPitch as usize;
+            let (w, h) = (size.0 as usize, size.1 as usize);
+            let out = if map.pData.is_null() || h == 0 || stride < 4 * w {
+                Err("texture de lecture illisible".to_string())
+            } else {
+                Ok(read(std::slice::from_raw_parts(map.pData.cast::<u8>(), stride * (h - 1) + 4 * w), stride))
+            };
+            ctx.Unmap(tex, 0);
+            out
+        }
+    }
 }
 
 /// Faut-il garder l'image arrivée à `now` ? Rend alors la nouvelle échéance.
@@ -138,7 +183,7 @@ impl GraphicsCaptureApiHandler for Handler {
     fn new(ctx: Context<Flags>) -> Result<Self, String> {
         let Flags { want, sink, ended } = ctx.flags;
         let period = Duration::from_micros(1_000_000 / u64::from(want.fps.max(1)));
-        Ok(Handler { want, sink, ended, period, start: Instant::now(), due: None })
+        Ok(Handler { want, sink, ended, period, start: Instant::now(), due: None, staging: None })
     }
 
     fn on_frame_arrived(&mut self, frame: &mut WgcFrame, control: InternalCaptureControl) -> Result<(), String> {
@@ -148,10 +193,8 @@ impl GraphicsCaptureApiHandler for Handler {
         self.due = Some(due);
         let (w, h) = (frame.width(), frame.height());
         let (dw, dh) = fit(w, h, self.want);
-        let mut fb = frame.buffer().map_err(|e| e.to_string())?;
-        let stride = fb.row_pitch() as usize;
-        let mut out = Vec::with_capacity(4 * dw as usize * dh as usize);
-        if !scale_bgra(fb.as_raw_buffer(), w, h, stride, dw, dh, &mut out) {
+        let mut out = super::spare(4 * dw as usize * dh as usize);
+        if !Staging::read(&mut self.staging, frame, |src, stride| scale_bgra(src, w, h, stride, dw, dh, &mut out))? {
             return Ok(());
         }
         let image = Frame { width: dw, height: dh, pts_us: now.duration_since(self.start).as_micros() as u64, data: FrameData::Bgra(out) };

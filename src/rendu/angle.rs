@@ -342,13 +342,90 @@ pub fn prefer_saving(h: &mut dyn Hive, exe: &Path) -> io::Result<bool> {
         return Ok(false);
     }
     h.set(GPU_KEY, &name, GPU_SAVING)?;
+    h.set(OURS_KEY, OURS_WROTE, "1")?;
     Ok(true)
+}
+
+/// Clé de Ferrocord où il note ce qu'il a fait de la préférence graphique.
+const OURS_KEY: &str = r"Software\Ferrocord";
+/// « 1 » : la préférence « économie d'énergie » de l'exécutable est la nôtre.
+const OURS_WROTE: &str = "CarteEconomeEcrite";
+/// « 1 » : la préférence d'une installation d'avant la 0.1.40 a été revue.
+const OURS_REVIEWED: &str = "CarteEconomeRevue";
+
+/// Règle la préférence d'après les écrans. `fits` : la carte économe pilote
+/// tous les écrans (un portable à deux cartes) ; `None` : inconnu, rien ne
+/// change.
+///
+/// Sur un ordinateur dont un écran est branché sur la carte dédiée, demander
+/// la carte économe fait dessiner sur l'une et afficher par l'autre : les
+/// deux pilotes sont chargés et chaque image est copiée de l'une à l'autre.
+/// Mesuré sur un PC de bureau (RTX 4090 et UHD 770, 0.1.39, `preview --angle
+/// --bench`) : 194 Mo privés et 178 Mo de travail avec la carte économe,
+/// 125 Mo et 90 Mo sans préférence, images 20 à 30 % plus rapides. Notre
+/// préférence est alors retirée ; celle que l'utilisateur a choisie dans les
+/// Paramètres de Windows n'est jamais touchée.
+pub fn tune_card(h: &mut dyn Hive, exe: &Path, fits: Option<bool>) -> io::Result<()> {
+    let name = exe.display().to_string();
+    // Avant la 0.1.40, rien ne disait qui avait écrit la valeur : la première
+    // revue tient « économie d'énergie » pour la nôtre (elle était écrite au
+    // premier lancement, avant tout réglage possible), une seule fois.
+    let reviewed = h.get(OURS_KEY, OURS_REVIEWED).is_some();
+    let ours = h.get(OURS_KEY, OURS_WROTE).is_some() || !reviewed;
+    if !reviewed {
+        h.set(OURS_KEY, OURS_REVIEWED, "1")?;
+    }
+    match fits {
+        Some(true) => prefer_saving(h, exe).map(|_| ()),
+        Some(false) if ours && h.get(GPU_KEY, &name).as_deref() == Some(GPU_SAVING) => {
+            h.remove_value(GPU_KEY, &name)?;
+            h.remove_value(OURS_KEY, OURS_WROTE)
+        }
+        _ => Ok(()),
+    }
+}
+
+/// La carte économe pilote-t-elle tous les écrans ? `None` : une seule carte,
+/// ou Windows ne le dit pas. N'ouvre aucun périphérique : aucun pilote
+/// graphique n'est chargé par cette question.
+#[cfg(windows)]
+pub fn saving_card_drives_every_screen() -> Option<bool> {
+    use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIAdapter1, IDXGIFactory6, DXGI_ADAPTER_FLAG_SOFTWARE, DXGI_GPU_PREFERENCE_MINIMUM_POWER};
+    // SAFETY: appels COM sur des objets valides, rendus par DXGI ; les
+    // descriptions sont lues par valeur et rien n'est gardé.
+    unsafe {
+        let factory: IDXGIFactory6 = CreateDXGIFactory1().ok()?;
+        let low: IDXGIAdapter1 = factory.EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_MINIMUM_POWER).ok()?;
+        let low = low.GetDesc1().ok()?.AdapterLuid;
+        let (mut cards, mut on_low, mut elsewhere) = (0u32, false, false);
+        let mut i = 0;
+        while let Ok(a) = factory.EnumAdapters1(i) {
+            i += 1;
+            let Ok(d) = a.GetDesc1() else { continue };
+            if d.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 != 0 {
+                continue;
+            }
+            cards += 1;
+            let same = (d.AdapterLuid.LowPart, d.AdapterLuid.HighPart) == (low.LowPart, low.HighPart);
+            let mut o = 0;
+            while let Ok(out) = a.EnumOutputs(o) {
+                o += 1;
+                if out.GetDesc().is_ok_and(|d| d.AttachedToDesktop.as_bool()) {
+                    if same { on_low = true } else { elsewhere = true }
+                }
+            }
+        }
+        (cards >= 2).then_some(on_low && !elsewhere)
+    }
 }
 
 /// Désinstallation : retire la préférence de `exe` si c'est encore la nôtre
 /// (un autre choix de l'utilisateur est laissé tel quel).
 pub fn forget_saving(h: &mut dyn Hive, exe: &Path) -> io::Result<()> {
     let name = exe.display().to_string();
+    // Nos deux notes partent avec elle, quel que soit le choix resté en place.
+    h.remove_value(OURS_KEY, OURS_WROTE)?;
+    h.remove_value(OURS_KEY, OURS_REVIEWED)?;
     if h.get(GPU_KEY, &name).as_deref() == Some(GPU_SAVING) { h.remove_value(GPU_KEY, &name) } else { Ok(()) }
 }
 
@@ -359,7 +436,11 @@ pub fn forget_saving(h: &mut dyn Hive, exe: &Path) -> io::Result<()> {
 pub fn prepare_installed(h: &mut dyn Hive, exe: &Path) {
     let Some(dir) = exe.parent() else { return };
     if install(dir).is_ok() && !trial_failed(dir) && super::from_env().unwrap_or_default() == super::Rendu::Angle {
-        let _ = prefer_saving(h, exe);
+        #[cfg(windows)]
+        let fits = saving_card_drives_every_screen();
+        #[cfg(not(windows))]
+        let fits = None;
+        let _ = tune_card(h, exe, fits);
     }
 }
 
@@ -481,6 +562,29 @@ mod tests {
     fn carte_econome_sans_ecraser_le_choix_de_l_utilisateur() {
         let mut h = MemoryHive::default();
         let exe = Path::new(r"C:\Programmes\Ferrocord\ferrocord.exe");
+        // Un écran sur la carte dédiée : notre préférence est retirée…
+        {
+            let mut h = MemoryHive::default();
+            let name = exe.display().to_string();
+            tune_card(&mut h, exe, Some(true)).unwrap();
+            assert_eq!(h.get(GPU_KEY, &name).as_deref(), Some(GPU_SAVING));
+            tune_card(&mut h, exe, None).unwrap();
+            assert_eq!(h.get(GPU_KEY, &name).as_deref(), Some(GPU_SAVING), "inconnu : rien ne change");
+            tune_card(&mut h, exe, Some(false)).unwrap();
+            assert_eq!(h.get(GPU_KEY, &name), None);
+            // … mais jamais celle que l'utilisateur a choisie ensuite dans Windows.
+            h.set(GPU_KEY, &name, GPU_SAVING).unwrap();
+            tune_card(&mut h, exe, Some(false)).unwrap();
+            assert_eq!(h.get(GPU_KEY, &name).as_deref(), Some(GPU_SAVING));
+            // Installation d'avant la 0.1.40 : la valeur est tenue pour la nôtre, une fois.
+            let mut old = MemoryHive::default();
+            old.set(GPU_KEY, &name, GPU_SAVING).unwrap();
+            tune_card(&mut old, exe, Some(false)).unwrap();
+            assert_eq!(old.get(GPU_KEY, &name), None);
+            old.set(GPU_KEY, &name, "GpuPreference=2;").unwrap();
+            tune_card(&mut old, exe, Some(false)).unwrap();
+            assert_eq!(old.get(GPU_KEY, &name).as_deref(), Some("GpuPreference=2;"));
+        }
         assert!(prefer_saving(&mut h, exe).unwrap());
         assert_eq!(h.get(GPU_KEY, &exe.display().to_string()).as_deref(), Some(GPU_SAVING));
         // Déjà là : rien n'est réécrit.
