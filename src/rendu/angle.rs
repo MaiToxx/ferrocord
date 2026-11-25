@@ -357,18 +357,18 @@ const OURS_REVIEWED: &str = "CarteEconomeRevue2";
 /// Note de la revue des versions 0.1.40 et 0.1.41, retirée à la désinstallation.
 const OURS_REVIEWED_OLD: &str = "CarteEconomeRevue";
 
-/// Règle la préférence d'après les écrans. `fits` : la carte économe pilote
-/// tous les écrans (un portable à deux cartes) ; `None` : inconnu, rien ne
-/// change.
+/// Règle la préférence d'après l'écran de la fenêtre. `fits` : cet écran est
+/// branché sur la carte économe ; `None` : inconnu, rien ne change.
 ///
-/// Sur un ordinateur dont un écran est branché sur la carte dédiée, demander
-/// la carte économe fait dessiner sur l'une et afficher par l'autre : les
-/// deux pilotes sont chargés et chaque image est copiée de l'une à l'autre.
-/// Mesuré sur un PC de bureau (RTX 4090 et UHD 770, 0.1.39, `preview --angle
-/// --bench`) : 194 Mo privés et 178 Mo de travail avec la carte économe,
-/// 125 Mo et 90 Mo sans préférence, images 20 à 30 % plus rapides. Notre
-/// préférence est alors retirée ; celle que l'utilisateur a choisie dans les
-/// Paramètres de Windows n'est jamais touchée.
+/// La carte qui dessine doit être celle de l'écran : sinon l'image est
+/// dessinée par l'une et affichée par l'autre, les deux pilotes sont chargés
+/// et chaque image est copiée de l'une à l'autre. Mesuré sur un PC de bureau
+/// (RTX 4090 sur deux écrans, UHD 770 sur un troisième) : une centaine de Mo
+/// privés de plus dans les deux sens, fenêtre sur un écran de la carte dédiée
+/// avec la préférence « économe » (0.1.39) comme fenêtre sur l'écran de la
+/// carte économe sans préférence (0.1.44, journal `drvlog`). Notre préférence
+/// est donc posée ou retirée selon l'écran ; celle que l'utilisateur a choisie
+/// dans les Paramètres de Windows n'est jamais touchée.
 pub fn tune_card(h: &mut dyn Hive, exe: &Path, fits: Option<bool>) -> io::Result<()> {
     let name = exe.display().to_string();
     // Avant la 0.1.40, rien ne disait qui avait écrit la valeur : la première
@@ -389,19 +389,24 @@ pub fn tune_card(h: &mut dyn Hive, exe: &Path, fits: Option<bool>) -> io::Result
     }
 }
 
-/// La carte économe pilote-t-elle tous les écrans ? `None` : une seule carte,
-/// ou Windows ne le dit pas. N'ouvre aucun périphérique : aucun pilote
-/// graphique n'est chargé par cette question.
+/// `screen` (nom de périphérique d'un écran, « \\.\DISPLAY5 ») est-il branché
+/// sur la carte `low` ? `devices` : (nom de périphérique, nom de carte) des
+/// écrans du bureau. `None` : écran inconnu.
+fn screen_on_card(low: &str, screen: &str, devices: &[(String, String)]) -> Option<bool> {
+    devices.iter().find(|(name, _)| name == screen).map(|(_, card)| card == low)
+}
+
+/// L'écran de la fenêtre `hwnd` est-il branché sur la carte économe ? `None` :
+/// une seule carte, ou Windows ne le dit pas.
 ///
 /// Les écrans sont lus par `EnumDisplayDevices`, pas par DXGI : quand une
-/// préférence de carte est déjà posée pour l'exécutable, DXGI range tous les
-/// écrans sous la carte préférée (compatibilité des portables), et la
-/// question recevait toujours « oui » (constaté sur un PC de bureau, 0.1.41 :
-/// la préférence à retirer n'était jamais retirée).
+/// préférence de carte est posée pour l'exécutable, DXGI range tous les
+/// écrans sous la carte préférée (compatibilité des portables).
 #[cfg(windows)]
-pub fn saving_card_drives_every_screen() -> Option<bool> {
+fn window_on_saving_card(hwnd: isize) -> Option<bool> {
+    use windows::Win32::Foundation::HWND;
     use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIAdapter1, IDXGIFactory6, DXGI_ADAPTER_FLAG_SOFTWARE, DXGI_GPU_PREFERENCE_MINIMUM_POWER};
-    use windows::Win32::Graphics::Gdi::{EnumDisplayDevicesW, DISPLAY_DEVICEW, DISPLAY_DEVICE_ATTACHED_TO_DESKTOP};
+    use windows::Win32::Graphics::Gdi::{EnumDisplayDevicesW, GetMonitorInfoW, MonitorFromWindow, DISPLAY_DEVICEW, DISPLAY_DEVICE_ATTACHED_TO_DESKTOP, MONITORINFOEXW, MONITOR_DEFAULTTONEAREST};
     let text = |w: &[u16]| String::from_utf16_lossy(w).trim_end_matches('\0').trim().to_string();
     // SAFETY: appels COM sur des objets valides, rendus par DXGI ; les
     // descriptions sont lues par valeur et rien n'est gardé.
@@ -425,7 +430,14 @@ pub fn saving_card_drives_every_screen() -> Option<bool> {
     if cards < 2 || low.is_empty() {
         return None;
     }
-    let (mut on_low, mut elsewhere) = (false, false);
+    let mut info = MONITORINFOEXW::default();
+    info.monitorInfo.cbSize = size_of::<MONITORINFOEXW>() as u32;
+    // SAFETY: `hwnd` n'est que comparé aux fenêtres existantes (l'écran le plus
+    // proche sinon) ; `info` est locale, de la taille annoncée, remplie par Windows.
+    if !unsafe { GetMonitorInfoW(MonitorFromWindow(HWND(hwnd as *mut core::ffi::c_void), MONITOR_DEFAULTTONEAREST), &mut info.monitorInfo) }.as_bool() {
+        return None;
+    }
+    let mut devices = Vec::new();
     for i in 0.. {
         let mut d = DISPLAY_DEVICEW { cb: size_of::<DISPLAY_DEVICEW>() as u32, ..Default::default() };
         // SAFETY: `d` est une structure locale de la taille annoncée (`cb`), remplie par Windows.
@@ -433,10 +445,57 @@ pub fn saving_card_drives_every_screen() -> Option<bool> {
             break;
         }
         if d.StateFlags.0 & DISPLAY_DEVICE_ATTACHED_TO_DESKTOP.0 != 0 {
-            if text(&d.DeviceString) == low { on_low = true } else { elsewhere = true }
+            devices.push((text(&d.DeviceName), text(&d.DeviceString)));
         }
     }
-    (on_low || elsewhere).then_some(on_low && !elsewhere)
+    screen_on_card(&low, &text(&info.szDevice), &devices)
+}
+
+/// Fenêtre principale à suivre (0 : aucune, la préférence n'est pas la nôtre
+/// à régler) et dernier écran pour lequel elle a été réglée.
+#[cfg(windows)]
+static WINDOW: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+#[cfg(windows)]
+static SCREEN: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+/// L'exécutable installé dessine par ANGLE : sa préférence de carte est à régler.
+#[cfg(windows)]
+static TUNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// La fenêtre principale existe : son écran décidera de la carte.
+#[cfg(windows)]
+pub fn watch_window(hwnd: isize) {
+    use std::sync::atomic::Ordering::Relaxed;
+    if TUNED.load(Relaxed) {
+        WINDOW.store(hwnd, Relaxed);
+    }
+}
+
+/// À chaque image : règle la préférence de carte quand la fenêtre a changé
+/// d'écran (et une fois au lancement). Sans changement : une question à
+/// Windows, sans allocation.
+///
+/// Windows ne lit la préférence qu'une fois par programme, à son premier
+/// appel graphique (constaté par essai : posée ou retirée ensuite, la carte
+/// par défaut ne change qu'au lancement suivant). Elle est donc réglée ici,
+/// sur l'écran réel de la fenêtre, pour le PROCHAIN lancement — qui rouvre
+/// la fenêtre à la même place.
+#[cfg(windows)]
+pub fn tick() {
+    use std::sync::atomic::Ordering::Relaxed;
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::Graphics::Gdi::{MonitorFromWindow, MONITOR_DEFAULTTONULL};
+    let hwnd = WINDOW.load(Relaxed);
+    if hwnd == 0 {
+        return;
+    }
+    // SAFETY: `hwnd` n'est que comparé aux fenêtres existantes ; fenêtre disparue ou hors de tout écran : nul.
+    let screen = unsafe { MonitorFromWindow(HWND(hwnd as *mut core::ffi::c_void), MONITOR_DEFAULTTONULL) }.0 as isize;
+    if screen == 0 || SCREEN.swap(screen, Relaxed) == screen {
+        return;
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        let _ = tune_card(&mut crate::install::hive::UserHive, &exe, window_on_saving_card(hwnd));
+    }
 }
 
 /// Désinstallation : retire la préférence de `exe` si c'est encore la nôtre
@@ -452,16 +511,14 @@ pub fn forget_saving(h: &mut dyn Hive, exe: &Path) -> io::Result<()> {
 
 /// Lancement de l'exécutable INSTALLÉ (`exe` dans son dossier d'installation) :
 /// pose ANGLE au besoin (première fois, ou mise à jour qui en change la
-/// version) et, s'il servira, demande la carte économe. Les erreurs ne
-/// comptent pas : sans ANGLE, la fenêtre s'ouvre en OpenGL.
-pub fn prepare_installed(h: &mut dyn Hive, exe: &Path) {
+/// version) et, s'il servira, fait régler la carte d'après l'écran de la
+/// fenêtre ([`tick`]). Les erreurs ne comptent pas : sans ANGLE, la fenêtre
+/// s'ouvre en OpenGL.
+pub fn prepare_installed(exe: &Path) {
     let Some(dir) = exe.parent() else { return };
     if install(dir).is_ok() && !trial_failed(dir) && super::from_env().unwrap_or_default() == super::Rendu::Angle {
         #[cfg(windows)]
-        let fits = saving_card_drives_every_screen();
-        #[cfg(not(windows))]
-        let fits = None;
-        let _ = tune_card(h, exe, fits);
+        TUNED.store(true, std::sync::atomic::Ordering::Relaxed);
     }
 }
 
@@ -580,10 +637,26 @@ mod tests {
     }
 
     #[test]
+    fn la_carte_est_celle_de_l_ecran_de_la_fenetre() {
+        let d = |n: &str, c: &str| (n.to_string(), c.to_string());
+        let devices = [d(r"\\.\DISPLAY27", "NVIDIA GeForce RTX 4090"), d(r"\\.\DISPLAY26", "NVIDIA GeForce RTX 4090"), d(r"\\.\DISPLAY5", "Intel(R) UHD Graphics 770")];
+        let low = "Intel(R) UHD Graphics 770";
+        assert_eq!(screen_on_card(low, r"\\.\DISPLAY5", &devices), Some(true));
+        assert_eq!(screen_on_card(low, r"\\.\DISPLAY27", &devices), Some(false));
+        assert_eq!(screen_on_card(low, r"\\.\DISPLAY9", &devices), None);
+        // Sur ce PC, quel qu'il soit : la question ne plante pas et, sans fenêtre suivie, rien n'est réglé.
+        #[cfg(windows)]
+        {
+            println!("écran du bureau sur la carte économe : {:?}", window_on_saving_card(0));
+            tick();
+        }
+    }
+
+    #[test]
     fn carte_econome_sans_ecraser_le_choix_de_l_utilisateur() {
         let mut h = MemoryHive::default();
         let exe = Path::new(r"C:\Programmes\Ferrocord\ferrocord.exe");
-        // Un écran sur la carte dédiée : notre préférence est retirée…
+        // Fenêtre sur un écran de la carte dédiée : notre préférence est retirée…
         {
             let mut h = MemoryHive::default();
             let name = exe.display().to_string();
