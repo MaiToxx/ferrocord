@@ -68,6 +68,8 @@ pub(super) fn attach(cc: &eframe::CreationContext<'_>) {
         caption::install(h.hwnd.get(), std::sync::Arc::new(move || ctx.request_repaint()));
         // Fond de fenêtre du système (lot E5) : la même fenêtre.
         crate::platform::backdrop::set_window(h.hwnd.get());
+        // Carte graphique du prochain lancement : celle de l'écran de cette fenêtre.
+        crate::rendu::angle::watch_window(h.hwnd.get());
     }
     #[cfg(not(windows))]
     let _ = cc;

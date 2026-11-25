@@ -1175,7 +1175,10 @@ impl App {
 
     fn logic_pass(&mut self) {
         #[cfg(windows)]
-        crate::drvlog::tick();
+        {
+            crate::drvlog::tick();
+            crate::rendu::angle::tick();
+        }
         self.images.begin_frame();
         self.poll_accounts();
         self.qr_tick();

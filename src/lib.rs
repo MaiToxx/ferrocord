@@ -303,7 +303,7 @@ pub fn run() -> eframe::Result {
     if let (Ok(exe), Some(places)) = (std::env::current_exe(), install::setup::Places::system())
         && install::setup::same_path(&exe, &places.target())
     {
-        rendu::angle::prepare_installed(&mut install::hive::UserHive, &exe);
+        rendu::angle::prepare_installed(&exe);
     }
     stage("avant_fenetre");
     let first_theme = match &theme.1 {
