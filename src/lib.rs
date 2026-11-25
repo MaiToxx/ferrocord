@@ -14,6 +14,8 @@ pub mod avatar;
 // Rapport de plantage local (lot E5).
 pub mod crash;
 pub mod sharelog;
+// Qui charge un pilote graphique (journal technique).
+pub mod drvlog;
 pub mod desk;
 pub mod guild_icon;
 pub mod i18n;
@@ -248,6 +250,8 @@ pub fn run() -> eframe::Result {
     panics::install();
     crash::install(crash::default_dir());
     sharelog::install(sharelog::default_path());
+    #[cfg(windows)]
+    drvlog::install();
     let raw_args: Vec<String> = std::env::args().skip(1).collect();
     let args = install::single::parse_args(raw_args.iter().cloned());
     // Installation, désinstallation, ou proposition d'installer un exécutable
