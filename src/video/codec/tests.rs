@@ -336,3 +336,61 @@ fn every_hardware_encoder_gives_its_first_frames() {
         assert!(out[0].keyframe, "{name} : la première image est une image clé");
     }
 }
+
+/// Chaque encodeur matériel de la machine finit par tenir un débit baissé en
+/// cours de route, qu'il le suive de lui-même ou qu'il faille le rouvrir
+/// (Quick Sync : sourd au changement, constaté en 0.1.45).
+///
+/// À lancer seul (`cargo test --lib baisse_de_debit -- --ignored`) : il ouvre
+/// tous les encodeurs matériels à la fois et, joué avec les autres essais,
+/// retarde assez ceux qui partagent ces encodeurs pour les faire échouer.
+#[test]
+#[ignore = "ouvre tous les encodeurs matériels : à lancer seul"]
+fn baisse_de_debit_tenue_par_chaque_encodeur_materiel() {
+    let (w, h, fps) = (1280u32, 720u32, 30u32);
+    let frames: Vec<Frame> = (0..8u32)
+        .map(|t| {
+            let mut f = pattern(w, h, t);
+            if let FrameData::I420 { y, .. } = &mut f.data {
+                let mut s = 0x9e37_79b9_u32.wrapping_mul(t + 1);
+                for p in y.iter_mut() {
+                    s ^= s << 13;
+                    s ^= s >> 17;
+                    s ^= s << 5;
+                    *p = 16 + (s % 200) as u8;
+                }
+            }
+            f
+        })
+        .collect();
+    for (name, made) in super::mf::MfEncoder::each(w, h, fps, 8_000_000) {
+        let Ok(mut e) = made else {
+            eprintln!("{name} : ne s'ouvre pas, sauté");
+            continue;
+        };
+        let enc: &mut dyn Encoder = &mut e;
+        let mut t = 0u64;
+        // Débit des images ordinaires sur une seconde, en kb/s.
+        let mut second = |enc: &mut dyn Encoder| -> u64 {
+            let mut sum = 0u64;
+            for _ in 0..fps {
+                let mut f = frames[(t % 8) as usize].clone();
+                f.pts_us = t * 1_000_000 / u64::from(fps);
+                t += 1;
+                sum += enc.encode(&f, false).expect("encodage").iter().filter(|e| !e.keyframe).map(|e| e.data.len() as u64).sum::<u64>();
+            }
+            sum * 8 / 1000
+        };
+        let high = (second(enc), second(enc)).1;
+        enc.set_bitrate(3_000_000);
+        // Deux secondes pour constater et rouvrir au besoin, puis la mesure.
+        let low = (second(enc), second(enc), second(enc)).2;
+        eprintln!("{name} : {high} kb/s à 8 Mb/s, {low} kb/s à 3 Mb/s");
+        assert!(high > 5_000, "{name} : le bruit devait remplir le débit ({high} kb/s)");
+        assert!(low < 4_500, "{name} : baisse non tenue ({low} kb/s pour 3000 demandés)");
+        // Et la remontée repasse par le même chemin.
+        enc.set_bitrate(8_000_000);
+        let back = (second(enc), second(enc)).1;
+        assert!(back > 5_000, "{name} : remontée non tenue ({back} kb/s)");
+    }
+}
