@@ -169,7 +169,24 @@ pub struct MfEncoder {
     credits: u32,
     ready: Vec<EncodedFrame>,
     bytes: Vec<u8>,
+    /// Après une baisse de débit : (images, octets) sortis depuis, images clés à part.
+    watch: Option<(u32, u64)>,
+    /// La transformée ne suit pas un changement de débit en cours de route :
+    /// elle est rouverte à chaque changement.
+    deaf: bool,
+    /// Débit changé sur une transformée sourde : à rouvrir avant la prochaine image.
+    reopen: bool,
 }
+
+/// Dépassement toléré du débit après une baisse (trois demis) : au-delà,
+/// mesuré sur une seconde d'images, la transformée est tenue pour sourde.
+/// Constaté sur un PC à UHD 770 : l'encodeur Quick Sync accepte le nouveau
+/// débit sans erreur et continue au débit d'ouverture (13 Mb/s sortis pour 3
+/// demandés, quand celui de NVIDIA descend aussitôt). Le partage en 4K
+/// restait à 13-18 Mb/s alors que les pertes en demandaient 4,5 : figé chez
+/// ceux qui regardent (constaté par l'utilisateur, 0.1.45).
+const DEAF_NUM: u64 = 3;
+const DEAF_DEN: u64 = 2;
 
 // SAFETY: les transformées sont créées dans le MTA (voir `ready`), où un
 // objet COM s'utilise depuis n'importe quel fil ; `&mut self` empêche tout
@@ -319,6 +336,9 @@ impl MfEncoder {
             credits: 0,
             ready: Vec::new(),
             bytes: Vec::new(),
+            watch: None,
+            deaf: false,
+            reopen: false,
         })
     }
 
@@ -414,12 +434,82 @@ impl MfEncoder {
     }
 }
 
+impl MfEncoder {
+    /// Le débit sorti depuis la dernière baisse la dépasse-t-il trop ? Jugé
+    /// sur une seconde d'images, images clés à part (elles pèsent dix fois
+    /// plus, quel que soit le débit).
+    fn judge(&mut self, out: &[EncodedFrame]) {
+        let Some((frames, bytes)) = &mut self.watch else { return };
+        for e in out.iter().filter(|e| !e.keyframe) {
+            *frames += 1;
+            *bytes += e.data.len() as u64;
+        }
+        if *frames < self.fps {
+            return;
+        }
+        let rate = *bytes * 8 * u64::from(self.fps) / u64::from(*frames);
+        self.watch = None;
+        if rate * DEAF_DEN > u64::from(self.bps) * DEAF_NUM {
+            self.deaf = true;
+            self.reopen = true;
+            crate::sharelog::line(format_args!("encodeur : {} ne suit pas le débit ({} kb/s sortis pour {} demandés), rouvert à chaque changement", self.name, rate / 1000, self.bps / 1000));
+        }
+    }
+}
+
 impl Encoder for MfEncoder {
     fn name(&self) -> &'static str {
         self.name
     }
 
     fn encode(&mut self, f: &Frame, force_keyframe: bool) -> Result<Vec<EncodedFrame>, CodecError> {
+        if self.reopen {
+            // Transformée sourde : une neuve au débit voulu (sa première image est une image clé).
+            // La même transformée, pas la première de la liste : une autre carte encoderait.
+            let (asked, bps) = (self.asked, capped(self.asked, self.width, self.height, self.fps));
+            let same = hardware_encoders(self.codec).into_iter().find(|a| friendly_name(a) == self.name);
+            *self = match same {
+                Some(a) => Self::open(a, self.codec, self.width, self.height, self.fps, bps)?,
+                None => Self::with_codec(self.codec, self.width, self.height, self.fps, asked)?,
+            };
+            self.asked = asked;
+            self.deaf = true;
+        }
+        let deaf = self.deaf;
+        let out = self.encode_now(f, force_keyframe)?;
+        // Nouvelle taille : la transformée neuve est la même, sourde ou non.
+        self.deaf |= deaf;
+        self.judge(&out);
+        Ok(out)
+    }
+
+    fn set_bitrate(&mut self, bps: u32) {
+        self.asked = bps.max(1);
+        let bps = capped(self.asked, self.width, self.height, self.fps);
+        if self.deaf {
+            self.reopen |= bps != self.bps;
+            return;
+        }
+        let a = self.api.as_ref();
+        // Plafond d'abord quand le débit baisse (moyenne ≤ plafond à tout instant).
+        let mut keys = [CODECAPI_AVEncCommonMaxBitRate, CODECAPI_AVEncCommonMeanBitRate];
+        if bps > self.bps {
+            keys.reverse();
+        }
+        let set = keys.map(|k| set_codec_value(a, &k, VARIANT::from(bps)));
+        // Le plafond est facultatif en CBR ; la moyenne, non.
+        if set[usize::from(bps <= self.bps)] {
+            // Baisse : la sortie dira si elle est suivie.
+            if bps < self.bps {
+                self.watch = Some((0, 0));
+            }
+            self.bps = bps;
+        }
+    }
+}
+
+impl MfEncoder {
+    fn encode_now(&mut self, f: &Frame, force_keyframe: bool) -> Result<Vec<EncodedFrame>, CodecError> {
         if !f.is_consistent() {
             return Err(CodecError::BadFrame("taille des plans incohérente"));
         }
@@ -482,22 +572,6 @@ impl Encoder for MfEncoder {
         }
         while self.pump()? {}
         Ok(std::mem::take(&mut self.ready))
-    }
-
-    fn set_bitrate(&mut self, bps: u32) {
-        self.asked = bps.max(1);
-        let bps = capped(self.asked, self.width, self.height, self.fps);
-        let a = self.api.as_ref();
-        // Plafond d'abord quand le débit baisse (moyenne ≤ plafond à tout instant).
-        let mut keys = [CODECAPI_AVEncCommonMaxBitRate, CODECAPI_AVEncCommonMeanBitRate];
-        if bps > self.bps {
-            keys.reverse();
-        }
-        let set = keys.map(|k| set_codec_value(a, &k, VARIANT::from(bps)));
-        // Le plafond est facultatif en CBR ; la moyenne, non.
-        if set[usize::from(bps <= self.bps)] {
-            self.bps = bps;
-        }
     }
 }
 
