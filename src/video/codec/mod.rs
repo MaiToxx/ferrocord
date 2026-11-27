@@ -78,6 +78,11 @@ pub trait Decoder: Send {
     /// `Ok(None)` : rien à montrer pour l'instant (paramètres seuls, image
     /// sautée, attente d'une image clé).
     fn decode(&mut self, f: &EncodedFrame) -> Result<Option<Frame>, CodecError>;
+
+    /// Rend une image dont l'appelant n'a plus besoin : ses plans servent à
+    /// la suivante, et rien n'est alloué par image en régime établi. Sans
+    /// effet pour un décodeur qui n'en fait rien.
+    fn recycle(&mut self, _frame: Frame) {}
 }
 
 pub trait Encoder: Send {

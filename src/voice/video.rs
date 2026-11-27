@@ -826,6 +826,8 @@ fn decode_thread(j: DecodeJob) {
             Ok(Some(img)) => {
                 need_key = false;
                 j.sink.push(j.tile.clone(), &img);
+                // Convertie pour l'affichage : ses plans serviront à la suivante.
+                d.recycle(img);
             }
             Ok(None) => need_key = false,
             Err(CodecError::Corrupt(_)) => {

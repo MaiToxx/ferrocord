@@ -33,11 +33,114 @@ pub fn nv12_to_i420(src: &[u8], width: u32, height: u32, y_plane: Plane, uv_plan
     Some((y, u, v))
 }
 
+/// Bornes [début, fin) des blocs de source, au moins un pixel chacun.
+fn spans(s: usize, d: usize) -> Vec<(usize, usize)> {
+    (0..d)
+        .map(|i| {
+            let a = i * s / d;
+            let b = ((i + 1) * s / d).max(a + 1).min(s);
+            (a.min(s - 1), b)
+        })
+        .collect()
+}
+
+/// Moitié exacte (un écran 4K partagé en 1080p) : chaque pixel est la moyenne
+/// arrondie d'un bloc 2 × 2, par tranches de huit octets sur deux lignes.
+fn halve(src: &[u8], sw: usize, stride: usize, out: &mut [u8]) {
+    for (line, rows) in out.chunks_exact_mut(2 * sw).zip(src.chunks(2 * stride)) {
+        let (top, bottom) = (&rows[..4 * sw], &rows[stride..stride + 4 * sw]);
+        for ((d, p), q) in line.as_chunks_mut::<4>().0.iter_mut().zip(top.as_chunks::<8>().0).zip(bottom.as_chunks::<8>().0) {
+            for c in 0..4 {
+                d[c] = ((u16::from(p[c]) + u16::from(p[c + 4]) + u16::from(q[c]) + u16::from(q[c + 4]) + 2) >> 2) as u8;
+            }
+        }
+    }
+}
+
+/// Plus haut bloc que [`average`] sait sommer sur 16 bits (256 × 255 < 65 536).
+const TALLEST: usize = 256;
+/// Plus grand bloc dont la division par multiplication est exacte : la somme
+/// arrondie vaut moins de 256 n, et 256 n² ne doit pas dépasser 2³².
+const LARGEST: usize = 4096;
+
+/// Moyenne par blocs en deux temps : les lignes d'un bloc sont sommées
+/// colonne par colonne (boucle sans indice, que le compilateur traite par
+/// 16 ou 32 octets), puis chaque bloc additionne ses colonnes et divise par
+/// une multiplication. Mêmes valeurs que [`average_any`].
+fn average(src: &[u8], sw: usize, stride: usize, xs: &[(usize, usize)], ys: &[(usize, usize)], widest: usize, out: &mut [u8]) {
+    let mut col = vec![0u16; 4 * sw];
+    // Inverses de `lignes × colonnes`, refaits quand la hauteur du bloc change.
+    let mut inv = vec![0u64; widest + 1];
+    let mut known = 0;
+    for (&(y0, y1), dst) in ys.iter().zip(out.chunks_exact_mut(4 * xs.len())) {
+        for (c, &s) in col.iter_mut().zip(&src[y0 * stride..y0 * stride + 4 * sw]) {
+            *c = u16::from(s);
+        }
+        for r in y0 + 1..y1 {
+            for (c, &s) in col.iter_mut().zip(&src[r * stride..r * stride + 4 * sw]) {
+                *c += u16::from(s);
+            }
+        }
+        let rows = y1 - y0;
+        if rows != known {
+            for (k, v) in inv.iter_mut().enumerate().skip(1) {
+                *v = (1u64 << 32).div_ceil((rows * k) as u64);
+            }
+            known = rows;
+        }
+        let px = col.as_chunks::<4>().0;
+        for (d, &(x0, x1)) in dst.as_chunks_mut::<4>().0.iter_mut().zip(xs) {
+            let span = &px[x0..x1];
+            let mut a = [0u32; 4];
+            for p in span {
+                for c in 0..4 {
+                    a[c] += u32::from(p[c]);
+                }
+            }
+            let (n, m) = ((rows * span.len()) as u64, inv[span.len()]);
+            for c in 0..4 {
+                d[c] = (((u64::from(a[c]) + n / 2) * m) >> 32) as u8;
+            }
+        }
+    }
+}
+
+/// Moyenne par blocs de n'importe quelle taille (une division par canal).
+fn average_any(src: &[u8], sw: usize, stride: usize, xs: &[(usize, usize)], ys: &[(usize, usize)], out: &mut [u8]) {
+    let mut acc = vec![[0u32; 4]; xs.len()];
+    for (&(y0, y1), dst) in ys.iter().zip(out.chunks_exact_mut(4 * xs.len())) {
+        acc.iter_mut().for_each(|a| *a = [0; 4]);
+        for r in y0..y1 {
+            let line = &src[r * stride..r * stride + 4 * sw];
+            for (a, &(x0, x1)) in acc.iter_mut().zip(xs) {
+                for px in line[4 * x0..4 * x1].as_chunks::<4>().0 {
+                    a[0] += u32::from(px[0]);
+                    a[1] += u32::from(px[1]);
+                    a[2] += u32::from(px[2]);
+                    a[3] += u32::from(px[3]);
+                }
+            }
+        }
+        let rows = (y1 - y0) as u32;
+        for ((px, a), &(x0, x1)) in dst.as_chunks_mut::<4>().0.iter_mut().zip(&acc).zip(xs) {
+            let n = rows * (x1 - x0) as u32;
+            for (p, sum) in px.iter_mut().zip(a) {
+                *p = ((sum + n / 2) / n) as u8;
+            }
+        }
+    }
+}
+
 /// Réduit (ou recopie) une image BGRA de `sw` × `sh` dont les lignes sont
 /// espacées de `stride` octets vers `dw` × `dh`, lignes serrées, dans `out`.
 /// Chaque pixel de sortie est la moyenne du bloc de source qu'il couvre
 /// (pas de crénelage sur le texte d'un écran réduit). `false` si la source
 /// est trop courte.
+///
+/// Appelée pour chaque image d'un écran partagé plus grand que la qualité
+/// choisie. Mesuré, un écran 4K : vers le 1080p 13,6 ms → 1,9 ms, vers le
+/// 1440p 21,8 ms → 9 ms, vers le 720p 7,5 ms → 3,8 ms (la première version
+/// calculait quatre divisions par pixel de sortie), aux mêmes valeurs.
 pub fn scale_bgra(src: &[u8], sw: u32, sh: u32, stride: usize, dw: u32, dh: u32, out: &mut Vec<u8>) -> bool {
     let (sw, sh, dw, dh) = (sw as usize, sh as usize, dw as usize, dh as usize);
     out.clear();
@@ -51,39 +154,17 @@ pub fn scale_bgra(src: &[u8], sw: u32, sh: u32, stride: usize, dw: u32, dh: u32,
         return true;
     }
     out.resize(4 * dw * dh, 0);
-    // Bornes [début, fin) des blocs de source, au moins un pixel chacun.
-    let spans = |s: usize, d: usize| -> Vec<(usize, usize)> {
-        (0..d)
-            .map(|i| {
-                let a = i * s / d;
-                let b = ((i + 1) * s / d).max(a + 1).min(s);
-                (a.min(s - 1), b)
-            })
-            .collect()
-    };
+    if sw == 2 * dw && sh == 2 * dh {
+        halve(src, sw, stride, out);
+        return true;
+    }
     let (xs, ys) = (spans(sw, dw), spans(sh, dh));
-    let mut acc = vec![[0u32; 4]; dw];
-    for (oy, &(y0, y1)) in ys.iter().enumerate() {
-        acc.iter_mut().for_each(|a| *a = [0; 4]);
-        for r in y0..y1 {
-            let line = &src[r * stride..r * stride + 4 * sw];
-            for (a, &(x0, x1)) in acc.iter_mut().zip(&xs) {
-                for px in line[4 * x0..4 * x1].as_chunks::<4>().0 {
-                    a[0] += u32::from(px[0]);
-                    a[1] += u32::from(px[1]);
-                    a[2] += u32::from(px[2]);
-                    a[3] += u32::from(px[3]);
-                }
-            }
-        }
-        let rows = (y1 - y0) as u32;
-        let dst = &mut out[4 * dw * oy..4 * dw * (oy + 1)];
-        for ((px, a), &(x0, x1)) in dst.as_chunks_mut::<4>().0.iter_mut().zip(&acc).zip(&xs) {
-            let n = rows * (x1 - x0) as u32;
-            for (p, sum) in px.iter_mut().zip(a) {
-                *p = ((sum + n / 2) / n) as u8;
-            }
-        }
+    let widest = xs.iter().map(|(a, b)| b - a).max().unwrap_or(1);
+    let tallest = ys.iter().map(|(a, b)| b - a).max().unwrap_or(1);
+    if tallest <= TALLEST && widest * tallest <= LARGEST {
+        average(src, sw, stride, &xs, &ys, widest, out);
+    } else {
+        average_any(src, sw, stride, &xs, &ys, out);
     }
     true
 }
@@ -159,6 +240,53 @@ mod tests {
         let mut out = Vec::new();
         assert!(scale_bgra(&src, sw, sh, 4 * sw as usize, 3, 2, &mut out));
         assert!(out.as_chunks::<4>().0.iter().all(|p| *p == [100, 150, 200, 255]), "couleur unie conservée");
+    }
+
+    /// La moyenne de chaque bloc, écrite sans détour.
+    fn plain(src: &[u8], sw: usize, sh: usize, stride: usize, dw: usize, dh: usize) -> Vec<u8> {
+        let mut out = Vec::with_capacity(4 * dw * dh);
+        for oy in 0..dh {
+            let y0 = oy * sh / dh;
+            let y1 = ((oy + 1) * sh / dh).max(y0 + 1).min(sh);
+            for ox in 0..dw {
+                let x0 = ox * sw / dw;
+                let x1 = ((ox + 1) * sw / dw).max(x0 + 1).min(sw);
+                let n = ((y1 - y0) * (x1 - x0)) as u64;
+                for c in 0..4 {
+                    let sum: u64 = (y0..y1).flat_map(|r| (x0..x1).map(move |x| (r, x))).map(|(r, x)| u64::from(src[r * stride + 4 * x + c])).sum();
+                    out.push(((sum + n / 2) / n) as u8);
+                }
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn every_path_gives_the_plain_average() {
+        let mut seed = 0x9e37_79b9_7f4a_7c15u64;
+        let mut out = Vec::new();
+        // Moitié exacte ; rapports quelconques ; agrandissement ; plus grand
+        // bloc du chemin rapide (64 × 64, puis 256 de haut) ; au-delà (bloc
+        // de 300 de haut, bloc de 130 × 130) : calcul d'origine.
+        let sizes = [(64, 36, 32, 18), (38, 22, 19, 11), (64, 36, 48, 27), (65, 37, 21, 9), (100, 60, 33, 20), (7, 5, 3, 2), (5, 3, 5, 2), (16, 16, 40, 40), (64, 64, 1, 1), (9, 512, 3, 2), (3, 600, 2, 2), (130, 130, 1, 1)];
+        for (sw, sh, dw, dh) in sizes {
+            // Du bruit, puis tout à 255 (les sommes les plus grandes), avec 12 octets de bourrage par ligne.
+            for white in [false, true] {
+                let stride = 4 * sw + 12;
+                let src: Vec<u8> = (0..stride * sh)
+                    .map(|_| {
+                        seed ^= seed << 13;
+                        seed ^= seed >> 7;
+                        seed ^= seed << 17;
+                        if white { 255 } else { (seed >> 24) as u8 }
+                    })
+                    .collect();
+                // La dernière ligne s'arrête à son dernier pixel, comme une texture lue.
+                let src = &src[..stride * (sh - 1) + 4 * sw];
+                assert!(scale_bgra(src, sw as u32, sh as u32, stride, dw as u32, dh as u32, &mut out));
+                assert_eq!(out, plain(src, sw, sh, stride, dw, dh), "{sw}x{sh} → {dw}x{dh}, blanc : {white}");
+            }
+        }
     }
 
     #[test]

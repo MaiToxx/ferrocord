@@ -424,53 +424,22 @@ fn fit((sw, sh): (u32, u32), (mw, mh): (u32, u32)) -> (u32, u32) {
     (((f64::from(sw) * s).round() as u32).max(1), ((f64::from(sh) * s).round() as u32).max(1))
 }
 
-fn clip(v: i32) -> u8 {
-    v.clamp(0, 255) as u8
-}
-
 /// Convertit `f` en RGBA `w`×`h` (plus proche voisin) dans `out` ; `false`
 /// si l'image est incohérente (plans trop courts).
+///
+/// C'est le coût d'un direct regardé : une fois par image reçue. La boucle
+/// d'origine, pixel par pixel avec une division et un `extend_from_slice`
+/// chacun, prenait 22 ms pour une image de 1080p (57 % d'un cœur mesurés à
+/// 30 images par seconde) ; celles de `convert`, vectorisées, 0,3 ms.
 fn to_rgba(f: &Frame, w: u32, h: u32, out: &mut Vec<u8>) -> bool {
+    use crate::video::convert::{I420, bgra_to_rgba_sized, i420_to_rgba_sized};
     let (sw, sh) = (f.width as usize, f.height as usize);
     let (w, h) = (w as usize, h as usize);
-    if sw == 0 || sh == 0 || w == 0 || h == 0 {
-        return false;
-    }
-    out.clear();
-    out.reserve(w * h * 4);
     match &f.data {
-        FrameData::Bgra(b) => {
-            if b.len() < sw * sh * 4 {
-                return false;
-            }
-            for y in 0..h {
-                let row = (y * sh / h) * sw;
-                for x in 0..w {
-                    let i = (row + x * sw / w) * 4;
-                    out.extend_from_slice(&[b[i + 2], b[i + 1], b[i], 255]);
-                }
-            }
-        }
-        FrameData::I420 { y: yp, u, v } => {
-            let cw = sw.div_ceil(2);
-            if yp.len() < sw * sh || u.len() < cw * sh.div_ceil(2) || v.len() < cw * sh.div_ceil(2) {
-                return false;
-            }
-            // BT.601, plage réduite (ce que donnent les décodeurs H.264 courants).
-            for oy in 0..h {
-                let sy = oy * sh / h;
-                for ox in 0..w {
-                    let sx = ox * sw / w;
-                    let c = 298 * (i32::from(yp[sy * sw + sx]) - 16);
-                    let ci = (sy / 2) * cw + sx / 2;
-                    let d = i32::from(u[ci]) - 128;
-                    let e = i32::from(v[ci]) - 128;
-                    out.extend_from_slice(&[clip((c + 409 * e + 128) >> 8), clip((c - 100 * d - 208 * e + 128) >> 8), clip((c + 516 * d + 128) >> 8), 255]);
-                }
-            }
-        }
+        FrameData::Bgra(b) => bgra_to_rgba_sized(sw, sh, b, w, h, out).is_ok(),
+        // BT.601, plage réduite (ce que donnent les décodeurs H.264 courants).
+        FrameData::I420 { y, u, v } => i420_to_rgba_sized(I420 { width: sw, height: sh, y, u, v }, w, h, out).is_ok(),
     }
-    true
 }
 
 /// Mire animée (aperçu et tests) : bandes de couleur qui défilent avec

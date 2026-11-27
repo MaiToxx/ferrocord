@@ -216,7 +216,7 @@ impl Source for FileReader {
         let Some((s, pts_us)) = self.read(VIDEO)? else { return Ok(None) };
         sample_bytes(&s, &mut self.bytes).map_err(|e| format!("{:#010x}", e.code().0))?;
         let Some(shape) = self.shape else { return Ok(None) };
-        i420_frame(&self.bytes, shape, pts_us).map(Some).ok_or_else(|| "image".to_string())
+        i420_frame(&self.bytes, shape, pts_us, Default::default()).map(Some).ok_or_else(|| "image".to_string())
     }
 
     fn audio(&mut self) -> Result<Option<Chunk>, String> {
