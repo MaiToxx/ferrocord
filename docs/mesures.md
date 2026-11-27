@@ -1322,6 +1322,55 @@ moins dans le Gestionnaire des tâches (74,6 → 30,8), **une fenêtre ouverte
 écran à 60 Hz. Le compromis du lot « gl » tient ; la mémoire, priorité de la
 demande, n'a pas bougé.
 
+### Lot « vidéo » : conversions d'images (28 novembre 2026)
+
+Point de départ : en regardant un direct en 1080p, le fil du décodeur prenait
+57 % d'un cœur, presque tout dans la conversion des images pour l'affichage
+(`state::video::to_rgba`). Au repos, l'application reste à 0 % (trois relevés
+de dix secondes sur la 0.1.47 installée) : il n'y avait rien à gagner là.
+
+Les conversions ont été chronométrées hors de l'application, sur des images de
+bruit, meilleure de huit passes, i9 à 32 cœurs logiques, exécutable optimisé.
+Les anciennes boucles calculaient un indice (et souvent une division) par
+pixel ; les nouvelles avancent ligne par ligne sur des tranches de même
+longueur, en entiers de 16 bits, ce que le compilateur traite par 16 octets,
+ou par 32 avec AVX2 (choisi à l'exécution, `std::is_x86_feature_detected!`).
+Aucune instruction écrite à la main : un seul `unsafe` par appel d'une
+fonction compilée pour AVX2, après constat que le processeur le sait.
+
+| Opération, par image | Avant | Après |
+|---|---:|---:|
+| Direct affiché, I420 1080p → RGBA à la même taille | 22,1 ms | 0,27 ms |
+| Direct affiché, I420 1080p → RGBA réduit aux deux tiers | 10,2 ms | 0,61 ms |
+| Direct affiché, I420 4K → RGBA à la même taille | 88,8 ms | 1,9 ms |
+| Aperçu de son propre partage, BGRA 1080p → RGBA | 2,2 ms | 0,29 ms |
+| Lecteur vidéo, `i420_to_rgba` 1080p / 4K | 9,0 / 36 ms | 0,27 / 1,7 ms |
+| Écran 4K réduit à la capture vers 1080p (`scale_bgra`) | 13,6 ms | 2,0 ms |
+| Écran 4K réduit à la capture vers 1440p | 21,8 ms | 9,4 ms |
+| Écran 4K réduit à la capture vers 720p | 7,5 ms | 3,8 ms |
+| `Scaler::scale_rgba` 4K → 1080p / → 1440p | 7,5 / 13,2 ms | 1,7 / 7,9 ms |
+| `bgra_to_nv12` 4K (entrée de l'encodeur matériel) | 5,8 ms | 4,9 ms |
+| Plans d'une image décodée 1080p (trois allocations par image → plans gardés) | 0,42 ms | 0,10 ms |
+
+Valeurs produites : identiques pour la réduction à la capture (essai
+`every_path_gives_the_plain_average`), la mise à l'échelle bilinéaire
+(`mise_a_l_echelle_identique_a_la_reference`) et la conversion vers l'encodeur
+(`even_fast_path_matches`, `nv12_written_directly_matches_the_planes`). La
+conversion I420 → RGBA passe d'une virgule fixe ×256 sur 32 bits à ×64 sur
+16 bits : un niveau sur 255 d'écart au plus avec l'ancienne, un niveau et demi
+au plus avec le calcul exact (`i420_a_la_taille_affichee`, sur du bruit et sur
+les couleurs extrêmes).
+
+Essayé et écarté : la chrominance de l'encodeur sur 16 bits (plus rapide avec
+AVX2 mais un niveau d'écart, pour une image que le spectateur reçoit) ; la
+conversion vers l'encodeur sur plusieurs fils (2,4 ms sur deux bandes, 1,6 ms
+sur trois, mais le même processeur au total et des fils créés à chaque
+image) ; AVX2 pour les mises à l'échelle (plus lent : 3,7 ms contre 1,8 ms).
+
+Non mesuré : le gain dans l'application elle-même, en regardant un direct
+(il faut un direct en cours) ; attendu d'après le banc, de 57 % d'un cœur à
+quelques pour cent.
+
 ### Taille sur disque
 
 | | Ferrocord | Discord | Discord / Ferrocord |

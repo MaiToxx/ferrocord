@@ -804,7 +804,12 @@ pub struct MfDecoder {
     /// (`None` : type d'entrée pas encore posé).
     key_size: Option<(u32, u32)>,
     bytes: Vec<u8>,
+    /// Plans de la dernière image rendue ([`Decoder::recycle`]).
+    spare: Planes,
 }
+
+/// Les trois plans d'une image I420 : Y, U, V.
+pub(super) type Planes = [Vec<u8>; 3];
 
 #[derive(Clone, Copy)]
 struct Shape {
@@ -926,7 +931,7 @@ impl MfDecoder {
     }
 
     fn with(codec: Codec, mft: IMFTransform, activate: Option<IMFActivate>) -> Self {
-        Self { codec, mft, activate, shape: None, out: None, need_key: true, key_size: None, bytes: Vec::new() }
+        Self { codec, mft, activate, shape: None, out: None, need_key: true, key_size: None, bytes: Vec::new(), spare: Planes::default() }
     }
 
     /// VP8 : type d'entrée à la taille de l'image clé (posé au premier
@@ -992,8 +997,8 @@ impl MfDecoder {
     }
 
     /// Plans I420 contigus aux dimensions affichées, depuis `self.bytes`.
-    fn frame(&self, s: Shape, pts_us: u64) -> Option<Frame> {
-        i420_frame(&self.bytes, s, pts_us)
+    fn frame(&mut self, s: Shape, pts_us: u64) -> Option<Frame> {
+        i420_frame(&self.bytes, s, pts_us, std::mem::take(&mut self.spare))
     }
 }
 
@@ -1017,29 +1022,43 @@ fn shape_of(t: &IMFMediaType, nv12: bool) -> Option<Shape> {
 }
 
 /// Plans I420 contigus aux dimensions affichées, depuis une image décodée `b`.
-fn i420_frame(b: &[u8], s: Shape, pts_us: u64) -> Option<Frame> {
-    {
-        let (w, h, st) = (s.width, s.height, s.stride);
-        let (cw, ch) = (w.div_ceil(2), h.div_ceil(2));
-        let plane = |off: usize, stride: usize, pw: usize, ph: usize| -> Option<Vec<u8>> {
-            let mut out = Vec::with_capacity(pw * ph);
-            for r in 0..ph {
-                out.extend_from_slice(b.get(off + r * stride..off + r * stride + pw)?);
+/// Écrits dans `spare` (les plans d'une image rendue, ou des plans vides) :
+/// trois allocations de la taille de l'image en moins par image, soit 3 Mo en
+/// 1080p que Windows reprenait puis redonnait page par page (0,42 ms mesurés,
+/// contre 0,10 ms dans des plans gardés).
+fn i420_frame(b: &[u8], s: Shape, pts_us: u64, spare: Planes) -> Option<Frame> {
+    let (w, h, st) = (s.width, s.height, s.stride);
+    let (cw, ch) = (w.div_ceil(2), h.div_ceil(2));
+    let [mut y, mut u, mut v] = spare;
+    let plane = |off: usize, stride: usize, pw: usize, ph: usize, out: &mut Vec<u8>| -> Option<()> {
+        out.clear();
+        out.reserve(pw * ph);
+        for r in 0..ph {
+            out.extend_from_slice(b.get(off + r * stride..off + r * stride + pw)?);
+        }
+        Some(())
+    };
+    plane(0, st, w, h, &mut y)?;
+    if s.nv12 {
+        // U et V entrelacés : séparés ligne par ligne, droit dans leurs plans.
+        u.resize(cw * ch, 0);
+        v.resize(cw * ch, 0);
+        for (r, (du, dv)) in u.chunks_exact_mut(cw.max(1)).zip(v.chunks_exact_mut(cw.max(1))).enumerate() {
+            let off = st * (s.rows + r);
+            let row = b.get(off..off + cw * 2)?;
+            for ((pair, du), dv) in row.as_chunks::<2>().0.iter().zip(du).zip(dv) {
+                *du = pair[0];
+                *dv = pair[1];
             }
-            Some(out)
-        };
-        let y = plane(0, st, w, h)?;
-        let (u, v) = if s.nv12 {
-            let uv = plane(st * s.rows, st, cw * 2, ch)?;
-            uv.as_chunks::<2>().0.iter().map(|&[a, b]| (a, b)).unzip()
-        } else {
-            // Côtés impairs : la chrominance arrondit au-dessus (comme
-            // `MFCalculateImageSize`) ; sans effet sur des côtés pairs.
-            let (cst, crows) = (st.div_ceil(2), s.rows.div_ceil(2));
-            (plane(st * s.rows, cst, cw, ch)?, plane(st * s.rows + cst * crows, cst, cw, ch)?)
-        };
-        Some(Frame { width: u32::try_from(w).ok()?, height: u32::try_from(h).ok()?, pts_us, data: FrameData::I420 { y, u, v } })
+        }
+    } else {
+        // Côtés impairs : la chrominance arrondit au-dessus (comme
+        // `MFCalculateImageSize`) ; sans effet sur des côtés pairs.
+        let (cst, crows) = (st.div_ceil(2), s.rows.div_ceil(2));
+        plane(st * s.rows, cst, cw, ch, &mut u)?;
+        plane(st * s.rows + cst * crows, cst, cw, ch, &mut v)?;
     }
+    Some(Frame { width: u32::try_from(w).ok()?, height: u32::try_from(h).ok()?, pts_us, data: FrameData::I420 { y, u, v } })
 }
 
 impl MfDecoder {
@@ -1056,6 +1075,10 @@ impl MfDecoder {
                     sample_bytes(&s, &mut self.bytes).map_err(hr)?;
                     self.out = None;
                     let shape = self.shape.ok_or_else(|| CodecError::Internal("taille décodée inconnue".into()))?;
+                    // Deux images sorties d'un coup : seule la dernière est montrée.
+                    if let Some(old) = last.take() {
+                        self.recycle(old);
+                    }
                     last = Some(self.frame(shape, pts_us).ok_or_else(|| CodecError::Internal("image décodée plus courte qu'annoncé".into()))?);
                 }
                 Err(e) => {
@@ -1068,6 +1091,12 @@ impl MfDecoder {
 }
 
 impl Decoder for MfDecoder {
+    fn recycle(&mut self, frame: Frame) {
+        if let FrameData::I420 { y, u, v } = frame.data {
+            self.spare = [y, u, v];
+        }
+    }
+
     fn decode(&mut self, f: &EncodedFrame) -> Result<Option<Frame>, CodecError> {
         if f.codec != self.codec {
             return Err(CodecError::WrongCodec(f.codec));

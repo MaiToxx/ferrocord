@@ -156,11 +156,12 @@ fn plans_avec_bourrage_et_cotes_impairs() {
     fill(&mut nv12, st * rows, st, cw, ch, 2, 100);
     fill(&mut nv12, st * rows + 1, st, cw, ch, 2, 200);
     for (bytes, is_nv12) in [(&i420, false), (&nv12, true)] {
-        let f = i420_frame(bytes, Shape { width: w, height: h, stride: st, rows, nv12: is_nv12 }, 0).unwrap_or_else(|| panic!("image (nv12 : {is_nv12})"));
+        // Dans des plans déjà servis, plus grands que l'image : rien n'en reste.
+        let f = i420_frame(bytes, Shape { width: w, height: h, stride: st, rows, nv12: is_nv12 }, 0, [vec![9; 400], vec![9; 400], vec![9; 400]]).unwrap_or_else(|| panic!("image (nv12 : {is_nv12})"));
         assert_eq!((f.width, f.height), (5, 3));
         let crate::video::FrameData::I420 { y, u, v } = f.data else { panic!("format") };
         assert_eq!((y, u, v), (want_y.clone(), want_c(100), want_c(200)), "nv12 : {is_nv12}");
     }
     // Tampon plus court qu'annoncé : refusé, jamais lu au-delà.
-    assert!(i420_frame(&i420[..st * rows + cst * crows + cst], Shape { width: w, height: h, stride: st, rows, nv12: false }, 0).is_none());
+    assert!(i420_frame(&i420[..st * rows + cst * crows + cst], Shape { width: w, height: h, stride: st, rows, nv12: false }, 0, Default::default()).is_none());
 }
