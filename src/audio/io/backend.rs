@@ -347,6 +347,7 @@ fn run(host: &cpal::Host, sides: &mut [Side], shared: &Arc<Shared>, ctl: &mpsc::
         match msg {
             Some(Ctl::Stop) => return,
             Some(Ctl::Lost(input)) => {
+                crate::sharelog::line(format_args!("son : {} perdu par Windows, rouvert", if input { "micro" } else { "périphérique de sortie" }));
                 for side in sides.iter_mut().filter(|s| s.input == input) {
                     reopen(host, side, shared, ctl);
                 }
@@ -370,6 +371,7 @@ fn reopen(host: &cpal::Host, side: &mut Side, shared: &Arc<Shared>, ctl: &mpsc::
     if let Err(e) = side.open(host, shared, ctl) {
         let mut slot = locked(&shared.error);
         if slot.as_ref() != Some(&e) {
+            crate::sharelog::line(format_args!("son : {} ne s'ouvre pas ({e:?})", if side.input { "le micro" } else { "la sortie" }));
             *slot = Some(e);
         }
     }

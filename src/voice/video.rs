@@ -352,14 +352,60 @@ const REFINE_SECS: u32 = 2;
 /// supposée, non vérifiée sur une liaison réelle).
 const MIN_KEY_GAP: Duration = Duration::from_secs(1);
 
-/// Part du débit gardée d'après les pertes de la dernière mesure : dès 5 %
-/// de paquets redemandés, le débit baisse de 30 % (jamais sous le quart) ;
-/// sans aucune perte, il remonte de 15 % par mesure.
-fn next_pressure(pressure: f32, lost_pct: u32) -> f32 {
-    match lost_pct {
-        0 => (pressure * 1.15).min(1.0),
-        1..=4 => pressure,
-        _ => (pressure * 0.7).max(0.25),
+/// Part du débit gardée d'après les pertes chez ceux qui regardent.
+///
+/// Journal d'un partage en 4K (0.1.46) : aucune perte pendant dix-sept
+/// secondes entre 12 et 17 Mb/s, puis 51 à 100 % de paquets redemandés dès
+/// que le débit touche 19 Mb/s ; l'image fige huit secondes, le temps de
+/// trois baisses de 30 %. Une fois à 4,5 Mb/s, 1 % de pertes résiduelles
+/// (ordinaires) empêchait toute remontée, et une remontée serait revenue
+/// buter au même endroit. D'où :
+/// - pertes lourdes (30 % et plus) : le débit est divisé par deux d'un coup ;
+/// - le niveau qui a cassé est retenu : le débit reste un cinquième en
+///   dessous ([`Pace::cap`]) pendant une minute, puis le plafond remonte
+///   doucement ;
+/// - jusqu'à 2 % de pertes, la liaison est tenue pour saine.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Pace {
+    /// Part du débit plein visée (0,25 à 1).
+    pressure: f32,
+    /// Part à ne pas dépasser : sous le dernier niveau qui a fait perdre des paquets.
+    cap: f32,
+    /// Mesures saines à attendre avant que le plafond remonte.
+    held: u32,
+    /// La dernière mesure était saine : les pertes qui suivent disent quel niveau casse.
+    clean: bool,
+}
+
+/// Mesures (de [`STATS_EVERY_MS`]) pendant lesquelles le plafond reste où il est : une minute.
+const CAP_HOLD: u32 = 30;
+
+impl Pace {
+    const FULL: Pace = Pace { pressure: 1.0, cap: 1.0, held: 0, clean: true };
+
+    fn step(&mut self, lost_pct: u32) {
+        match lost_pct {
+            0..=2 => {
+                if self.held > 0 {
+                    self.held -= 1;
+                } else {
+                    self.cap = (self.cap * 1.05).min(1.0);
+                }
+                self.pressure = (self.pressure * 1.15).min(self.cap);
+                self.clean = true;
+            }
+            3..=4 => {}
+            _ => {
+                // Premières pertes après une mesure saine : c'est ce niveau qui casse.
+                // Les suivantes ne sont que la queue de l'engorgement.
+                if self.clean {
+                    self.cap = (self.pressure * 0.8).max(0.25);
+                    self.held = CAP_HOLD;
+                }
+                self.clean = false;
+                self.pressure = (self.pressure * if lost_pct >= 30 { 0.5 } else { 0.7 }).max(0.25);
+            }
+        }
     }
 }
 
@@ -439,7 +485,7 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
     let mut last = (0u64, Instant::now());
     // Dernière image clé partie, et part du débit gardée (pertes du réseau).
     let mut last_key: Option<Instant> = None;
-    let mut pressure = 1.0f32;
+    let mut pace = Pace::FULL;
     // Pour le journal : (images clés, plus grosse image en octets, images sans sortie) de la mesure.
     let mut logged = (0u32, 0usize, 0u32);
     crate::sharelog::line(format_args!("partage : début, qualité {}x{} à {} images/s, écran : {}", cfg.quality.width, cfg.quality.height, cfg.quality.fps, cfg.screen));
@@ -582,7 +628,8 @@ fn send_thread(cfg: SendCfg, mail: Arc<Mailbox>) {
                     // Pertes chez ceux qui regardent : paquets redemandés sur paquets partis.
                     let packets = (seen.2 / crate::net::voice::video::send::MAX_PAYLOAD as u64).max(1);
                     let lost_pct = (u64::from(mail.nacked.swap(0, Relaxed)) * 100 / packets).min(100) as u32;
-                    pressure = next_pressure(pressure, lost_pct);
+                    pace.step(lost_pct);
+                    let pressure = pace.pressure;
                     let full = bitrate(size.0, size.1, fps, cfg.screen);
                     let base = (f64::from(full) * f64::from(pressure)) as u32;
                     let want = tuned_bitrate(base, fps, real, behind);
@@ -929,16 +976,42 @@ mod tests {
 
     #[test]
     fn bitrate_drops_under_loss_and_comes_back() {
-        let mut p = 1.0f32;
+        let mut p = Pace::FULL;
         for _ in 0..10 {
-            p = next_pressure(p, 20);
+            p.step(20);
         }
-        assert_eq!(p, 0.25, "jamais sous le quart");
-        assert_eq!(next_pressure(0.5, 3), 0.5, "quelques pertes : on ne bouge pas");
-        for _ in 0..12 {
-            p = next_pressure(p, 0);
+        assert_eq!(p.pressure, 0.25, "jamais sous le quart");
+        let mut q = Pace { pressure: 0.5, ..Pace::FULL };
+        q.step(3);
+        assert_eq!(q.pressure, 0.5, "quelques pertes : on ne bouge pas");
+        // Le niveau qui a cassé (le plein débit) est retenu : remontée jusqu'à un cinquième en dessous…
+        assert_eq!(p.cap, 0.8);
+        for _ in 0..CAP_HOLD {
+            p.step(0);
         }
-        assert_eq!(p, 1.0, "revenu au débit plein");
+        assert_eq!(p.pressure, 0.8, "sous le niveau qui a cassé pendant une minute");
+        // … puis le plafond remonte doucement jusqu'au débit plein.
+        for _ in 0..10 {
+            p.step(1);
+        }
+        assert_eq!((p.pressure, p.cap), (1.0, 1.0), "revenu au débit plein, 1 % de pertes n'y change rien");
+    }
+
+    #[test]
+    fn heavy_loss_halves_at_once_and_the_tail_does_not_lower_the_cap() {
+        let mut p = Pace::FULL;
+        p.step(100);
+        assert_eq!((p.pressure, p.cap), (0.5, 0.8));
+        // Queue de l'engorgement : le débit baisse encore, pas le plafond.
+        p.step(60);
+        assert_eq!((p.pressure, p.cap), (0.25, 0.8));
+        // Remonté sous le plafond, il recasse : le plafond descend d'un cran.
+        for _ in 0..10 {
+            p.step(0);
+        }
+        assert_eq!(p.pressure, 0.8);
+        p.step(10);
+        assert!((p.cap - 0.64).abs() < 1e-6 && (p.pressure - 0.56).abs() < 1e-6, "{p:?}");
     }
 
     #[test]

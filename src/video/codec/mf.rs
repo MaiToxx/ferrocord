@@ -187,6 +187,9 @@ pub struct MfEncoder {
 /// ceux qui regardent (constaté par l'utilisateur, 0.1.45).
 const DEAF_NUM: u64 = 3;
 const DEAF_DEN: u64 = 2;
+/// Transformées déjà trouvées sourdes depuis le lancement : au partage
+/// suivant, la première baisse les rouvre sans la seconde de constat.
+static DEAF: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(Vec::new());
 
 // SAFETY: les transformées sont créées dans le MTA (voir `ready`), où un
 // objet COM s'utilise depuis n'importe quel fil ; `&mut self` empêche tout
@@ -337,7 +340,7 @@ impl MfEncoder {
             ready: Vec::new(),
             bytes: Vec::new(),
             watch: None,
-            deaf: false,
+            deaf: DEAF.lock().is_ok_and(|d| d.contains(&name)),
             reopen: false,
         })
     }
@@ -452,6 +455,11 @@ impl MfEncoder {
         if rate * DEAF_DEN > u64::from(self.bps) * DEAF_NUM {
             self.deaf = true;
             self.reopen = true;
+            if let Ok(mut d) = DEAF.lock()
+                && !d.contains(&self.name)
+            {
+                d.push(self.name);
+            }
             crate::sharelog::line(format_args!("encodeur : {} ne suit pas le débit ({} kb/s sortis pour {} demandés), rouvert à chaque changement", self.name, rate / 1000, self.bps / 1000));
         }
     }
