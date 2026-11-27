@@ -69,9 +69,58 @@ pub(super) async fn run(p: VoiceParams, mut e2ee: Box<dyn FrameCrypto>, cfg: Voi
     let _ = ev.send(VoiceEvent::Closed(reason)).await;
 }
 
+/// Ce qui est arrivé au son reçu depuis la dernière ligne du journal.
+/// « Par moments je n'entends plus les autres » (constaté par l'utilisateur,
+/// 0.1.46) : une trame peut être écartée à quatre endroits, tous muets
+/// jusqu'ici. Le journal dit lequel, et les silences de plus de deux
+/// secondes au milieu d'une parole.
+#[derive(Default)]
+struct Heard {
+    since: Option<Instant>,
+    /// Trames passées au lecteur.
+    played: u32,
+    /// Émetteur (SSRC) que le serveur n'a pas présenté.
+    unknown: u32,
+    /// Refusées par la clé de transport.
+    sealed: u32,
+    /// Refusées par le chiffrement de bout en bout.
+    e2ee: u32,
+    /// Lecteur en retard : file pleine.
+    full: u32,
+    /// Dernier paquet audio arrivé, quel que soit son sort.
+    last: Option<Instant>,
+}
+
+/// Intervalle entre deux lignes du journal de l'écoute (écrites seulement s'il y a eu un refus).
+const HEARD_EVERY: Duration = Duration::from_secs(5);
+/// Silence du réseau, entre deux paquets audio, noté au journal.
+const HEARD_GAP: Duration = Duration::from_secs(2);
+
+impl Heard {
+    /// Un paquet audio vient d'arriver : note un trou, écrit la ligne due.
+    fn tick(&mut self, now: Instant) {
+        if let Some(gap) = self.last.map(|t| now.saturating_duration_since(t)).filter(|g| *g >= HEARD_GAP) {
+            crate::sharelog::line(format_args!("écoute : aucun paquet audio pendant {} ms", gap.as_millis()));
+        }
+        self.last = Some(now);
+        let since = *self.since.get_or_insert(now);
+        if now.saturating_duration_since(since) < HEARD_EVERY {
+            return;
+        }
+        if self.unknown + self.sealed + self.e2ee + self.full > 0 {
+            crate::sharelog::line(format_args!(
+                "écoute : {} trames lues, écartées : émetteur inconnu {}, clé de transport {}, chiffrement de bout en bout {}, lecteur en retard {}",
+                self.played, self.unknown, self.sealed, self.e2ee, self.full
+            ));
+        }
+        *self = Heard { since: Some(now), last: self.last, ..Heard::default() };
+    }
+}
+
 /// État qui survit aux reprises.
 #[derive(Default)]
 struct State {
+    heard: Heard,
     /// Dernier numéro de séquence reçu (`seq_ack`), -1 avant le premier.
     seq_ack: i64,
     ssrc: u32,
@@ -593,21 +642,38 @@ impl Ctx<'_> {
         let (Some(cipher), Some(p)) = (self.st.cipher.as_ref(), rtp::parse(pkt)) else {
             return Ok(());
         };
-        let Some(&user_id) = self.st.ssrcs.get(&p.ssrc) else { return Ok(()) };
-        let Some(frame) = p.open(cipher) else { return Ok(()) };
+        self.st.heard.tick(Instant::now());
+        let Some(&user_id) = self.st.ssrcs.get(&p.ssrc) else {
+            self.st.heard.unknown += 1;
+            return Ok(());
+        };
+        let Some(frame) = p.open(cipher) else {
+            self.st.heard.sealed += 1;
+            return Ok(());
+        };
         // La trame de silence n'est jamais chiffrée de bout en bout.
         let opus = if frame == rtp::SILENCE {
             frame
         } else {
             match self.e2ee.decrypt(user_id, &frame) {
                 Some(f) => f,
-                None => return Ok(()),
+                None => {
+                    self.st.heard.e2ee += 1;
+                    return Ok(());
+                }
             }
         };
         // Lecteur en retard : la trame est perdue plutôt que de bloquer le réseau.
         match self.ev.try_send(VoiceEvent::Audio { user_id, seq: p.seq, timestamp: p.timestamp, opus }) {
             Err(mpsc::error::TrySendError::Closed(_)) => Err(End::Stop(CloseReason::Requested)),
-            _ => Ok(()),
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                self.st.heard.full += 1;
+                Ok(())
+            }
+            Ok(()) => {
+                self.st.heard.played += 1;
+                Ok(())
+            }
         }
     }
 
