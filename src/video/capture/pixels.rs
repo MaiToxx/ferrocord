@@ -105,6 +105,36 @@ fn average(src: &[u8], sw: usize, stride: usize, xs: &[(usize, usize)], ys: &[(u
     }
 }
 
+/// Blocs d'un ou deux pixels de côté (réduction de moins de moitié : un écran
+/// 1440p partagé en 1080p, un 4K en 1440p). Un bloc d'une seule colonne
+/// compte la sienne deux fois : toute la ligne se divise alors par le même
+/// nombre, 2 ou 4, donc par un décalage, et les quatre canaux d'un pixel se
+/// calculent d'un coup dans un mot de 64 bits (quatre cases de 16 bits, dont
+/// la somme ne dépasse pas 1 022). Mêmes valeurs que [`average_any`].
+fn average_small(src: &[u8], sw: usize, stride: usize, xs: &[(usize, usize)], ys: &[(usize, usize)], out: &mut [u8]) {
+    let word = |p: [u16; 4]| u64::from(p[0]) | u64::from(p[1]) << 16 | u64::from(p[2]) << 32 | u64::from(p[3]) << 48;
+    let mut col = vec![0u16; 4 * sw];
+    let pairs: Vec<(u32, u32)> = xs.iter().map(|&(x0, x1)| (x0 as u32, (x1 - 1) as u32)).collect();
+    for (&(y0, y1), dst) in ys.iter().zip(out.chunks_exact_mut(4 * xs.len())) {
+        for (c, &s) in col.iter_mut().zip(&src[y0 * stride..y0 * stride + 4 * sw]) {
+            *c = u16::from(s);
+        }
+        for r in y0 + 1..y1 {
+            for (c, &s) in col.iter_mut().zip(&src[r * stride..r * stride + 4 * sw]) {
+                *c += u16::from(s);
+            }
+        }
+        // Une ou deux lignes, deux colonnes comptées : division par 2 ou 4, arrondie.
+        let rows = y1 - y0;
+        let (round, shift) = (rows as u64 * 0x0001_0001_0001_0001, rows as u32);
+        let px = col.as_chunks::<4>().0;
+        for (d, &(a, b)) in dst.as_chunks_mut::<4>().0.iter_mut().zip(&pairs) {
+            let v = (word(px[a as usize]) + word(px[b as usize]) + round) >> shift;
+            *d = [v as u8, (v >> 16) as u8, (v >> 32) as u8, (v >> 48) as u8];
+        }
+    }
+}
+
 /// Moyenne par blocs de n'importe quelle taille (une division par canal).
 fn average_any(src: &[u8], sw: usize, stride: usize, xs: &[(usize, usize)], ys: &[(usize, usize)], out: &mut [u8]) {
     let mut acc = vec![[0u32; 4]; xs.len()];
@@ -139,7 +169,7 @@ fn average_any(src: &[u8], sw: usize, stride: usize, xs: &[(usize, usize)], ys: 
 ///
 /// Appelée pour chaque image d'un écran partagé plus grand que la qualité
 /// choisie. Mesuré, un écran 4K : vers le 1080p 13,6 ms → 1,9 ms, vers le
-/// 1440p 21,8 ms → 9 ms, vers le 720p 7,5 ms → 3,8 ms (la première version
+/// 1440p 21,8 ms → 5,8 ms, vers le 720p 7,5 ms → 3,8 ms (la première version
 /// calculait quatre divisions par pixel de sortie), aux mêmes valeurs.
 pub fn scale_bgra(src: &[u8], sw: u32, sh: u32, stride: usize, dw: u32, dh: u32, out: &mut Vec<u8>) -> bool {
     let (sw, sh, dw, dh) = (sw as usize, sh as usize, dw as usize, dh as usize);
@@ -161,7 +191,9 @@ pub fn scale_bgra(src: &[u8], sw: u32, sh: u32, stride: usize, dw: u32, dh: u32,
     let (xs, ys) = (spans(sw, dw), spans(sh, dh));
     let widest = xs.iter().map(|(a, b)| b - a).max().unwrap_or(1);
     let tallest = ys.iter().map(|(a, b)| b - a).max().unwrap_or(1);
-    if tallest <= TALLEST && widest * tallest <= LARGEST {
+    if widest <= 2 && tallest <= 2 {
+        average_small(src, sw, stride, &xs, &ys, out);
+    } else if tallest <= TALLEST && widest * tallest <= LARGEST {
         average(src, sw, stride, &xs, &ys, widest, out);
     } else {
         average_any(src, sw, stride, &xs, &ys, out);

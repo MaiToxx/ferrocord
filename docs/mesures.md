@@ -1371,6 +1371,23 @@ Non mesuré : le gain dans l'application elle-même, en regardant un direct
 (il faut un direct en cours) ; attendu d'après le banc, de 57 % d'un cœur à
 quelques pour cent.
 
+**Suite du 28 novembre (0.1.49).**
+
+- Réduction d'écran de moins de moitié (un écran 1440p partagé en 1080p, un
+  4K en 1440p, un 1080p en 720p) : les blocs y font un ou deux pixels de
+  côté, la division devient un décalage et les quatre canaux se calculent
+  dans un mot de 64 bits (`average_small`). 4K → 1440p : 9,4 ms → 5,8 ms
+  (21,8 ms avant le lot) ; 1080p → 720p : 1,15 ms. Mêmes valeurs (même essai).
+- Vocal, jamais chronométré jusque-là. Sur 20 s de son, la chaîne du micro
+  coûte : passe-haut et gain automatique 0,01 % d'un cœur ; annulation
+  d'écho 1,3 % dès que quelqu'un parle, presque tout dans le produit scalaire
+  des 512 coefficients, que le compilateur calculait terme après terme
+  (l'addition des nombres à virgule n'est pas associative). Écrit en seize
+  sommes menées de front (`dsp::echo::dot`) : 0,3 %. L'écho retranché ne
+  change qu'à l'arrondi près (mêmes essais d'atténuation et de double
+  parole). Le rééchantillonnage (périphérique qui n'est pas à 48 kHz) est
+  une interpolation cubique : rien à y gagner.
+
 ### Taille sur disque
 
 | | Ferrocord | Discord | Discord / Ferrocord |

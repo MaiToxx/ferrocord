@@ -175,7 +175,7 @@ impl EchoCanceller {
             if i > 0 {
                 energy = (energy + win[TAPS - 1] * win[TAPS - 1] - buf[start - 1] * buf[start - 1]).max(0.0);
             }
-            let y: f32 = w.iter().zip(win).map(|(a, b)| a * b).sum();
+            let y = dot(w, win);
             let d = *s;
             let e = d - y;
             if adapt {
@@ -198,6 +198,23 @@ impl EchoCanceller {
         let g = self.nlp_gain;
         chunk.iter_mut().for_each(|s| *s *= g);
     }
+}
+
+/// Produit scalaire en seize sommes menées de front. L'addition des nombres
+/// à virgule n'est pas associative : écrite comme une seule somme, elle est
+/// calculée terme après terme, chacun attendant le précédent (512 additions
+/// à la file par échantillon : 1,3 % d'un cœur mesuré quand quelqu'un parle).
+/// En seize sommes indépendantes, le compilateur en traite quatre ou huit par
+/// instruction : 0,3 %.
+fn dot(a: &[f32], b: &[f32]) -> f32 {
+    let ((ca, ra), (cb, rb)) = (a.as_chunks::<16>(), b.as_chunks::<16>());
+    let mut acc = [0.0f32; 16];
+    for (x, y) in ca.iter().zip(cb) {
+        for k in 0..16 {
+            acc[k] += x[k] * y[k];
+        }
+    }
+    acc.iter().sum::<f32>() + ra.iter().zip(rb).map(|(x, y)| x * y).sum::<f32>()
 }
 
 #[cfg(test)]
