@@ -12,10 +12,11 @@ use crate::images::Images;
 use crate::state::model::Avatar;
 use crate::state::video::{Tile, TileKind, VideoSink};
 use crate::theme::Tokens;
-use crate::ui::util::paint_avatar;
+use crate::ui::util::{image_pixels, paint_avatar, rgba_image};
 use crate::ui::voice::icons::{self as vicons, VIcon};
 use eframe::egui::{self, pos2, vec2, Color32, FontId, Rect, Sense, Stroke, TextureHandle, TextureOptions, Vec2};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Proportions d'une tuile.
 pub(super) const RATIO: f32 = 16.0 / 9.0;
@@ -63,10 +64,22 @@ pub(super) enum TileAct {
     LocalMute(u64, bool),
 }
 
+/// Texture d'une tuile.
+struct Shown {
+    tex: TextureHandle,
+    /// Génération de l'image téléversée.
+    generation: u64,
+    /// L'image téléversée, partagée avec egui jusqu'à ce qu'il l'ait passée à
+    /// la carte graphique : à l'image suivante, son tampon retourne au
+    /// convertisseur ([`VideoSink::give_back`]). Rien n'est alloué ni recopié
+    /// par image sur le fil d'interface.
+    last: Arc<egui::ColorImage>,
+}
+
 /// Textures des tuiles affichées et tuiles dessinées à cette image.
 #[derive(Default)]
 pub(super) struct Screens {
-    textures: HashMap<Tile, (TextureHandle, u64)>,
+    textures: HashMap<Tile, Shown>,
     /// Tuiles à vidéo dessinées à cette image, taille en pixels physiques.
     pub drawn: Vec<(Tile, (u32, u32))>,
 }
@@ -81,22 +94,26 @@ impl Screens {
             Some((_, s)) => *s = (s.0.max(px.0), s.1.max(px.1)),
             None => self.drawn.push((tile.clone(), px)),
         }
-        let seen = self.textures.get(tile).map_or(0, |e| e.1);
+        let seen = self.textures.get(tile).map_or(0, |e| e.generation);
         if let Some((generation, img)) = sink.take(tile, seen) {
-            let image = egui::ColorImage::from_rgba_premultiplied([img.width as usize, img.height as usize], &img.pixels);
+            let image = Arc::new(rgba_image(img.width, img.height, img.pixels));
             match self.textures.get_mut(tile) {
                 Some(e) => {
-                    e.0.set(image, TextureOptions::LINEAR);
-                    e.1 = generation;
+                    e.tex.set(image.clone(), TextureOptions::LINEAR);
+                    e.generation = generation;
+                    // L'image d'avant est téléversée depuis au moins une image :
+                    // si egui l'a lâchée, son tampon sert à la conversion suivante.
+                    if let Ok(old) = Arc::try_unwrap(std::mem::replace(&mut e.last, image)) {
+                        sink.give_back(tile, image_pixels(old));
+                    }
                 }
                 None => {
-                    let h = ctx.load_texture("video", image, TextureOptions::LINEAR);
-                    self.textures.insert(tile.clone(), (h, generation));
+                    let tex = ctx.load_texture("video", image.clone(), TextureOptions::LINEAR);
+                    self.textures.insert(tile.clone(), Shown { tex, generation, last: image });
                 }
             }
-            sink.give_back(tile, img.pixels);
         }
-        self.textures.get(tile).map(|(h, _)| (h.id(), h.size_vec2()))
+        self.textures.get(tile).map(|e| (e.tex.id(), e.tex.size_vec2()))
     }
 
     /// Fin d'image : seules les tuiles dessinées gardent une texture et reçoivent des images.

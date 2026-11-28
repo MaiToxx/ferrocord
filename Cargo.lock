@@ -1331,6 +1331,7 @@ name = "ferrocord"
 version = "0.1.49"
 dependencies = [
  "aws-lc-rs",
+ "bytemuck",
  "bytes",
  "chrono",
  "cpal",

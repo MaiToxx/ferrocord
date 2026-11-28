@@ -55,7 +55,7 @@ impl VoiceLink for Link {
 
 fn paused(video: bool) -> Handle {
     let info = Info { duration_us: 90_000_000, video: video.then_some((640, 360)), rotation: 0, audio: true };
-    let picture = video.then(|| Picture { width: 4, height: 2, pixels: vec![255; 32] });
+    let picture = video.then(|| Picture { width: 4, height: 2, pixels: vec![u32::MAX; 8] });
     Handle::fixed(Phase::Paused, info, 30_000_000, picture)
 }
 

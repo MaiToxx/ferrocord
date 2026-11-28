@@ -5009,10 +5009,11 @@ fn main() -> eframe::Result {
                 use ferrocord::video::play::{Handle, Info, Phase, Picture};
                 // Mire fixe à la place d'une image décodée : dégradé et bandes.
                 let (w, h) = (640u32, 360u32);
-                let pixels = (0..w * h).flat_map(|i| {
+                let pixels = (0..w * h).map(|i| {
                     let (x, y) = (i % w, i / w);
                     let band = if (x / 80) % 2 == 0 { 40 } else { 0 };
-                    [(x * 200 / w) as u8 + band, (y * 160 / h) as u8 + 40, 150 - (x * 100 / w) as u8, 255]
+                    // Un mot par pixel : ses octets rouge, vert, bleu, alpha, dans l'ordre de la mémoire.
+                    u32::from_ne_bytes([(x * 200 / w) as u8 + band, (y * 160 / h) as u8 + 40, 150 - (x * 100 / w) as u8, 255])
                 });
                 let info = Info { duration_us: 95_000_000, video: Some((1280, 720)), rotation: 0, audio: true };
                 let handle = Handle::fixed(Phase::Paused, info, 30_000_000, Some(Picture { width: w, height: h, pixels: pixels.collect() }));
