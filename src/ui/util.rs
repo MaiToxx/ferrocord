@@ -6,6 +6,30 @@ use crate::theme::{icons, icons::Icon, Tokens};
 use eframe::egui::{self, emath::GuiRounding, CornerRadius, Rect, Sense, Vec2};
 
 /// Jusqu'à trois initiales en majuscules, pour les icônes de serveur.
+/// Image opaque faite de ses pixels (un mot chacun : rouge, vert, bleu, alpha
+/// dans l'ordre des octets), sans les recopier : un `Color32` est ces quatre
+/// octets, alignés de même, et le tampon change seulement de type.
+/// `ColorImage::from_rgba_premultiplied` alloue et recopie, soit 8 Mo par
+/// image d'un direct affiché en 1080p, sur le fil d'interface : 1,1 ms
+/// mesurée, 4,8 ms en 4K.
+pub fn rgba_image(width: u32, height: u32, pixels: Vec<u32>) -> egui::ColorImage {
+    let size = [width as usize, height as usize];
+    if pixels.len() != size[0] * size[1] {
+        // Jamais produit par nos convertisseurs ; egui paniquerait au téléversement.
+        return egui::ColorImage::filled(size, egui::Color32::BLACK);
+    }
+    match bytemuck::allocation::try_cast_vec::<u32, egui::Color32>(pixels) {
+        Ok(pixels) => egui::ColorImage::new(size, pixels),
+        // Même taille et même alignement : n'arrive pas. Recopie, par sûreté.
+        Err((_, pixels)) => egui::ColorImage::from_rgba_premultiplied(size, bytemuck::cast_slice(&pixels)),
+    }
+}
+
+/// Le tampon d'une image, rendu pour une conversion suivante.
+pub fn image_pixels(image: egui::ColorImage) -> Vec<u32> {
+    bytemuck::allocation::try_cast_vec::<egui::Color32, u32>(image.pixels).unwrap_or_default()
+}
+
 pub fn initials(name: &str) -> String {
     // Première lettre ou premier chiffre de chaque mot : « Bob (vocal) » donne « BV », pas « B( ».
     let s: String = name.split_whitespace().filter_map(|w| w.chars().find(|c| c.is_alphanumeric())).take(3).collect();

@@ -41,8 +41,16 @@ impl I420<'_> {
 }
 
 fn fit(buf: &mut Vec<u8>, len: usize) {
-    // `resize` ne réalloue que si la capacité manque ; le contenu sera écrasé.
-    buf.resize(len, 0);
+    if buf.capacity() < len {
+        // Tampon neuf ou trop petit : demandé déjà à zéro au système, qui
+        // donne des pages vierges sans les écrire. `resize` aurait recopié
+        // l'ancien contenu puis rempli le reste, avant que la conversion ne
+        // réécrive tout.
+        *buf = vec![0; len];
+    } else {
+        // Le contenu sera écrasé.
+        buf.resize(len, 0);
+    }
 }
 
 #[inline(always)]
@@ -152,16 +160,38 @@ fn i420_rows_avx2(src: I420<'_>, w: usize, h: usize, out: &mut [u8], rows: &mut 
     i420_rows(src, w, h, out, rows)
 }
 
+/// Met `buf` à `pixels` pixels et rend ses octets : quatre par pixel, dans
+/// l'ordre rouge, vert, bleu, alpha. Un tampon de mots de 32 bits peut devenir
+/// une image d'egui sans être recopié : les pixels d'egui sont alignés sur
+/// quatre octets, ce qu'un `Vec<u8>` ne garantit pas (lot « textures »).
+pub fn pixel_bytes(buf: &mut Vec<u32>, pixels: usize) -> &mut [u8] {
+    if buf.capacity() < pixels {
+        // Demandé à zéro au système : des pages vierges, que personne n'écrit avant la conversion.
+        *buf = vec![0; pixels];
+    } else {
+        buf.resize(pixels, 0);
+    }
+    bytemuck::cast_slice_mut(buf)
+}
+
 /// I420 → RGBA (alpha opaque) de `w` × `h`, au plus proche voisin : pour une
 /// texture à la taille affichée. Des plans plus longs qu'annoncé sont
 /// acceptés ; trop courts, ou une taille nulle : refusés.
 pub fn i420_to_rgba_sized(src: I420<'_>, w: usize, h: usize, out: &mut Vec<u8>) -> Result<(), BadSize> {
-    let (sw, sh) = (src.width, src.height);
-    let c = sw.div_ceil(2) * sh.div_ceil(2);
-    if sw == 0 || sh == 0 || w == 0 || h == 0 || src.y.len() < sw * sh || src.u.len() < c || src.v.len() < c {
+    if w == 0 || h == 0 {
         return Err(BadSize);
     }
     fit(out, w * h * 4);
+    i420_to_rgba_into(src, w, h, out)
+}
+
+/// Comme [`i420_to_rgba_sized`], dans une tranche de `w * h * 4` octets.
+pub fn i420_to_rgba_into(src: I420<'_>, w: usize, h: usize, out: &mut [u8]) -> Result<(), BadSize> {
+    let (sw, sh) = (src.width, src.height);
+    let c = sw.div_ceil(2) * sh.div_ceil(2);
+    if sw == 0 || sh == 0 || w == 0 || h == 0 || out.len() != w * h * 4 || src.y.len() < sw * sh || src.u.len() < c || src.v.len() < c {
+        return Err(BadSize);
+    }
     ROWS.with_borrow_mut(|rows| {
         rows.prepare(sw, w);
         #[cfg(target_arch = "x86_64")]
@@ -212,10 +242,18 @@ fn bgra_rows_avx2(src: &[u8], sw: usize, sh: usize, w: usize, h: usize, out: &mu
 /// rouge/bleu, alpha forcé opaque). Une source plus longue qu'annoncé est
 /// acceptée ; trop courte, ou une taille nulle : refusée.
 pub fn bgra_to_rgba_sized(sw: usize, sh: usize, src: &[u8], w: usize, h: usize, out: &mut Vec<u8>) -> Result<(), BadSize> {
-    if sw == 0 || sh == 0 || w == 0 || h == 0 || src.len() < sw * sh * 4 {
+    if w == 0 || h == 0 {
         return Err(BadSize);
     }
     fit(out, w * h * 4);
+    bgra_to_rgba_into(sw, sh, src, w, h, out)
+}
+
+/// Comme [`bgra_to_rgba_sized`], dans une tranche de `w * h * 4` octets.
+pub fn bgra_to_rgba_into(sw: usize, sh: usize, src: &[u8], w: usize, h: usize, out: &mut [u8]) -> Result<(), BadSize> {
+    if sw == 0 || sh == 0 || w == 0 || h == 0 || out.len() != w * h * 4 || src.len() < sw * sh * 4 {
+        return Err(BadSize);
+    }
     ROWS.with_borrow_mut(|rows| {
         rows.prepare(sw, w);
         #[cfg(target_arch = "x86_64")]
@@ -247,6 +285,21 @@ pub fn frame_to_rgba(f: &Frame, out: &mut Vec<u8>) -> Result<(), BadSize> {
     match &f.data {
         FrameData::I420 { y, u, v } => i420_to_rgba(I420 { width: w, height: h, y, u, v }, out),
         FrameData::Bgra(b) => bgra_to_rgba(w, h, b, out),
+    }
+}
+
+/// N'importe quelle [`Frame`] → RGBA à sa taille, dans une tranche de
+/// `largeur * hauteur * 4` octets.
+pub fn frame_to_rgba_into(f: &Frame, out: &mut [u8]) -> Result<(), BadSize> {
+    let (w, h) = (f.width as usize, f.height as usize);
+    match &f.data {
+        FrameData::I420 { y, u, v } => {
+            let src = I420 { width: w, height: h, y, u, v };
+            src.check()?;
+            i420_to_rgba_into(src, w, h, out)
+        }
+        FrameData::Bgra(b) if b.len() == w * h * 4 => bgra_to_rgba_into(w, h, b, w, h, out),
+        FrameData::Bgra(_) => Err(BadSize),
     }
 }
 
@@ -425,6 +478,14 @@ impl Scaler {
             return Err(BadSize);
         }
         fit(out, dw * dh * 4);
+        self.scale_rgba_into(src, sw, sh, out, dw, dh)
+    }
+
+    /// Comme [`Scaler::scale_rgba`], dans une tranche de `dw * dh * 4` octets.
+    pub fn scale_rgba_into(&mut self, src: &[u8], sw: usize, sh: usize, out: &mut [u8], dw: usize, dh: usize) -> Result<(), BadSize> {
+        if src.len() != sw * sh * 4 || sw == 0 || sh == 0 || dw == 0 || dh == 0 || out.len() != dw * dh * 4 {
+            return Err(BadSize);
+        }
         if (sw, sh) == (dw, dh) {
             out.copy_from_slice(src);
             return Ok(());

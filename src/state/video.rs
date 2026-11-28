@@ -291,7 +291,17 @@ pub type Wake = Arc<dyn Fn() + Send + Sync>;
 pub struct Rgba {
     pub width: u32,
     pub height: u32,
-    pub pixels: Vec<u8>,
+    /// Un mot par pixel, soit ses quatre octets dans l'ordre rouge, vert,
+    /// bleu, alpha : l'interface en fait une image d'egui sans le recopier
+    /// (voir `convert::pixel_bytes`).
+    pub pixels: Vec<u32>,
+}
+
+impl Rgba {
+    /// Les octets de l'image, quatre par pixel.
+    pub fn bytes(&self) -> &[u8] {
+        bytemuck::cast_slice(&self.pixels)
+    }
 }
 
 #[derive(Default)]
@@ -303,7 +313,7 @@ struct Slot {
     generation: u64,
     image: Option<Rgba>,
     /// Tampon rendu par l'interface, réutilisé pour l'image suivante.
-    spare: Vec<u8>,
+    spare: Vec<u32>,
 }
 
 #[derive(Default)]
@@ -371,10 +381,16 @@ impl VideoSink {
     }
 
     /// Tampon d'une image téléversée, réutilisé pour la suivante.
-    pub fn give_back(&self, tile: &Tile, pixels: Vec<u8>) {
+    pub fn give_back(&self, tile: &Tile, pixels: Vec<u32>) {
         if let Some(slot) = self.lock().slots.get_mut(tile).filter(|s| s.visible) {
             slot.spare = pixels;
         }
+    }
+
+    /// Pixels du tampon en réserve pour la prochaine conversion de cette tuile.
+    #[cfg(test)]
+    pub fn spare_capacity(&self, tile: &Tile) -> usize {
+        self.lock().slots.get(tile).map_or(0, |s| s.spare.capacity())
     }
 
     /// Tuiles dessinées à cette image et leur taille en pixels physiques ;
@@ -431,14 +447,15 @@ fn fit((sw, sh): (u32, u32), (mw, mh): (u32, u32)) -> (u32, u32) {
 /// d'origine, pixel par pixel avec une division et un `extend_from_slice`
 /// chacun, prenait 22 ms pour une image de 1080p (57 % d'un cœur mesurés à
 /// 30 images par seconde) ; celles de `convert`, vectorisées, 0,3 ms.
-fn to_rgba(f: &Frame, w: u32, h: u32, out: &mut Vec<u8>) -> bool {
-    use crate::video::convert::{I420, bgra_to_rgba_sized, i420_to_rgba_sized};
+fn to_rgba(f: &Frame, w: u32, h: u32, out: &mut Vec<u32>) -> bool {
+    use crate::video::convert::{I420, bgra_to_rgba_into, i420_to_rgba_into, pixel_bytes};
     let (sw, sh) = (f.width as usize, f.height as usize);
     let (w, h) = (w as usize, h as usize);
+    let bytes = pixel_bytes(out, w * h);
     match &f.data {
-        FrameData::Bgra(b) => bgra_to_rgba_sized(sw, sh, b, w, h, out).is_ok(),
+        FrameData::Bgra(b) => bgra_to_rgba_into(sw, sh, b, w, h, bytes).is_ok(),
         // BT.601, plage réduite (ce que donnent les décodeurs H.264 courants).
-        FrameData::I420 { y, u, v } => i420_to_rgba_sized(I420 { width: sw, height: sh, y, u, v }, w, h, out).is_ok(),
+        FrameData::I420 { y, u, v } => i420_to_rgba_into(I420 { width: sw, height: sh, y, u, v }, w, h, bytes).is_ok(),
     }
 }
 
@@ -632,7 +649,7 @@ mod tests {
         sink.push(bob.clone(), &test_pattern(64, 36, 2, 1));
         assert_eq!(wakes.load(Ordering::Relaxed), 2);
         let (generation, img) = sink.take(&bob, 0).unwrap_or_else(|| panic!("image"));
-        assert_eq!((generation, img.width, img.height, img.pixels.len()), (2, 32, 18, 32 * 18 * 4));
+        assert_eq!((generation, img.width, img.height, img.pixels.len(), img.bytes().len()), (2, 32, 18, 32 * 18, 32 * 18 * 4));
         assert!(sink.take(&bob, generation).is_none(), "rien de neuf");
         sink.give_back(&bob, img.pixels);
         // Plus affichée : mémoire rendue.
@@ -648,17 +665,20 @@ mod tests {
         let mut out = Vec::new();
         // I420 2×2 : blanc (Y 235), noir (Y 16), U = V = 128.
         let f = Frame { width: 2, height: 2, pts_us: 0, data: FrameData::I420 { y: vec![235, 16, 235, 16], u: vec![128], v: vec![128] } };
+        let bytes = |out: &Vec<u32>| bytemuck::cast_slice::<u32, u8>(out).to_vec();
         assert!(to_rgba(&f, 2, 2, &mut out));
-        assert_eq!(&out[..8], &[255, 255, 255, 255, 0, 0, 0, 255]);
+        assert_eq!(&bytes(&out)[..8], &[255, 255, 255, 255, 0, 0, 0, 255]);
         // Rouge pur BT.601 : Y 81, U 90, V 240.
         let red = Frame { width: 2, height: 2, pts_us: 0, data: FrameData::I420 { y: vec![81; 4], u: vec![90], v: vec![240] } };
         assert!(to_rgba(&red, 1, 1, &mut out));
-        assert!(out[0] > 250 && out[1] < 5 && out[2] < 5, "{out:?}");
+        let px = bytes(&out);
+        assert!(px[0] > 250 && px[1] < 5 && px[2] < 5, "{px:?}");
         let short = Frame { width: 4, height: 4, pts_us: 0, data: FrameData::I420 { y: vec![0; 4], u: vec![], v: vec![] } };
         assert!(!to_rgba(&short, 4, 4, &mut out));
         let bgra = Frame { width: 1, height: 1, pts_us: 0, data: FrameData::Bgra(vec![1, 2, 3, 4]) };
         assert!(to_rgba(&bgra, 1, 1, &mut out));
-        assert_eq!(out, vec![3, 2, 1, 255]);
+        assert_eq!(bytes(&out), vec![3, 2, 1, 255]);
+        assert!(!to_rgba(&bgra, 0, 1, &mut out), "taille nulle");
         assert_eq!(fit((1920, 1080), (480, 480)), (480, 270));
         assert_eq!(fit((320, 180), (1920, 1080)), (320, 180), "jamais agrandie");
     }

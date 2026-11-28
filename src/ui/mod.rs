@@ -2153,12 +2153,26 @@ mod tests {
         assert_eq!(wakes.load(Ordering::Relaxed), 1, "seule la tuile affichée réveille");
         h.frame();
         assert_eq!(h.app.video_textures(), 1);
+        // Le tampon d'une image téléversée revient au convertisseur à l'image
+        // suivante (egui l'a lâché) : plus rien n'est alloué ensuite.
+        assert_eq!(sink.spare_capacity(&Tile::Camera(7)), 0, "la première image est encore celle de la texture");
+        sink.push(Tile::Camera(7), &test_pattern(64, 36, 2, 7));
+        h.frame();
+        let spare = sink.spare_capacity(&Tile::Camera(7));
+        assert!(spare > 0, "le tampon de la première image est revenu");
+        for step in 3..8 {
+            sink.push(Tile::Camera(7), &test_pattern(64, 36, step, 7));
+            h.frame();
+            assert_eq!(sink.spare_capacity(&Tile::Camera(7)), spare, "deux tampons tournent, aucun de plus");
+        }
+        assert_eq!(h.app.video_textures(), 1);
+        let woken = wakes.load(Ordering::Relaxed);
         // Autre écran que l'appel : plus de tuile, plus de texture.
         h.app.store.channel = None;
         h.frame();
         assert_eq!(h.app.video_textures(), 0);
         assert!(!sink.is_visible(&Tile::Camera(7)));
         sink.push(Tile::Camera(7), &test_pattern(64, 36, 2, 7));
-        assert_eq!(wakes.load(Ordering::Relaxed), 1, "hors champ : aucun réveil");
+        assert_eq!(wakes.load(Ordering::Relaxed), woken, "hors champ : aucun réveil");
     }
 }

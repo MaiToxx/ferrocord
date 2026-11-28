@@ -190,7 +190,16 @@ pub enum Phase {
 pub struct Picture {
     pub width: u32,
     pub height: u32,
-    pub pixels: Vec<u8>,
+    /// Un mot par pixel (rouge, vert, bleu, alpha dans l'ordre des octets) :
+    /// l'interface en fait une image d'egui sans le recopier.
+    pub pixels: Vec<u32>,
+}
+
+impl Picture {
+    /// Les octets de l'image, quatre par pixel.
+    pub fn bytes(&self) -> &[u8] {
+        bytemuck::cast_slice(&self.pixels)
+    }
 }
 
 /// Ce que l'interface lit à chaque image.
@@ -511,21 +520,24 @@ impl Player<'_> {
 
     /// Publie l'image `f`, réduite à la taille affichée.
     fn publish(&mut self, f: &Frame) {
-        if convert::frame_to_rgba(f, &mut self.full).is_err() {
-            return;
-        }
         let shown = self.shared.shown.load(Ordering::Relaxed);
         let (bw, bh) = if shown == 0 { DEFAULT_BOX } else { ((shown >> 32) as u32, shown as u32) };
         // Image tournée à l'affichage : le cadre l'est aussi.
         let (bw, bh) = if self.info.rotation % 180 == 90 { (bh, bw) } else { (bw, bh) };
         let (w, h) = convert::fit_within(f.width, f.height, bw.max(1), bh.max(1));
+        let (sw, sh) = (f.width as usize, f.height as usize);
+        // Le tampon part avec l'image : l'interface le passe à la carte
+        // graphique sans le recopier.
         let mut pixels = Vec::new();
-        if (w, h) == (f.width, f.height) || self.scaler.scale_rgba(&self.full, f.width as usize, f.height as usize, &mut pixels, w as usize, h as usize).is_err() {
-            pixels.clone_from(&self.full);
-            let mut g = self.shared.lock();
-            g.picture = Some(Picture { width: f.width, height: f.height, pixels });
-            g.generation += 1;
-        } else {
+        if (w, h) == (f.width, f.height) {
+            // À la taille de la source : convertie droit dans l'image qui part.
+            if convert::frame_to_rgba_into(f, convert::pixel_bytes(&mut pixels, sw * sh)).is_err() {
+                return;
+            }
+        } else if convert::frame_to_rgba(f, &mut self.full).is_err() || self.scaler.scale_rgba_into(&self.full, sw, sh, convert::pixel_bytes(&mut pixels, w as usize * h as usize), w as usize, h as usize).is_err() {
+            return;
+        }
+        {
             let mut g = self.shared.lock();
             g.picture = Some(Picture { width: w, height: h, pixels });
             g.generation += 1;

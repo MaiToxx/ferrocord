@@ -210,7 +210,7 @@ pub fn tick(ctx: &egui::Context, link: &mut dyn VoiceLink) {
     let Some(h) = a.handle.clone() else { return };
     if let Some((generation, pic)) = h.take_picture(a.seen) {
         // Alpha plein partout : les octets sont déjà « prémultipliés ».
-        let image = egui::ColorImage::from_rgba_premultiplied([pic.width as usize, pic.height as usize], &pic.pixels);
+        let image = crate::ui::util::rgba_image(pic.width, pic.height, pic.pixels);
         match a.tex.as_mut() {
             Some(t) => t.set(image, egui::TextureOptions::LINEAR),
             None => a.tex = Some(ctx.load_texture("ferrocord-lecteur", image, egui::TextureOptions::LINEAR)),

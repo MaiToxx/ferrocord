@@ -124,10 +124,10 @@ fn video_plays_in_order_then_sleeps_at_the_end() {
         if let Some((g, p)) = h.take_picture(seen) {
             assert!(g > seen);
             seen = g;
-            assert_eq!((p.width, p.height, p.pixels.len()), (4, 2, 32));
+            assert_eq!((p.width, p.height, p.bytes().len()), (4, 2, 32));
             // Jamais de retour en arrière (le gris suit le numéro de l'image).
-            assert!(last.is_none_or(|l| p.pixels[0] >= l));
-            last = Some(p.pixels[0]);
+            assert!(last.is_none_or(|l| p.bytes()[0] >= l));
+            last = Some(p.bytes()[0]);
         }
         assert!(t0.elapsed() < Duration::from_secs(10));
         std::thread::sleep(Duration::from_millis(1));
@@ -174,7 +174,7 @@ fn pause_freezes_position_and_wakes_nobody() {
         assert!(convert::frame_to_rgba(&f, &mut px).is_ok());
         px[0]
     };
-    assert_eq!(p.pixels[0], grey(55), "image 55 attendue (1,1 s à 50 i/s)");
+    assert_eq!(p.bytes()[0], grey(55), "image 55 attendue (1,1 s à 50 i/s)");
     h.play();
     wait_for(&h, "reprise", |s| s.phase == Phase::Playing && s.pos_us > 1_100_000);
     h.close();

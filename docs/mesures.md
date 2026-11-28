@@ -1388,6 +1388,30 @@ quelques pour cent.
   parole). Le rééchantillonnage (périphérique qui n'est pas à 48 kHz) est
   une interpolation cubique : rien à y gagner.
 
+**Lot « textures » (0.1.50) : l'image vidéo n'est plus recopiée sur le fil
+d'interface.** Une fois la conversion ramenée à 0,3 ms, le poste le plus
+lourd d'une image vidéo était sur le fil d'interface :
+`ColorImage::from_rgba_premultiplied` alloue un tampon et y recopie l'image,
+qu'egui rend au système après l'avoir passée à la carte graphique. Mesuré à
+part (allouer, recopier, rendre) : 1,1 ms par image en 1080p, 2,0 ms en
+1440p, 4,8 ms en 4K, soit 7 % d'un cœur pour un direct en 1080p à 60 images
+par seconde, pris sur le fil qui dessine.
+
+- Les tampons d'image sont des mots de 32 bits (`Vec<u32>`, un par pixel,
+  octets rouge, vert, bleu, alpha) : ils deviennent une image d'egui sans
+  copie (`ui::util::rgba_image`, par `bytemuck`, sans `unsafe`). Un `Vec<u8>`
+  ne le peut pas : les pixels d'egui sont alignés sur quatre octets.
+- Vue d'appel : la tuile garde l'image téléversée ; à l'image suivante, egui
+  l'a lâchée, et son tampon retourne au convertisseur
+  (`VideoSink::give_back`). Deux tampons tournent par tuile, plus rien n'est
+  alloué ni recopié par image (essai `call_view_uploads_only_visible_tiles`).
+- Lecteur vidéo : l'image convertie (ou réduite) part telle quelle vers
+  l'interface ; à la taille de la source, elle est convertie droit dans le
+  tampon qui part, sans passer par un tampon intermédiaire.
+
+Contrôle à l'œil : scènes `appel-direct` et `lecteur` de l'aperçu, mêmes
+couleurs qu'avant.
+
 ### Taille sur disque
 
 | | Ferrocord | Discord | Discord / Ferrocord |
